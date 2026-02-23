@@ -77,6 +77,105 @@
           "description": "Industry or vertical the idea targets (e.g. healthcare, fintech, edtech)"
         }
       }
+    },
+    "run_brief": {
+      "description": "Run brief (type, bar, focus, date)",
+      "required": [
+        "content"
+      ],
+      "properties": {
+        "content": {
+          "type": "string"
+        }
+      }
+    },
+    "run_folder": {
+      "description": "Run folder path",
+      "required": [
+        "path"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        }
+      }
+    },
+    "resource_pack": {
+      "description": "Resource pack (sources, qualifications)",
+      "required": [
+        "content"
+      ],
+      "properties": {
+        "content": {
+          "type": "string"
+        }
+      }
+    },
+    "landscape_analysis": {
+      "description": "Landscape/competition analysis",
+      "required": [
+        "content"
+      ],
+      "properties": {
+        "content": {
+          "type": "string"
+        }
+      }
+    },
+    "raw_ideas": {
+      "description": "Raw ideas from research",
+      "required": [
+        "content"
+      ],
+      "properties": {
+        "content": {
+          "type": "string"
+        }
+      }
+    },
+    "shortlist": {
+      "description": "Scored shortlist of ideas",
+      "required": [
+        "content"
+      ],
+      "properties": {
+        "content": {
+          "type": "string"
+        }
+      }
+    },
+    "revised_shortlist": {
+      "description": "Revised shortlist after challenge",
+      "required": [
+        "content"
+      ],
+      "properties": {
+        "content": {
+          "type": "string"
+        }
+      }
+    },
+    "synthesis": {
+      "description": "Synthesis (cheatsheet, top ideas)",
+      "required": [
+        "content"
+      ],
+      "properties": {
+        "content": {
+          "type": "string"
+        }
+      }
+    },
+    "run_complete": {
+      "description": "Run completion marker",
+      "required": [
+        "content"
+      ],
+      "properties": {
+        "content": {
+          "type": "string"
+        }
+      }
     }
   }
 }

@@ -4,7 +4,6 @@ import { WorkflowPage } from "@/pages/WorkflowPage";
 import { RunsPage } from "@/pages/RunsPage";
 import { RunDetailPage } from "@/pages/RunDetailPage";
 import { CollectionSchemaPage } from "@/pages/CollectionSchemaPage";
-import { CollectionsPage } from "@/pages/CollectionsPage";
 import { EntityPage } from "@/pages/EntityPage";
 
 function App() {
@@ -15,7 +14,6 @@ function App() {
         <Route path="workflow" element={<WorkflowPage />} />
         <Route path="runs" element={<RunsPage />} />
         <Route path="runs/:runId" element={<RunDetailPage />} />
-        <Route path="collections" element={<CollectionsPage />} />
         <Route path="data/:kind" element={<EntityPage />} />
         <Route path="collection-schema" element={<CollectionSchemaPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />

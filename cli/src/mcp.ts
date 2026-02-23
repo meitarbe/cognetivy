@@ -140,7 +140,7 @@ const TOOLS: Array<{ name: string; description: string; inputSchema: { type: "ob
   {
     name: "collection_schema_add_kind",
     description:
-      "Add or update one collection kind without replacing the full schema. Use when workflow outputs need a new kind (e.g. ideas, sources, resource_pack). Merges into existing schema.",
+      "Add or update one collection kind without replacing the full schema. Use when workflow outputs need a new kind (e.g. ideas, sources, resource_pack). Merges into existing schema. Prefer field names that suggest rich content (idea_summary, why_now_thesis, description, excerpt) so Studio renders them as Markdown.",
     inputSchema: {
       type: "object",
       properties: {
@@ -183,7 +183,7 @@ const TOOLS: Array<{ name: string; description: string; inputSchema: { type: "ob
   {
     name: "collection_set",
     description:
-      "Replace all collections of a kind for a run. Items are validated against schema. If kind is unknown or validation fails, error includes schema—use collection_schema_add_kind first.",
+      "Replace all collections of a kind for a run. Items are validated against schema. If kind is unknown or validation fails, error includes schema—use collection_schema_add_kind first. Use **Markdown** for long text fields (summaries, theses, descriptions, reasons) so Studio renders them as rich text.",
     inputSchema: {
       type: "object",
       properties: {
@@ -197,7 +197,7 @@ const TOOLS: Array<{ name: string; description: string; inputSchema: { type: "ob
   {
     name: "collection_append",
     description:
-      "Append one collection item to a run's kind. Validated against schema. If kind unknown or validation fails, use collection_schema_add_kind first.",
+      "Append one collection item to a run's kind. Validated against schema. If kind unknown or validation fails, use collection_schema_add_kind first. Use **Markdown** for long text fields (summaries, theses, descriptions, reasons) so Studio renders them as rich text.",
     inputSchema: {
       type: "object",
       properties: {
@@ -459,6 +459,7 @@ async function handleInitialize(): Promise<{
     instructions:
       "When you start a run with run_start, you MUST execute the workflow. Do not leave runs incomplete. " +
       "SCHEMA-FIRST: Before collection_set/collection_append, call collection_schema_get. If schema lacks kinds for workflow outputs (see run_start/workflow_get suggested_collection_kinds), use collection_schema_add_kind to add them. " +
+      "RICH TEXT: Use **Markdown** in collection item fields for summaries, theses, descriptions, and reasons (e.g. idea_summary, why_now_thesis, reliability_reason). Studio renders these as formatted documents. " +
       "After run_start: 1) workflow_get (note suggested_collection_kinds), 2) collection_schema_get, 3) collection_schema_add_kind for any missing kinds, 4) for each step: event_append step_started/step_completed, collection_set/collection_append outputs, 5) event_append run_completed, 6) run_complete. " +
       "Step events MUST include data.step (or step_id) = the workflow node id.",
   };

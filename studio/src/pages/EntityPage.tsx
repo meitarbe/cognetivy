@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { api, type CollectionSchemaConfig, type CollectionItem } from "@/api";
+import { formatTimestamp } from "@/lib/utils";
+import { CollectionItemDetail } from "@/components/display/CollectionItemDetail";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -28,6 +30,7 @@ export function EntityPage() {
   const [schema, setSchema] = useState<CollectionSchemaConfig | null>(null);
   const [items, setItems] = useState<CollectionItem[]>([]);
   const [runNames, setRunNames] = useState<Record<string, string>>({});
+  const [selectedItem, setSelectedItem] = useState<CollectionItem | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -129,9 +132,12 @@ export function EntityPage() {
               No data yet. Agent defines and populates entities via collection_schema_set and collection_set.
             </p>
           ) : (
+            <>
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-8 text-center">#</TableHead>
+                  <TableHead className="w-[140px]">Added</TableHead>
                   {displayColumns.map((col) => (
                     <TableHead key={col} className="capitalize">
                       {col === "run_id" ? "Run" : col.replace(/_/g, " ")}
@@ -141,13 +147,24 @@ export function EntityPage() {
               </TableHeader>
               <TableBody>
                 {items.map((item, i) => (
-                  <TableRow key={(item.id as string) ?? i}>
+                  <TableRow
+                    key={(item.id as string) ?? i}
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => setSelectedItem(item)}
+                  >
+                    <TableCell className="text-xs text-muted-foreground text-center align-top w-8">
+                      {i + 1}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap align-top">
+                      {formatTimestamp(item.created_at as string | undefined)}
+                    </TableCell>
                     {displayColumns.map((col) => (
                       <TableCell key={col} className="text-sm max-w-[500px] whitespace-normal break-words align-top">
                         {col === "run_id" && item.run_id ? (
                           <Link
                             to={`/runs/${encodeURIComponent(String(item.run_id))}`}
                             className="text-primary hover:underline font-medium"
+                            onClick={(e) => e.stopPropagation()}
                           >
                             {runNames[String(item.run_id)] ?? String(item.run_id)}
                           </Link>
@@ -157,6 +174,7 @@ export function EntityPage() {
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-primary hover:underline break-all"
+                            onClick={(e) => e.stopPropagation()}
                           >
                             {formatCellValue(item[col])}
                           </a>
@@ -169,6 +187,13 @@ export function EntityPage() {
                 ))}
               </TableBody>
             </Table>
+            <CollectionItemDetail
+              item={selectedItem}
+              kind={kind}
+              open={!!selectedItem}
+              onOpenChange={(open) => !open && setSelectedItem(null)}
+            />
+            </>
           )}
         </CardContent>
       </Card>

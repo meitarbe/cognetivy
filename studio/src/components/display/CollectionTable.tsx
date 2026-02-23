@@ -6,7 +6,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useState } from "react";
 import type { CollectionItem, WorkflowVersion } from "@/api";
+import { formatTimestamp } from "@/lib/utils";
+import { CollectionItemDetail } from "./CollectionItemDetail";
 
 const CATEGORY_TO_STEP: Record<string, string> = {
   tech: "tech_breakthroughs",
@@ -53,6 +56,8 @@ function formatCellValue(value: unknown): string {
 }
 
 export function CollectionTable({ kind, items, workflow }: CollectionTableProps) {
+  const [selectedItem, setSelectedItem] = useState<CollectionItem | null>(null);
+
   if (items.length === 0) {
     return <p className="text-sm text-muted-foreground">No {kind} yet.</p>;
   }
@@ -61,9 +66,12 @@ export function CollectionTable({ kind, items, workflow }: CollectionTableProps)
   const showTraceability = Boolean(workflow);
 
   return (
+    <>
     <Table>
       <TableHeader>
         <TableRow>
+          <TableHead className="w-8 text-center">#</TableHead>
+          <TableHead className="w-[140px]">Added</TableHead>
           {showTraceability && (
             <TableHead className="w-[140px]">Collected by</TableHead>
           )}
@@ -78,7 +86,17 @@ export function CollectionTable({ kind, items, workflow }: CollectionTableProps)
         {items.map((item, i) => {
           const step = showTraceability ? inferSourceStep(kind, item) : null;
           return (
-            <TableRow key={(item.id as string) ?? i}>
+            <TableRow
+              key={(item.id as string) ?? i}
+              className="cursor-pointer hover:bg-muted/50"
+              onClick={() => setSelectedItem(item)}
+            >
+              <TableCell className="text-xs text-muted-foreground text-center align-top py-1.5 w-8">
+                {i + 1}
+              </TableCell>
+              <TableCell className="text-xs text-muted-foreground whitespace-nowrap align-top py-1.5">
+                {formatTimestamp(item.created_at as string | undefined)}
+              </TableCell>
               {showTraceability && (
                 <TableCell className="text-xs text-muted-foreground whitespace-nowrap align-top py-1.5">
                   {step ? (
@@ -98,6 +116,7 @@ export function CollectionTable({ kind, items, workflow }: CollectionTableProps)
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-primary hover:underline break-all"
+                      onClick={(e) => e.stopPropagation()}
                     >
                       {formatCellValue(item[col])}
                     </a>
@@ -111,5 +130,12 @@ export function CollectionTable({ kind, items, workflow }: CollectionTableProps)
         })}
       </TableBody>
     </Table>
+    <CollectionItemDetail
+      item={selectedItem}
+      kind={kind}
+      open={!!selectedItem}
+      onOpenChange={(open) => !open && setSelectedItem(null)}
+    />
+    </>
   );
 }

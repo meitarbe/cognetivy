@@ -107,6 +107,7 @@ export function RunsPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-8 text-center">#</TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>ID</TableHead>
                 <TableHead>Version</TableHead>
@@ -117,13 +118,16 @@ export function RunsPage() {
             <TableBody>
               {filteredRuns.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground">
+                  <TableCell colSpan={6} className="text-center text-muted-foreground">
                     {runs.length === 0 ? "No runs yet" : "No runs match filter"}
                   </TableCell>
                 </TableRow>
               )}
-              {filteredRuns.map((run) => (
+              {filteredRuns.map((run, i) => (
                 <TableRow key={run.run_id}>
+                  <TableCell className="text-xs text-muted-foreground text-center align-top w-8">
+                    {i + 1}
+                  </TableCell>
                   <TableCell>
                     {editingRunId === run.run_id ? (
                       <input
