@@ -1,0 +1,35 @@
+{
+  "run_id": "run_2026-02-23T19-46-33-668Z_vlm2tl",
+  "kind": "ideas",
+  "updated_at": "2026-02-23T19:46:54.814Z",
+  "items": [
+    {
+      "name": "AI intake and conflicts for mid-market firms",
+      "idea_summary": "Context-aware AI for intake and conflicts management. Recurring daily. $2K-10K/yr. Why now: intake/conflicts are strategic control points; 70% pressure for efficiency; only 20% get value at scale—gap for coordinated workflows.",
+      "why_now_thesis": "AI adoption past pilots; firms need matter-level workflows. Intake/conflicts identified as control points. Context-aware AI vs generalist.",
+      "supporting_sources": [
+        "LatentBridge",
+        "Artificial Lawyer"
+      ],
+      "confidence": "high"
+    },
+    {
+      "name": "AI contract drafting for SMB legal",
+      "idea_summary": "AI drafts standard contracts, reduces billable hours on routine work. Recurring weekly. $1.5K-6K/yr. Why now: 81% expect business model change; routine work readily automatable.",
+      "why_now_thesis": "BCG: AI drives efficiency; billable-hour model under pressure. Routine drafting automatable. SMB wedge.",
+      "supporting_sources": [
+        "BCG"
+      ],
+      "confidence": "high"
+    },
+    {
+      "name": "Governance framework for law firm AI",
+      "idea_summary": "AI governance and compliance for law firms—client guidelines, audit trails. Recurring weekly. $3K-12K/yr. Why now: client AI guidelines and compliance demands complex.",
+      "why_now_thesis": "Artificial Lawyer: governance frameworks critical. Compliance demands increasing. Risk: legal/accounting as primary value—ensure operational focus.",
+      "supporting_sources": [
+        "Artificial Lawyer"
+      ],
+      "confidence": "medium"
+    }
+  ]
+}

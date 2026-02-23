@@ -1,0 +1,36 @@
+{
+  "run_id": "run_2026-02-23T19-45-10-754Z_90ebi2",
+  "kind": "ideas",
+  "updated_at": "2026-02-23T19:45:53.856Z",
+  "items": [
+    {
+      "name": "AI lease abstraction for SMB landlords",
+      "idea_summary": "Agentic AI that extracts key terms from leases, populates rent rolls, flags renewals. Recurring weekly value. $1.5K-5K/yr per portfolio. Why now: AI adoption jumped 5% to 92% in CRE; deal analysis compressed from weeks to days; SMB landlords still manual.",
+      "why_now_thesis": "LLMs crossed threshold for document understanding; lease abstraction is proven use case. Agentic AI for multi-step extraction. No well-funded player for SMB wedge.",
+      "supporting_sources": [
+        "AI CRE execution phase",
+        "PropTech 2026"
+      ],
+      "confidence": "high"
+    },
+    {
+      "name": "AI tenant comms for multifamily",
+      "idea_summary": "AI handles routine tenant inquiries, maintenance requests, lease renewals. 65% lead-to-lease reduction in residential. Recurring daily. $2K-8K/yr per property.",
+      "why_now_thesis": "AI adoption in CRE; EliseAI $250M validates AI embedded in workflows. Agentic systems handle multi-step tenant interactions.",
+      "supporting_sources": [
+        "PropTech 2026",
+        "Commercial Observer"
+      ],
+      "confidence": "high"
+    },
+    {
+      "name": "AI deal sourcing for small funds",
+      "idea_summary": "AI screens hundreds of acquisitions, produces preliminary underwriting in minutes. Recurring weekly value. $3K-15K/yr. Why now: deal analysis compressed from weeks to days; small funds lack access.",
+      "why_now_thesis": "AI in CRE execution phase. Deal analysis most mature use case. AI models screen hundreds of deals. Wedge: small funds underserved.",
+      "supporting_sources": [
+        "AI CRE 2026"
+      ],
+      "confidence": "medium"
+    }
+  ]
+}

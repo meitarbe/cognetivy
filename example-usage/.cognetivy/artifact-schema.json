@@ -1,75 +1,68 @@
 {
   "kinds": {
     "sources": {
-      "description": "Structured research source with reliability and importance qualification. Each source must explain why it is reliable and why it matters for the startup thesis.",
+      "description": "References (URLs, citations) used during research or reasoning",
       "required": [
-        "url",
-        "title",
-        "reliability",
-        "reliability_reason",
-        "importance",
-        "importance_reason",
-        "category"
+        "url"
       ],
       "properties": {
         "url": {
           "type": "string",
-          "description": "Source URL or citation"
+          "description": "Source URL or identifier"
         },
         "title": {
           "type": "string",
-          "description": "Source title or headline"
+          "description": "Title or label"
         },
-        "reliability": {
+        "snippet": {
           "type": "string",
-          "description": "1-5 scale or tier: primary/academic, industry-report, news, blog, social"
+          "description": "Relevant excerpt"
         },
-        "reliability_reason": {
+        "type": {
           "type": "string",
-          "description": "Why this source is trustworthy (methodology, author, recency)"
+          "description": "e.g. article, doc, api"
+        }
+      }
+    },
+    "collected": {
+      "description": "Structured data already gathered (signals, themes, raw findings)",
+      "required": [],
+      "properties": {
+        "themes": {
+          "type": "array",
+          "description": "Theme or category labels"
         },
-        "importance": {
-          "type": "string",
-          "description": "high/medium/low for why-now thesis"
+        "signals": {
+          "type": "object",
+          "description": "Key-value signals"
         },
-        "importance_reason": {
-          "type": "string",
-          "description": "Why this source matters for the startup timing thesis"
-        },
-        "category": {
-          "type": "string",
-          "description": "tech|market|regulatory|competitor|funding|behavior"
-        },
-        "excerpt": {
-          "type": "string",
-          "description": "Key quote or summary"
+        "raw": {
+          "type": "array",
+          "description": "Raw findings or quotes"
         }
       }
     },
     "ideas": {
-      "description": "Startup idea with a strong why-now thesis backed by qualified sources.",
+      "description": "Output ideas or proposals the agent produces (e.g. startup ideas, recommendations)",
       "required": [
-        "idea_summary",
-        "why_now_thesis",
-        "supporting_sources",
-        "confidence"
+        "name"
       ],
       "properties": {
-        "idea_summary": {
+        "name": {
           "type": "string",
-          "description": "One-paragraph idea description"
+          "description": "Short name or title"
         },
-        "why_now_thesis": {
+        "why_now": {
           "type": "string",
-          "description": "Compelling argument for why this is the right moment"
+          "description": "Why-now thesis or timing rationale"
         },
-        "supporting_sources": {
+        "description": {
+          "type": "string",
+          "description": "Full description"
+        },
+        "signals": {
           "type": "array",
-          "description": "IDs or refs to sources that back the thesis"
-        },
-        "confidence": {
-          "type": "string",
-          "description": "high/medium/low"
+          "description": "Supporting signals or sources"
         }
       }
     }

@@ -52,7 +52,8 @@
         "idea_summary",
         "why_now_thesis",
         "supporting_sources",
-        "confidence"
+        "confidence",
+        "industry"
       ],
       "properties": {
         "idea_summary": {
@@ -70,6 +71,10 @@
         "confidence": {
           "type": "string",
           "description": "high/medium/low"
+        },
+        "industry": {
+          "type": "string",
+          "description": "Industry or vertical the idea targets (e.g. healthcare, fintech, edtech)"
         }
       }
     }

@@ -1,0 +1,43 @@
+{
+  "run_id": "run_2026-02-23T19-45-10-754Z_90ebi2",
+  "kind": "sources",
+  "updated_at": "2026-02-23T19:45:47.852Z",
+  "items": [
+    {
+      "url": "https://www.coradvisors.net/2026/02/proptech-trends-in-2026.html",
+      "title": "PropTech Trends 2026: AI, Sustainability, Smart Data",
+      "reliability": "industry-report",
+      "reliability_reason": "Advisory firm; 2026 outlook",
+      "importance": "high",
+      "importance_reason": "AI execution phase; agentic AI; 65% lead-to-lease reduction",
+      "category": "tech"
+    },
+    {
+      "url": "https://www.theaiconsultingnetwork.com/blog/ai-cre-execution-phase-2026-investor-guide",
+      "title": "AI in CRE Hits Execution Phase: 2026 Investor Guide",
+      "reliability": "industry-report",
+      "reliability_reason": "AI consulting; investor perspective",
+      "importance": "high",
+      "importance_reason": "5% to 92% AI adoption in 3 years; deal analysis from weeks to days",
+      "category": "tech"
+    },
+    {
+      "url": "https://commercialobserver.com/2026/01/proptech-funding-2025/",
+      "title": "$16.7B Proptech Funding 2025 - Commercial Observer",
+      "reliability": "industry-report",
+      "reliability_reason": "Trade publication; funding data",
+      "importance": "high",
+      "importance_reason": "Fintech-proptech convergence; EliseAI $250M; Juniper Square $1.1B",
+      "category": "funding"
+    },
+    {
+      "url": "https://www.wavgroup.com/2026/01/21/real-estates-ai-power-shift-who-wins-who-loses-and-why-its-happening-now/",
+      "title": "Real Estate's AI Power Shift - WAV Group",
+      "reliability": "industry-report",
+      "reliability_reason": "Consulting; Jan 2026",
+      "importance": "high",
+      "importance_reason": "Why now thesis; who wins/loses",
+      "category": "market"
+    }
+  ]
+}

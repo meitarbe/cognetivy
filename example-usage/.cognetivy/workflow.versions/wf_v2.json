@@ -3,163 +3,148 @@
   "version": "v2",
   "nodes": [
     {
-      "id": "expand_domain",
+      "id": "setup",
       "type": "TASK",
       "contract": {
         "input": [
-          "topic"
+          "run_type",
+          "bar",
+          "focus",
+          "date"
         ],
         "output": [
-          "expanded_domains"
+          "run_brief",
+          "run_folder"
         ]
       },
-      "description": "Expand the startup topic into sub-domains, adjacent markets, and related verticals. For each area, identify: (1) the core problem space, (2) adjacent industries that could be disrupted, (3) technology enablers that might apply, (4) geographic or demographic segments worth considering. Output a structured list of expanded_domains with brief rationale for each. This expansion ensures we do not miss non-obvious 'why now' signals that sit at the intersection of domains."
+      "description": "Step 0 — Setup: Create run folder (unique descriptive name, e.g. RUN_24_IDEATION_WAVE_23_MENTAL_MODELS). Add run brief: run type (ideation/scoring/landscape-only/deep-dive), bar (WTF/standard), focus (e.g. no F&B, why future), date. Read core references: 18 (bar), 17 (current ideas), 19 (memory). Confirm bar and pay-now apply. Output: run folder path, run brief (00_RUN_BRIEF.md)."
     },
     {
-      "id": "tech_breakthroughs",
+      "id": "resource_collection",
       "type": "TASK",
       "contract": {
         "input": [
-          "expanded_domains"
+          "run_brief",
+          "run_folder"
         ],
         "output": [
-          "tech_sources"
+          "resource_pack"
         ]
       },
-      "description": "Research technology breakthroughs and enabling innovations relevant to the expanded domains. Search for: new infrastructure (e.g. LLMs, edge compute, 5G), cost curves that crossed thresholds, open-source or API availability that lowered barriers, and recent academic or industry R&D milestones. For EACH source found: (1) assign a reliability tier (primary/academic, industry-report, news, blog, social) and explain WHY that source is trustworthy (methodology, author credentials, recency, peer review); (2) assign importance (high/medium/low) for the why-now thesis and explain WHY this source matters for startup timing. Store as qualified sources with url, title, reliability, reliability_reason, importance, importance_reason, category=tech."
+      "description": "Step 1 — Resource collection (MANDATORY): Gather raw inputs—quantitative, qualitative, primary, secondary, regulatory, competitive/landscape. Qualify each: recency (2025–2026), authority, relevance, bias, actionability, reproducibility. Label: qualified / use with care / reject. Note invisible dot or gap per source. Output: 01_RESOURCE_PACK.md—source label, type, date, key fact(s), qualification, invisible dot/gap. NO idea list yet. Reference: §1a."
     },
     {
-      "id": "market_signals",
+      "id": "landscape_analysis",
       "type": "TASK",
       "contract": {
         "input": [
-          "expanded_domains"
+          "resource_pack",
+          "run_folder"
         ],
         "output": [
-          "market_sources"
+          "landscape_analysis"
         ]
       },
-      "description": "Research market timing signals: TAM/SAM growth rates, adoption curves, regulatory tailwinds or headwinds, and inflection points in buyer behavior. Look for reports from Gartner, McKinsey, CB Insights, or domain-specific analysts. For EACH source: (1) qualify reliability—explain why the source is credible (sample size, methodology, independence); (2) qualify importance—explain why this data matters for 'why now' (e.g. market crossed $X, growth accelerated, new segment emerged). Store as qualified sources with url, title, reliability, reliability_reason, importance, importance_reason, category=market."
+      "description": "Step 2 — Landscape/competition analysis (MANDATORY): Define scope (space/vertical). Run four checks: (1) Incumbents ~$50M ARR—need signal not their main focus; (2) Well-funded $15M–50M same/similar—must not exist or need clear wedge; (3) Bootstrap/<$15M—good sign, note them; (4) No competition—explain why. Output: 02_LANDSCAPE_ANALYSIS.md. Players research = part of idea research."
     },
     {
-      "id": "regulatory_signals",
+      "id": "generate",
       "type": "TASK",
       "contract": {
         "input": [
-          "expanded_domains"
+          "resource_pack",
+          "landscape_analysis"
         ],
         "output": [
-          "regulatory_sources"
+          "raw_ideas"
         ]
       },
-      "description": "Research regulatory and policy shifts that create or remove barriers. Include: new legislation, enforcement changes, standards bodies, privacy rules (GDPR, CCPA), and sector-specific compliance requirements. For EACH source: (1) reliability—explain why the source is authoritative (official gov site, legal analysis, trade association); (2) importance—explain how this regulation creates a 'why now' moment (e.g. new mandate creates demand, enforcement change opens opportunity). Store as qualified sources with url, title, reliability, reliability_reason, importance, importance_reason, category=regulatory."
+      "description": "Step 3 — Generate: Ideas FROM resource pack + landscape. Link each idea to source(s) and landscape (e.g. no well-funded player in wedge). Apply: why now = AI only; trends linked; check 17 (no repeats); recurring daily/weekly; pivot (agent acts, trust-friendly ICP, 1-click). Output: 03_RAW_IDEAS.md—one-liner, trend, link to sources, why now (AI), landing-page draft."
     },
     {
-      "id": "competitor_landscape",
+      "id": "score",
       "type": "TASK",
       "contract": {
         "input": [
-          "expanded_domains"
+          "raw_ideas"
         ],
         "output": [
-          "competitor_sources"
+          "shortlist"
         ]
       },
-      "description": "Research the competitive landscape: incumbents, recent entrants, failed attempts, and white space. Identify why past attempts failed and what has changed. For EACH source: (1) reliability—explain why the source is credible (primary research, Crunchbase, earnings calls, expert interviews); (2) importance—explain why this competitive signal matters for timing (e.g. incumbent distracted, new entrant validated market, gap emerged). Store as qualified sources with url, title, reliability, reliability_reason, importance, importance_reason, category=competitor."
+      "description": "Step 4 — Score: Run 6-question framework (4–5 yes), scoring rubric (8 criteria), hard filters per idea. Output: 04_SCORING.md—per-idea 6Q answers, rubric scores, pass/fail, total. Shortlist ordered by score."
     },
     {
-      "id": "funding_signals",
+      "id": "challenge",
       "type": "TASK",
       "contract": {
         "input": [
-          "expanded_domains"
+          "shortlist",
+          "landscape_analysis"
         ],
         "output": [
-          "funding_sources"
+          "revised_shortlist"
         ]
       },
-      "description": "Research funding and venture activity: recent rounds, new funds focused on the space, corporate venture, and grant programs. For EACH source: (1) reliability—explain why the source is trustworthy (Crunchbase, press release, SEC filings); (2) importance—explain why this funding signal supports 'why now' (e.g. capital availability, investor thesis shift, corporate mandate). Store as qualified sources with url, title, reliability, reliability_reason, importance, importance_reason, category=funding."
+      "description": "Step 5 — Challenge: Per shortlisted idea: Who already does it? Why could it fail? Why now? Re-check landscape (incumbents focus? well-funded? bootstrap? no competition → why?). Challenge the system: familiar patterns? cleverness vs revenue? Output: 05_CHALLENGE.md—revised shortlist, written kill reasons, risks, assumptions."
     },
     {
-      "id": "consumer_behavior",
+      "id": "synthesis",
       "type": "TASK",
       "contract": {
         "input": [
-          "expanded_domains"
+          "revised_shortlist",
+          "landscape_analysis"
         ],
         "output": [
-          "behavior_sources"
+          "synthesis"
         ]
       },
-      "description": "Research consumer and buyer behavior shifts: adoption curves, willingness-to-pay changes, new habits post-pandemic, generational shifts, and B2B buying process changes. For EACH source: (1) reliability—explain why the source is credible (survey methodology, sample size, longitudinal data); (2) importance—explain why this behavior shift creates a 'why now' moment (e.g. new willingness to pay, habit formation, decision-maker change). Store as qualified sources with url, title, reliability, reliability_reason, importance, importance_reason, category=behavior."
+      "description": "Step 6 — Synthesis: Structure by Startup cheatsheet (Pain, Business, Market, Team, Competition, Technology, Product, Strategy, Customers, Marketing, Investment). Per top idea: one-liner, why now, 90-day experiment, what would kill it. Competition section must reflect 02_LANDSCAPE_ANALYSIS. Output: 06_SYNTHESIS.md."
     },
     {
-      "id": "synthesize_why_now",
+      "id": "close",
       "type": "TASK",
       "contract": {
         "input": [
-          "tech_sources",
-          "market_sources",
-          "regulatory_sources",
-          "competitor_sources",
-          "funding_sources",
-          "behavior_sources"
+          "synthesis",
+          "revised_shortlist"
         ],
         "output": [
-          "ideas"
+          "run_complete"
         ]
       },
-      "description": "Synthesize all qualified sources into 2–4 startup ideas with a strong 'why now' thesis. For each idea: (1) write a one-paragraph idea_summary; (2) write a compelling why_now_thesis that weaves together evidence from multiple source categories—cite specific reliability and importance rationales; (3) list supporting_sources (IDs or refs) that back the thesis; (4) assign confidence (high/medium/low) based on source quality and convergence. Prioritize ideas where multiple independent, high-reliability sources converge on the same timing signal. Reject ideas that rely on single low-reliability sources."
+      "description": "Step 7 — Close: Update 00_RESEARCH_INDEX.md (row for run, outputs, next action). Update 17_CURRENT_IDEAS_SUMMARY.md (new ideas, clusters). Update 19_MEMORY_AND_IMPROVEMENT.md if lessons learned. Optional: 07_RUN_SUMMARY.md in run folder (outcome, top ideas, links to 00/17/19)."
     }
   ],
   "edges": [
     {
-      "from": "expand_domain",
-      "to": "tech_breakthroughs"
+      "from": "setup",
+      "to": "resource_collection"
     },
     {
-      "from": "expand_domain",
-      "to": "market_signals"
+      "from": "resource_collection",
+      "to": "landscape_analysis"
     },
     {
-      "from": "expand_domain",
-      "to": "regulatory_signals"
+      "from": "landscape_analysis",
+      "to": "generate"
     },
     {
-      "from": "expand_domain",
-      "to": "competitor_landscape"
+      "from": "generate",
+      "to": "score"
     },
     {
-      "from": "expand_domain",
-      "to": "funding_signals"
+      "from": "score",
+      "to": "challenge"
     },
     {
-      "from": "expand_domain",
-      "to": "consumer_behavior"
+      "from": "challenge",
+      "to": "synthesis"
     },
     {
-      "from": "tech_breakthroughs",
-      "to": "synthesize_why_now"
-    },
-    {
-      "from": "market_signals",
-      "to": "synthesize_why_now"
-    },
-    {
-      "from": "regulatory_signals",
-      "to": "synthesize_why_now"
-    },
-    {
-      "from": "competitor_landscape",
-      "to": "synthesize_why_now"
-    },
-    {
-      "from": "funding_signals",
-      "to": "synthesize_why_now"
-    },
-    {
-      "from": "consumer_behavior",
-      "to": "synthesize_why_now"
+      "from": "synthesis",
+      "to": "close"
     }
   ]
 }
