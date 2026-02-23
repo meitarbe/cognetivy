@@ -13,22 +13,20 @@ import {
   listWorkflowVersionFiles,
   versionFromFileName,
   writeRunFile,
+  updateRunFile,
   appendEventLine,
   runExists,
-  readMutationFile,
-  updateMutationFile,
-  writeMutationFile,
-  readArtifactSchema,
-  writeArtifactSchema,
-  listArtifactKindsForRun,
-  readArtifacts,
-  writeArtifacts,
-  appendArtifact,
+  readCollectionSchema,
+  writeCollectionSchema,
+  listCollectionKindsForRun,
+  readCollections,
+  writeCollections,
+  appendCollection,
 } from "./workspace.js";
 import { getMergedConfig } from "./config.js";
 import { validateWorkflow } from "./validate.js";
-import { applyMutationToWorkspace } from "./mutation.js";
-import type { RunRecord, EventPayload, MutationRecord, MutationTarget, JsonPatchOperation, ArtifactSchemaConfig, ArtifactItem } from "./models.js";
+import { mergeKindTemplate } from "./kind-templates.js";
+import type { RunRecord, EventPayload, CollectionSchemaConfig, CollectionItem } from "./models.js";
 import { runMcpServer } from "./mcp.js";
 import { startStudioServer, STUDIO_DEFAULT_PORT } from "./studio-server.js";
 import open from "open";
@@ -48,13 +46,13 @@ async function resolveBy(cwd: string): Promise<string> {
 
 program
   .name("cognetivy")
-  .description("Reasoning orchestration state — workflow, runs, events, mutations (no LLMs)")
+  .description("Reasoning orchestration state — workflow, runs, events, collections (no LLMs)")
   .version("0.1.0");
 
 program
   .command("init")
   .description("Create .cognetivy workspace (and optional .gitignore snippet)")
-  .option("--no-gitignore", "Do not add .gitignore snippet for runs/events/mutations")
+  .option("--no-gitignore", "Do not add .gitignore snippet for runs/events/collections")
   .option("--force", "Re-init: overwrite workflow pointer and default version if present")
   .action(async (opts: { gitignore?: boolean; force?: boolean }) => {
     const cwd = process.cwd();
@@ -111,8 +109,9 @@ runCmd
   .command("start")
   .description("Start a new run; prints run_id")
   .requiredOption("--input <path>", "Path to JSON file with run input")
+  .option("--name <string>", "Human-readable name for the run (e.g. 'Q1 ideas exploration')")
   .option("--by <string>", "Actor (e.g. agent:cursor); defaults to config or 'cli'")
-  .action(async (opts: { input: string; by?: string }) => {
+  .action(async (opts: { input: string; name?: string; by?: string }) => {
     const cwd = process.cwd();
     await requireWorkspace(cwd);
     const pointer = await readWorkflowPointer(cwd);
@@ -135,6 +134,7 @@ runCmd
     const now = new Date().toISOString();
     const runRecord: RunRecord = {
       run_id: runId,
+      ...(opts.name && { name: opts.name }),
       workflow_id: pointer.workflow_id,
       workflow_version: pointer.current_version,
       status: "running",
@@ -151,13 +151,42 @@ runCmd
     await appendEventLine(runId, event, cwd);
     console.log(runId);
   });
+runCmd
+  .command("complete")
+  .description("Mark a run as completed (ensures status=completed is persisted)")
+  .requiredOption("--run <run_id>", "Run ID to mark complete")
+  .action(async (opts: { run: string }) => {
+    const cwd = process.cwd();
+    const exists = await runExists(opts.run, cwd);
+    if (!exists) {
+      console.error(`Error: Run "${opts.run}" not found.`);
+      process.exit(1);
+    }
+    await updateRunFile(opts.run, { status: "completed" }, cwd);
+    console.log(`Run "${opts.run}" marked as completed.`);
+  });
+runCmd
+  .command("set-name")
+  .description("Set or update the human-readable name for an existing run")
+  .requiredOption("--run <run_id>", "Run ID")
+  .requiredOption("--name <string>", "Name for the run")
+  .action(async (opts: { run: string; name: string }) => {
+    const cwd = process.cwd();
+    const exists = await runExists(opts.run, cwd);
+    if (!exists) {
+      console.error(`Error: Run "${opts.run}" not found.`);
+      process.exit(1);
+    }
+    await updateRunFile(opts.run, { name: opts.name }, cwd);
+    console.log(`Run "${opts.run}" named "${opts.name}".`);
+  });
 
 const eventCmd = program
   .command("event")
   .description("Event log operations");
 eventCmd
   .command("append")
-  .description("Append one event (from JSON file) to run's NDJSON log")
+  .description("Append one event (from JSON file) to run's NDJSON log. If appending run_completed, also run 'cognetivy run complete --run <id>' to ensure status is persisted.")
   .requiredOption("--run <run_id>", "Run ID")
   .requiredOption("--file <path>", "Path to JSON file (event payload or full event)")
   .option("--by <string>", "Actor; defaults to config or 'cli'")
@@ -179,155 +208,96 @@ eventCmd
       data: (data.data as Record<string, unknown>) ?? (data as Record<string, unknown>),
     };
     await appendEventLine(opts.run, event, cwd);
+    if (event.type === "run_completed") {
+      await updateRunFile(opts.run, { status: "completed" }, cwd);
+    }
     console.log("Appended event.");
   });
 
-const artifactSchemaCmd = program
-  .command("artifact-schema")
-  .description("Artifact schema (defines kinds and required fields for structured artifacts)");
-artifactSchemaCmd
+const collectionSchemaCmd = program
+  .command("collection-schema")
+  .description("Collection schema (defines kinds and required fields for structured collections)");
+collectionSchemaCmd
   .command("get")
-  .description("Print current artifact schema JSON to stdout")
+  .description("Print current collection schema JSON to stdout")
   .action(async () => {
     const cwd = process.cwd();
-    const schema = await readArtifactSchema(cwd);
+    const schema = await readCollectionSchema(cwd);
     console.log(JSON.stringify(schema, null, 2));
   });
-artifactSchemaCmd
+collectionSchemaCmd
   .command("set")
-  .description("Set artifact schema from JSON file")
-  .requiredOption("--file <path>", "Path to artifact-schema JSON file")
+  .description("Set collection schema from JSON file")
+  .requiredOption("--file <path>", "Path to collection-schema JSON file")
   .action(async (opts: { file: string }) => {
     const cwd = process.cwd();
     await requireWorkspace(cwd);
     const raw = await fs.readFile(path.resolve(cwd, opts.file), "utf-8");
-    const schema = JSON.parse(raw) as ArtifactSchemaConfig;
+    const schema = JSON.parse(raw) as CollectionSchemaConfig;
     if (!schema.kinds || typeof schema.kinds !== "object") {
       console.error("Error: schema must have a 'kinds' object.");
       process.exit(1);
     }
-    await writeArtifactSchema(schema, cwd);
-    console.log("Artifact schema updated.");
+    const merged: CollectionSchemaConfig = { kinds: {} };
+    for (const [k, v] of Object.entries(schema.kinds)) {
+      merged.kinds[k] = mergeKindTemplate(k, v);
+    }
+    await writeCollectionSchema(merged, cwd);
+    console.log("Collection schema updated.");
   });
 
-const artifactCmd = program
-  .command("artifact")
-  .description("Structured artifacts per run (sources, collected, ideas — schema-backed)");
-artifactCmd
+const collectionCmd = program
+  .command("collection")
+  .description("Structured collections per run (sources, ideas — schema-backed)");
+collectionCmd
   .command("list")
-  .description("List artifact kinds that have data for a run")
+  .description("List collection kinds that have data for a run")
   .requiredOption("--run <run_id>", "Run ID")
   .action(async (opts: { run: string }) => {
     const cwd = process.cwd();
-    const kinds = await listArtifactKindsForRun(opts.run, cwd);
+    const kinds = await listCollectionKindsForRun(opts.run, cwd);
     console.log(JSON.stringify(kinds, null, 2));
   });
-artifactCmd
+collectionCmd
   .command("get")
-  .description("Get all artifacts of a kind for a run")
+  .description("Get all collections of a kind for a run")
   .requiredOption("--run <run_id>", "Run ID")
-  .requiredOption("--kind <kind>", "Artifact kind (e.g. sources, collected, ideas)")
+  .requiredOption("--kind <kind>", "Collection kind (e.g. sources, ideas)")
   .action(async (opts: { run: string; kind: string }) => {
     const cwd = process.cwd();
-    const store = await readArtifacts(opts.run, opts.kind, cwd);
+    const store = await readCollections(opts.run, opts.kind, cwd);
     console.log(JSON.stringify(store, null, 2));
   });
-artifactCmd
+collectionCmd
   .command("set")
-  .description("Replace all artifacts of a kind for a run (from JSON file)")
+  .description("Replace all collections of a kind for a run (from JSON file)")
   .requiredOption("--run <run_id>", "Run ID")
-  .requiredOption("--kind <kind>", "Artifact kind")
-  .requiredOption("--file <path>", "Path to JSON file (array of artifact items)")
+  .requiredOption("--kind <kind>", "Collection kind")
+  .requiredOption("--file <path>", "Path to JSON file (array of collection items)")
   .action(async (opts: { run: string; kind: string; file: string }) => {
     const cwd = process.cwd();
     const raw = await fs.readFile(path.resolve(cwd, opts.file), "utf-8");
-    const items = JSON.parse(raw) as ArtifactItem[];
+    const items = JSON.parse(raw) as CollectionItem[];
     if (!Array.isArray(items)) {
-      console.error("Error: file must contain a JSON array of artifact items.");
+      console.error("Error: file must contain a JSON array of collection items.");
       process.exit(1);
     }
-    await writeArtifacts(opts.run, opts.kind, items, cwd);
-    console.log(`Set ${items.length} artifact(s) for kind "${opts.kind}".`);
+    await writeCollections(opts.run, opts.kind, items, cwd);
+    console.log(`Set ${items.length} collection(s) for kind "${opts.kind}".`);
   });
-artifactCmd
+collectionCmd
   .command("append")
-  .description("Append one artifact item (from JSON file) to a run's kind")
+  .description("Append one collection item (from JSON file) to a run's kind")
   .requiredOption("--run <run_id>", "Run ID")
-  .requiredOption("--kind <kind>", "Artifact kind")
-  .requiredOption("--file <path>", "Path to JSON file (single artifact payload)")
-  .option("--id <string>", "Optional artifact id")
+  .requiredOption("--kind <kind>", "Collection kind")
+  .requiredOption("--file <path>", "Path to JSON file (single collection payload)")
+  .option("--id <string>", "Optional collection id")
   .action(async (opts: { run: string; kind: string; file: string; id?: string }) => {
     const cwd = process.cwd();
     const raw = await fs.readFile(path.resolve(cwd, opts.file), "utf-8");
     const payload = JSON.parse(raw) as Record<string, unknown>;
-    const item = await appendArtifact(opts.run, opts.kind, payload, { id: opts.id }, cwd);
+    const item = await appendCollection(opts.run, opts.kind, payload, { id: opts.id }, cwd);
     console.log(JSON.stringify(item, null, 2));
-  });
-
-const mutateCmd = program
-  .command("mutate")
-  .description("Workflow mutation operations");
-mutateCmd
-  .command("propose")
-  .description("Propose a workflow mutation (JSON Patch); prints mutation_id")
-  .requiredOption("--patch <path>", "Path to JSON Patch file (array of operations)")
-  .requiredOption("--reason <text>", "Reason for the mutation")
-  .option("--by <string>", "Actor; defaults to config or 'cli'")
-  .action(async (opts: { patch: string; reason: string; by?: string }) => {
-    const cwd = process.cwd();
-    const pointer = await readWorkflowPointer(cwd);
-    const patchRaw = await fs.readFile(path.resolve(cwd, opts.patch), "utf-8");
-    const patch = JSON.parse(patchRaw) as JsonPatchOperation[];
-    const by = opts.by ?? (await resolveBy(cwd));
-    const mutationId = generateId("mut");
-    const target: MutationTarget = {
-      type: "workflow",
-      workflow_id: pointer.workflow_id,
-      from_version: pointer.current_version,
-    };
-    const record: MutationRecord = {
-      mutation_id: mutationId,
-      target,
-      patch,
-      reason: opts.reason,
-      status: "proposed",
-      created_by: by,
-      created_at: new Date().toISOString(),
-    };
-    await writeMutationFile(record, cwd);
-    console.log(mutationId);
-  });
-
-mutateCmd
-  .command("apply <mutation_id>")
-  .description("Apply a proposed mutation (creates new workflow version, updates pointer)")
-  .option("--by <string>", "Actor; defaults to config or 'cli'")
-  .action(async (mutationId: string, opts: { by?: string }) => {
-    const cwd = process.cwd();
-    const mutation = await readMutationFile(mutationId, cwd);
-    if (mutation.status !== "proposed") {
-      console.error(`Error: Mutation "${mutationId}" is not in proposed state (status: ${mutation.status}).`);
-      process.exit(1);
-    }
-    const newVersion = await applyMutationToWorkspace(
-      mutation.target.from_version,
-      mutation.patch,
-      mutation.target.workflow_id,
-      cwd
-    );
-    await writeWorkflowPointer(
-      {
-        workflow_id: mutation.target.workflow_id,
-        current_version: newVersion,
-      },
-      cwd
-    );
-    await updateMutationFile(
-      mutationId,
-      { status: "applied", applied_to_version: newVersion },
-      cwd
-    );
-    console.log(newVersion);
   });
 
 program
@@ -341,7 +311,7 @@ program
 
 program
   .command("studio")
-  .description("Open read-only Studio (workflow, runs, events, artifacts) in browser")
+  .description("Open read-only Studio (workflow, runs, events, collections) in browser")
   .option("--workspace <path>", "Workspace directory (default: cwd)")
   .option("--port <number>", "Port for Studio server", (v) => parseInt(v, 10), STUDIO_DEFAULT_PORT)
   .option("--api-only", "Only serve API (for use with Vite dev server; see studio/README)")

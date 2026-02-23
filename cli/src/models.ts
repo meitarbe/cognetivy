@@ -37,6 +37,8 @@ export type RunStatus = "running" | "completed" | "failed";
 
 export interface RunRecord {
   run_id: string;
+  /** Human-readable name for the run (e.g. "Q1 ideas exploration"). */
+  name?: string;
   workflow_id: string;
   workflow_version: string;
   status: RunStatus;
@@ -85,31 +87,41 @@ export interface JsonPatchOperation {
   from?: string;
 }
 
-// --- Artifacts (structured, schema-backed entities per run) ---
+// --- Collections (structured, schema-backed entities per run) ---
 
-/** Schema for one artifact kind: required keys and optional property descriptions. */
-export interface ArtifactKindSchema {
+/** Schema for one collection kind. Agent-defined; strict type validation. */
+export interface CollectionKindSchema {
   description: string;
   required: string[];
+  /** When true, store globally across runs; when false, store per-run. */
+  global?: boolean;
   properties?: Record<string, { type?: string; description?: string }>;
 }
 
-/** Full artifact schema: map of kind name to schema. Stored in .cognetivy/artifact-schema.json */
-export interface ArtifactSchemaConfig {
-  kinds: Record<string, ArtifactKindSchema>;
+/** Full collection schema. Stored in .cognetivy/collection-schema.json */
+export interface CollectionSchemaConfig {
+  kinds: Record<string, CollectionKindSchema>;
 }
 
-/** One stored artifact item (payload plus optional id and timestamp). */
-export interface ArtifactItem {
+/** One stored collection item (payload plus optional id and timestamp). */
+export interface CollectionItem {
   id?: string;
   created_at?: string;
   [key: string]: unknown;
 }
 
-/** File format for a run's artifacts of one kind. */
-export interface ArtifactStore {
+/** File format for a run's collections of one kind. */
+export interface CollectionStore {
   run_id: string;
   kind: string;
   updated_at: string;
-  items: ArtifactItem[];
+  items: CollectionItem[];
 }
+
+/** File format for a global (cross-run) entity store. */
+export interface GlobalEntityStore {
+  kind: string;
+  items: CollectionItem[];
+  updated_at: string;
+}
+

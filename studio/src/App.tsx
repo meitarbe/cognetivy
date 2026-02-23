@@ -3,9 +3,9 @@ import { AppLayout } from "@/components/AppLayout";
 import { WorkflowPage } from "@/pages/WorkflowPage";
 import { RunsPage } from "@/pages/RunsPage";
 import { RunDetailPage } from "@/pages/RunDetailPage";
-import { MutationsPage } from "@/pages/MutationsPage";
-import { MutationDetailPage } from "@/pages/MutationDetailPage";
-import { ArtifactSchemaPage } from "@/pages/ArtifactSchemaPage";
+import { CollectionSchemaPage } from "@/pages/CollectionSchemaPage";
+import { CollectionsPage } from "@/pages/CollectionsPage";
+import { EntityPage } from "@/pages/EntityPage";
 
 function App() {
   return (
@@ -15,9 +15,9 @@ function App() {
         <Route path="workflow" element={<WorkflowPage />} />
         <Route path="runs" element={<RunsPage />} />
         <Route path="runs/:runId" element={<RunDetailPage />} />
-        <Route path="mutations" element={<MutationsPage />} />
-        <Route path="mutations/:mutationId" element={<MutationDetailPage />} />
-        <Route path="artifact-schema" element={<ArtifactSchemaPage />} />
+        <Route path="collections" element={<CollectionsPage />} />
+        <Route path="data/:kind" element={<EntityPage />} />
+        <Route path="collection-schema" element={<CollectionSchemaPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

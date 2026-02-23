@@ -6,31 +6,31 @@ import assert from "node:assert";
 import {
   ensureWorkspace,
   writeRunFile,
-  readArtifactSchema,
-  writeArtifactSchema,
-  readArtifacts,
-  writeArtifacts,
-  appendArtifact,
-  listArtifactKindsForRun,
+  readCollectionSchema,
+  writeCollectionSchema,
+  readCollections,
+  writeCollections,
+  appendCollection,
+  listCollectionKindsForRun,
 } from "../dist/workspace.js";
 
-describe("artifact schema and storage", () => {
-  it("init creates artifact-schema.json and read returns default kinds", async () => {
-    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "cognetivy-artifact-"));
+describe("collection schema and storage", () => {
+  it("init creates collection-schema.json and read returns default kinds", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "cognetivy-collection-"));
     await ensureWorkspace(cwd, { noGitignore: true });
-    const schema = await readArtifactSchema(cwd);
+    const schema = await readCollectionSchema(cwd);
     assert.ok(schema.kinds);
-    assert.ok(schema.kinds.sources);
-    assert.ok(schema.kinds.collected);
-    assert.ok(schema.kinds.ideas);
-    assert.deepStrictEqual(schema.kinds.sources.required, ["url"]);
-    assert.deepStrictEqual(schema.kinds.ideas.required, ["name"]);
+    assert.strictEqual(Object.keys(schema.kinds).length, 0);
   });
 
-  it("artifact_append validates and stores item; artifact_get returns store", async () => {
-    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "cognetivy-artifact-"));
+  it("collection_append validates and stores item; collection_get returns store", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "cognetivy-collection-"));
     await ensureWorkspace(cwd, { noGitignore: true });
-    const runId = "run_2025-01-01_art1";
+    await writeCollectionSchema(
+      { kinds: { sources: { description: "Sources", required: ["url"], properties: {} } } },
+      cwd
+    );
+    const runId = "run_2025-01-01_col1";
     await writeRunFile(
       {
         run_id: runId,
@@ -43,7 +43,7 @@ describe("artifact schema and storage", () => {
       cwd
     );
 
-    const item = await appendArtifact(
+    const item = await appendCollection(
       runId,
       "sources",
       { url: "https://example.com", title: "Example" },
@@ -55,7 +55,7 @@ describe("artifact schema and storage", () => {
     assert.strictEqual(item.url, "https://example.com");
     assert.strictEqual(item.title, "Example");
 
-    const store = await readArtifacts(runId, "sources", cwd);
+    const store = await readCollections(runId, "sources", cwd);
     assert.strictEqual(store.run_id, runId);
     assert.strictEqual(store.kind, "sources");
     assert.ok(store.updated_at);
@@ -63,10 +63,14 @@ describe("artifact schema and storage", () => {
     assert.strictEqual(store.items[0].url, "https://example.com");
   });
 
-  it("artifact_append rejects payload missing required fields", async () => {
-    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "cognetivy-artifact-"));
+  it("collection_append rejects payload missing required fields", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "cognetivy-collection-"));
     await ensureWorkspace(cwd, { noGitignore: true });
-    const runId = "run_2025-01-01_art2";
+    await writeCollectionSchema(
+      { kinds: { sources: { description: "Sources", required: ["url"], properties: {} } } },
+      cwd
+    );
+    const runId = "run_2025-01-01_col2";
     await writeRunFile(
       {
         run_id: runId,
@@ -80,15 +84,19 @@ describe("artifact schema and storage", () => {
     );
 
     await assert.rejects(
-      () => appendArtifact(runId, "sources", { title: "No URL" }, {}, cwd),
+      () => appendCollection(runId, "sources", { title: "No URL" }, {}, cwd),
       /required|Missing/
     );
   });
 
-  it("artifact_set replaces items and list returns kinds", async () => {
-    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "cognetivy-artifact-"));
+  it("collection_set replaces items and list returns kinds", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "cognetivy-collection-"));
     await ensureWorkspace(cwd, { noGitignore: true });
-    const runId = "run_2025-01-01_art3";
+    await writeCollectionSchema(
+      { kinds: { ideas: { description: "Ideas", required: ["name"], properties: {} } } },
+      cwd
+    );
+    const runId = "run_2025-01-01_col3";
     await writeRunFile(
       {
         run_id: runId,
@@ -101,7 +109,7 @@ describe("artifact schema and storage", () => {
       cwd
     );
 
-    await writeArtifacts(
+    await writeCollections(
       runId,
       "ideas",
       [
@@ -111,11 +119,11 @@ describe("artifact schema and storage", () => {
       cwd
     );
 
-    const store = await readArtifacts(runId, "ideas", cwd);
+    const store = await readCollections(runId, "ideas", cwd);
     assert.strictEqual(store.items.length, 2);
     assert.strictEqual(store.items[0].name, "Idea A");
 
-    const kinds = await listArtifactKindsForRun(runId, cwd);
+    const kinds = await listCollectionKindsForRun(runId, cwd);
     assert.ok(kinds.includes("ideas"));
   });
 });

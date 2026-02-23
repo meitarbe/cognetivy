@@ -23,9 +23,8 @@ describe("cognetivy init", () => {
     await assert.doesNotReject(fs.access(p.workflowVersionsDir));
     await assert.doesNotReject(fs.access(p.runsDir));
     await assert.doesNotReject(fs.access(p.eventsDir));
-    await assert.doesNotReject(fs.access(p.mutationsDir));
-    await assert.doesNotReject(fs.access(p.artifactsDir));
-    await assert.doesNotReject(fs.access(p.artifactSchemaPath));
+    await assert.doesNotReject(fs.access(p.collectionsDir));
+    await assert.doesNotReject(fs.access(p.collectionSchemaPath));
 
     const pointer = JSON.parse(await fs.readFile(p.workflowJson, "utf-8"));
     assert.strictEqual(pointer.workflow_id, "wf_default");

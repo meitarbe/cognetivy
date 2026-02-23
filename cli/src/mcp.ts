@@ -14,30 +14,27 @@ import {
   listWorkflowVersionFiles,
   versionFromFileName,
   writeRunFile,
+  updateRunFile,
   appendEventLine,
   runExists,
-  readMutationFile,
-  updateMutationFile,
-  writeMutationFile,
-  readArtifactSchema,
-  writeArtifactSchema,
-  listArtifactKindsForRun,
-  readArtifacts,
-  writeArtifacts,
-  appendArtifact,
+  readCollectionSchema,
+  writeCollectionSchema,
+  listCollectionKindsForRun,
+  readCollections,
+  writeCollections,
+  appendCollection,
 } from "./workspace.js";
 import { getMergedConfig } from "./config.js";
 import { validateWorkflow } from "./validate.js";
-import { applyMutationToWorkspace } from "./mutation.js";
 import type {
   RunRecord,
   EventPayload,
-  MutationRecord,
-  MutationTarget,
-  JsonPatchOperation,
-  ArtifactSchemaConfig,
-  ArtifactItem,
+  CollectionSchemaConfig,
+  CollectionItem,
+  CollectionKindSchema,
 } from "./models.js";
+import { CollectionValidationError } from "./validate-collection.js";
+import { mergeKindTemplate } from "./kind-templates.js";
 
 const DEFAULT_BY = "mcp";
 
@@ -66,7 +63,8 @@ function sendError(id: string | number | null, code: number, message: string, da
 const TOOLS: Array<{ name: string; description: string; inputSchema: { type: "object"; properties: Record<string, unknown>; required?: string[] } }> = [
   {
     name: "workflow_get",
-    description: "Get the current workflow version JSON.",
+    description:
+      "Get the current workflow version JSON (nodes, edges). Call this after run_start to see which steps you must execute for the run.",
     inputSchema: { type: "object", properties: {} },
   },
   {
@@ -80,71 +78,90 @@ const TOOLS: Array<{ name: string; description: string; inputSchema: { type: "ob
   },
   {
     name: "run_start",
-    description: "Start a new run. Returns run_id.",
+    description:
+      "Start a new run. Returns { run_id, suggested_collection_kinds, _hint }. You MUST provide a descriptive name. SCHEMA-FIRST: Call collection_schema_get, then collection_schema_add_kind for any suggested_collection_kinds missing from schema, before collection_set/collection_append.",
     inputSchema: {
       type: "object",
       properties: {
-        input_json: { type: "object", description: "Run input" },
+        input_json: { type: "object", description: "Run input (e.g. { topic: '...' })" },
+        name: {
+          type: "string",
+          description:
+            "Required. Short descriptive name for the run (e.g. 'Hotels tech opportunities 2026').",
+        },
         by: { type: "string", description: "Actor (e.g. agent:cursor)" },
       },
-      required: ["input_json"],
+      required: ["input_json", "name"],
+    },
+  },
+  {
+    name: "run_complete",
+    description:
+      "Explicitly mark a run as completed. ALWAYS call this after event_append run_completed to ensure the run status is updated. Guarantees status=completed is persisted.",
+    inputSchema: {
+      type: "object",
+      properties: { run_id: { type: "string", description: "Run ID to mark complete" } },
+      required: ["run_id"],
     },
   },
   {
     name: "event_append",
-    description: "Append one event to a run's NDJSON log.",
+    description:
+      "Append one event to a run's NDJSON log. REQUIRED for step status in Studio: For step_started and step_completed events, event_json.data MUST include the workflow node id. Use data.step (or step_id) = <node_id>, e.g. { type: 'step_started', data: { step: 'expand_domain' } }. When ending a run: event_append run_completed, then run_complete to ensure status is updated.",
     inputSchema: {
       type: "object",
       properties: {
         run_id: { type: "string" },
-        event_json: { type: "object", description: "Event payload (type, data, etc.)" },
+        event_json: {
+          type: "object",
+          description:
+            "Event: { type: 'step_started'|'step_completed'|'run_completed'|..., data: { step: '<node_id>', ... } }. data.step (or step_id) is REQUIRED for step events so Studio displays progress.",
+        },
         by: { type: "string" },
       },
       required: ["run_id", "event_json"],
     },
   },
   {
-    name: "mutate_propose",
-    description: "Propose a workflow mutation (JSON Patch). Returns mutation_id.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        patch_json: { type: "array", description: "JSON Patch operations" },
-        reason: { type: "string" },
-        by: { type: "string" },
-      },
-      required: ["patch_json", "reason"],
-    },
-  },
-  {
-    name: "mutate_apply",
-    description: "Apply a proposed mutation. Creates new workflow version and updates pointer.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        mutation_id: { type: "string" },
-        by: { type: "string" },
-      },
-      required: ["mutation_id"],
-    },
-  },
-  {
-    name: "artifact_schema_get",
-    description: "Get the current artifact schema (kinds and required fields). Defines structure for sources, collected, ideas, etc.",
+    name: "collection_schema_get",
+    description:
+      "Get the current collection schema. CALL THIS before collection_set/collection_append. If schema is empty or lacks kinds for workflow outputs, use collection_schema_add_kind to add them.",
     inputSchema: { type: "object", properties: {} },
   },
   {
-    name: "artifact_schema_set",
-    description: "Set artifact schema from JSON. Must have 'kinds' object; each kind has description, required (array), optional properties.",
+    name: "collection_schema_set",
+    description: "Set collection schema from JSON. Must have 'kinds' object; each kind has description, required (array), optional properties.",
     inputSchema: {
       type: "object",
-      properties: { schema_json: { type: "object", description: "ArtifactSchemaConfig with kinds" } },
+      properties: { schema_json: { type: "object", description: "CollectionSchemaConfig with kinds" } },
       required: ["schema_json"],
     },
   },
   {
-    name: "artifact_list",
-    description: "List artifact kinds that have data for a run.",
+    name: "collection_schema_add_kind",
+    description:
+      "Add or update one collection kind without replacing the full schema. Use when workflow outputs need a new kind (e.g. ideas, sources, resource_pack). Merges into existing schema.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        kind: { type: "string", description: "Kind name (e.g. ideas, sources, resource_pack)" },
+        description: { type: "string", description: "What this kind stores" },
+        required: {
+          type: "array",
+          items: { type: "string" },
+          description: "Required field names for each item",
+        },
+        properties: {
+          type: "object",
+          description: "Optional: { field: { type, description } }",
+        },
+      },
+      required: ["kind", "description", "required"],
+    },
+  },
+  {
+    name: "collection_list",
+    description: "List collection kinds that have data for a run.",
     inputSchema: {
       type: "object",
       properties: { run_id: { type: "string" } },
@@ -152,45 +169,61 @@ const TOOLS: Array<{ name: string; description: string; inputSchema: { type: "ob
     },
   },
   {
-    name: "artifact_get",
-    description: "Get all artifacts of a kind for a run (structured store: run_id, kind, updated_at, items).",
+    name: "collection_get",
+    description: "Get all collections of a kind for a run (structured store: run_id, kind, updated_at, items).",
     inputSchema: {
       type: "object",
       properties: {
         run_id: { type: "string" },
-        kind: { type: "string", description: "e.g. sources, collected, ideas" },
+        kind: { type: "string", description: "e.g. sources, ideas" },
       },
       required: ["run_id", "kind"],
     },
   },
   {
-    name: "artifact_set",
-    description: "Replace all artifacts of a kind for a run. Items are validated against artifact schema.",
+    name: "collection_set",
+    description:
+      "Replace all collections of a kind for a run. Items are validated against schema. If kind is unknown or validation fails, error includes schema—use collection_schema_add_kind first.",
     inputSchema: {
       type: "object",
       properties: {
         run_id: { type: "string" },
         kind: { type: "string" },
-        items: { type: "array", description: "Array of artifact items (each must satisfy schema required fields)" },
+        items: { type: "array", description: "Array of collection items (each must satisfy schema required fields)" },
       },
       required: ["run_id", "kind", "items"],
     },
   },
   {
-    name: "artifact_append",
-    description: "Append one artifact item to a run's kind. Validated against schema. Returns the created item (with id, created_at).",
+    name: "collection_append",
+    description:
+      "Append one collection item to a run's kind. Validated against schema. If kind unknown or validation fails, use collection_schema_add_kind first.",
     inputSchema: {
       type: "object",
       properties: {
         run_id: { type: "string" },
         kind: { type: "string" },
-        payload: { type: "object", description: "Artifact payload (must include required fields for kind)" },
+        payload: { type: "object", description: "Collection payload (must include required fields for kind)" },
         id: { type: "string", description: "Optional id for the item" },
       },
       required: ["run_id", "kind", "payload"],
     },
   },
 ];
+
+/** Extract suggested collection kinds from workflow node outputs (contract.output). */
+function getSuggestedCollectionKinds(workflow: WorkflowVersion): string[] {
+  const kinds = new Set<string>();
+  for (const node of workflow.nodes) {
+    const outputs = node.contract?.output ?? [];
+    for (const out of outputs) {
+      if (out && typeof out === "string" && !["vertical", "trends"].includes(out)) {
+        kinds.add(out);
+      }
+    }
+  }
+  return Array.from(kinds);
+}
 
 function generateId(prefix: string): string {
   const ts = new Date().toISOString().replace(/[:.]/g, "-");
@@ -217,7 +250,19 @@ async function handleToolsCall(
       case "workflow_get": {
         const pointer = await readWorkflowPointer(cwd);
         const workflow = await readWorkflowVersion(pointer.current_version, cwd);
-        return JSON.stringify(workflow, null, 2);
+        const suggested_collection_kinds = getSuggestedCollectionKinds(workflow);
+        return JSON.stringify(
+          {
+            ...workflow,
+            suggested_collection_kinds,
+            _hint:
+              suggested_collection_kinds.length > 0
+                ? `Before collection_set/collection_append: call collection_schema_get. Ensure schema has kinds for: ${suggested_collection_kinds.join(", ")}. Use collection_schema_set or collection_schema_add_kind if missing.`
+                : undefined,
+          },
+          null,
+          2
+        );
       }
       case "workflow_set": {
         const workflowJson = args.workflow_json as object;
@@ -241,12 +286,20 @@ async function handleToolsCall(
       }
       case "run_start": {
         const inputJson = args.input_json as Record<string, unknown>;
+        const nameRaw = args.name as string | undefined;
+        if (!nameRaw || !String(nameRaw).trim()) {
+          throw new Error(
+            "run_start requires 'name' (short descriptive name for the run). Provide it in the MCP call arguments."
+          );
+        }
+        const name = String(nameRaw).trim();
         const by = (args.by as string) ?? (await resolveBy(cwd));
         const pointer = await readWorkflowPointer(cwd);
         const runId = generateId("run");
         const now = new Date().toISOString();
         const runRecord: RunRecord = {
           run_id: runId,
+          name,
           workflow_id: pointer.workflow_id,
           workflow_version: pointer.current_version,
           status: "running",
@@ -261,7 +314,24 @@ async function handleToolsCall(
           data: { workflow_version: pointer.current_version, input: inputJson },
         };
         await appendEventLine(runId, event, cwd);
-        return runId;
+        const workflow = await readWorkflowVersion(pointer.current_version, cwd);
+        const suggested_collection_kinds = getSuggestedCollectionKinds(workflow);
+        return JSON.stringify({
+          run_id: runId,
+          suggested_collection_kinds,
+          _hint:
+            suggested_collection_kinds.length > 0
+              ? `Call collection_schema_get. Ensure schema has kinds: ${suggested_collection_kinds.join(", ")}. Use collection_schema_add_kind if missing, then collection_set/collection_append per step.`
+              : undefined,
+        });
+      }
+      case "run_complete": {
+        const runIdComplete = args.run_id as string;
+        if (!(await runExists(runIdComplete, cwd))) {
+          throw new Error(`Run "${runIdComplete}" not found.`);
+        }
+        await updateRunFile(runIdComplete, { status: "completed" }, cwd);
+        return "Run marked as completed.";
       }
       case "event_append": {
         const runId = args.run_id as string;
@@ -278,94 +348,94 @@ async function handleToolsCall(
           data: (eventJson.data as Record<string, unknown>) ?? eventJson,
         };
         await appendEventLine(runId, event, cwd);
+        if (event.type === "run_completed") {
+          await updateRunFile(runId, { status: "completed" }, cwd);
+        }
         return "Appended event.";
       }
-      case "mutate_propose": {
-        const patchJson = args.patch_json as JsonPatchOperation[];
-        const reason = args.reason as string;
-        const by = (args.by as string) ?? (await resolveBy(cwd));
-        const pointer = await readWorkflowPointer(cwd);
-        const mutationId = generateId("mut");
-        const target: MutationTarget = {
-          type: "workflow",
-          workflow_id: pointer.workflow_id,
-          from_version: pointer.current_version,
-        };
-        const record: MutationRecord = {
-          mutation_id: mutationId,
-          target,
-          patch: patchJson,
-          reason,
-          status: "proposed",
-          created_by: by,
-          created_at: new Date().toISOString(),
-        };
-        await writeMutationFile(record, cwd);
-        return mutationId;
-      }
-      case "mutate_apply": {
-        const mutationId = args.mutation_id as string;
-        const mutation = await readMutationFile(mutationId, cwd);
-        if (mutation.status !== "proposed") {
-          throw new Error(`Mutation "${mutationId}" is not proposed (status: ${mutation.status}).`);
-        }
-        const newVersion = await applyMutationToWorkspace(
-          mutation.target.from_version,
-          mutation.patch,
-          mutation.target.workflow_id,
-          cwd
-        );
-        await writeWorkflowPointer(
-          { workflow_id: mutation.target.workflow_id, current_version: newVersion },
-          cwd
-        );
-        await updateMutationFile(
-          mutationId,
-          { status: "applied", applied_to_version: newVersion },
-          cwd
-        );
-        return newVersion;
-      }
-      case "artifact_schema_get": {
-        const schema = await readArtifactSchema(cwd);
+      case "collection_schema_get": {
+        const schema = await readCollectionSchema(cwd);
         return JSON.stringify(schema, null, 2);
       }
-      case "artifact_schema_set": {
-        const schemaJson = args.schema_json as ArtifactSchemaConfig;
+      case "collection_schema_set": {
+        const schemaJson = args.schema_json as CollectionSchemaConfig;
         if (!schemaJson.kinds || typeof schemaJson.kinds !== "object") {
           throw new Error("schema_json must have a 'kinds' object.");
         }
-        await writeArtifactSchema(schemaJson, cwd);
-        return "Artifact schema updated.";
+        const merged: CollectionSchemaConfig = {
+          kinds: {},
+        };
+        for (const [k, v] of Object.entries(schemaJson.kinds)) {
+          merged.kinds[k] = mergeKindTemplate(k, v);
+        }
+        await writeCollectionSchema(merged, cwd);
+        return "Collection schema updated.";
       }
-      case "artifact_list": {
+      case "collection_schema_add_kind": {
+        const kind = args.kind as string;
+        const description = args.description as string;
+        const required = args.required as string[];
+        const properties = args.properties as Record<string, { type?: string; description?: string }> | undefined;
+        if (!kind || !description || !Array.isArray(required)) {
+          throw new Error("collection_schema_add_kind requires: kind, description, required (array).");
+        }
+        const schema = await readCollectionSchema(cwd);
+        let kindSchema: CollectionKindSchema = { description, required, properties };
+        kindSchema = mergeKindTemplate(kind, kindSchema);
+        schema.kinds = { ...schema.kinds, [kind]: kindSchema };
+        await writeCollectionSchema(schema, cwd);
+        return `Added kind "${kind}". Schema now has kinds: ${Object.keys(schema.kinds).join(", ")}.`;
+      }
+      case "collection_list": {
         const runIdList = args.run_id as string;
-        const kinds = await listArtifactKindsForRun(runIdList, cwd);
+        const kinds = await listCollectionKindsForRun(runIdList, cwd);
         return JSON.stringify(kinds);
       }
-      case "artifact_get": {
+      case "collection_get": {
         const runIdGet = args.run_id as string;
         const kindGet = args.kind as string;
-        const store = await readArtifacts(runIdGet, kindGet, cwd);
+        const store = await readCollections(runIdGet, kindGet, cwd);
         return JSON.stringify(store, null, 2);
       }
-      case "artifact_set": {
+      case "collection_set": {
         const runIdSet = args.run_id as string;
         const kindSet = args.kind as string;
-        const items = args.items as ArtifactItem[];
+        const items = args.items as CollectionItem[];
         if (!Array.isArray(items)) {
           throw new Error("items must be an array.");
         }
-        await writeArtifacts(runIdSet, kindSet, items, cwd);
-        return `Set ${items.length} artifact(s) for kind "${kindSet}".`;
+        try {
+          await writeCollections(runIdSet, kindSet, items, cwd);
+          return `Set ${items.length} collection(s) for kind "${kindSet}".`;
+        } catch (err) {
+          if (err instanceof CollectionValidationError) {
+            const schema = await readCollectionSchema(cwd);
+            const kindSchema = schema.kinds[kindSet];
+            throw new Error(
+              `${err.message} Schema for "${kindSet}": required=[${(kindSchema?.required ?? []).join(", ")}], properties=${JSON.stringify(kindSchema?.properties ?? {})}. Fix schema with collection_schema_add_kind or collection_schema_set.`
+            );
+          }
+          throw err;
+        }
       }
-      case "artifact_append": {
+      case "collection_append": {
         const runIdApp = args.run_id as string;
         const kindApp = args.kind as string;
         const payload = args.payload as Record<string, unknown>;
         const idOpt = args.id as string | undefined;
-        const item = await appendArtifact(runIdApp, kindApp, payload, { id: idOpt }, cwd);
-        return JSON.stringify(item, null, 2);
+        try {
+          const item = await appendCollection(runIdApp, kindApp, payload, { id: idOpt }, cwd);
+          return JSON.stringify(item, null, 2);
+        } catch (err) {
+          if (err instanceof CollectionValidationError) {
+            const schema = await readCollectionSchema(cwd);
+            const kindSchema = schema.kinds[kindApp];
+            throw new Error(
+              `${err.message} Schema for "${kindApp}": required=[${(kindSchema?.required ?? []).join(", ")}], properties=${JSON.stringify(kindSchema?.properties ?? {})}. Fix schema with collection_schema_add_kind or collection_schema_set.`
+            );
+          }
+          throw err;
+        }
       }
       default:
         throw new Error(`Unknown tool: ${name}`);
@@ -380,11 +450,17 @@ async function handleInitialize(): Promise<{
   protocolVersion: string;
   capabilities: { tools: {} };
   serverInfo: { name: string; version: string };
+  instructions?: string;
 }> {
   return {
     protocolVersion: "2024-11-05",
     capabilities: { tools: {} },
     serverInfo: { name: "cognetivy", version: "0.1.0" },
+    instructions:
+      "When you start a run with run_start, you MUST execute the workflow. Do not leave runs incomplete. " +
+      "SCHEMA-FIRST: Before collection_set/collection_append, call collection_schema_get. If schema lacks kinds for workflow outputs (see run_start/workflow_get suggested_collection_kinds), use collection_schema_add_kind to add them. " +
+      "After run_start: 1) workflow_get (note suggested_collection_kinds), 2) collection_schema_get, 3) collection_schema_add_kind for any missing kinds, 4) for each step: event_append step_started/step_completed, collection_set/collection_append outputs, 5) event_append run_completed, 6) run_complete. " +
+      "Step events MUST include data.step (or step_id) = the workflow node id.",
   };
 }
 

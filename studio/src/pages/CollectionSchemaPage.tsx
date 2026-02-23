@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { api, type ArtifactSchemaConfig } from "@/api";
+import { Link } from "react-router-dom";
+import { api, type CollectionSchemaConfig } from "@/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -13,14 +14,14 @@ import { Badge } from "@/components/ui/badge";
 
 const POLL_MS = 3000;
 
-export function ArtifactSchemaPage() {
-  const [schema, setSchema] = useState<ArtifactSchemaConfig | null>(null);
+export function CollectionSchemaPage() {
+  const [schema, setSchema] = useState<CollectionSchemaConfig | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
       try {
-        const data = await api.getArtifactSchema();
+        const data = await api.getCollectionSchema();
         setSchema(data);
         setError(null);
       } catch (e) {
@@ -51,7 +52,7 @@ export function ArtifactSchemaPage() {
 
   return (
     <div className="p-3">
-      <h2 className="text-base font-semibold mb-2">Artifact schema</h2>
+      <h2 className="text-base font-semibold mb-2">Collection schema</h2>
       <Card>
         <CardHeader className="py-2 px-3">
           <CardTitle className="text-sm">Kinds</CardTitle>
@@ -74,8 +75,12 @@ export function ArtifactSchemaPage() {
                 </TableRow>
               )}
               {kinds.map(([kind, def]) => (
-                <TableRow key={kind}>
-                  <TableCell className="font-medium">{kind}</TableCell>
+                <TableRow key={kind} className="cursor-pointer hover:bg-muted/50">
+                  <TableCell className="font-medium">
+                    <Link to={`/data/${encodeURIComponent(kind)}`} className="text-primary hover:underline">
+                      {kind}
+                    </Link>
+                  </TableCell>
                   <TableCell className="text-sm text-muted-foreground">{def.description}</TableCell>
                   <TableCell>
                     <div className="flex flex-wrap gap-1">

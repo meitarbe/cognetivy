@@ -1,0 +1,28 @@
+---
+description: Always use Cognetivy MCP for workflow and collection operations—never write to .cognetivy directly
+alwaysApply: true
+---
+
+# Cognetivy MCP — Mandatory Usage
+
+**NEVER** write, edit, or delete files under `.cognetivy/` directly (workflow.versions, workflow.json, runs, events, collections, collection-schema.json).
+
+**ALWAYS** use the Cognetivy MCP tools:
+
+| Operation | MCP Tool | Wrong (breach) |
+|-----------|----------|----------------|
+| Create/update workflow | `workflow_set` | Writing `workflow.versions/wf_*.json` or `workflow.json` |
+| Get workflow | `workflow_get` | Reading workflow files directly |
+| Start run | `run_start` (requires `name`) | Creating run files manually |
+| Mark run complete | `run_complete` (call after `event_append run_completed`) | Leaving status as running |
+| Append events | `event_append` | Writing to `events/*.ndjson` |
+| Set/append collections | `collection_set`, `collection_append` | Writing to `collections/*.json` |
+| Set collection schema | `collection_schema_set`, `collection_schema_add_kind` | Editing `collection-schema.json` |
+
+The MCP ensures versioning (e.g. v2 → v3), pointer updates, and validation. Direct file writes bypass this and corrupt state.
+
+**run_start:** Always pass a descriptive `name` (required). Example: `{ "input_json": {...}, "name": "Mental models run - B2B SaaS" }`.
+
+**run_complete:** After `event_append run_completed`, always call `run_complete` with the run_id to ensure status=completed is persisted. Never leave runs with status=running.
+
+**Schema-first:** Before `collection_set`/`collection_append`, call `collection_schema_get`. If schema lacks kinds for workflow outputs (see `suggested_collection_kinds` from `run_start`/`workflow_get`), use `collection_schema_add_kind` to add them. Never assume schema exists—create kinds as needed.

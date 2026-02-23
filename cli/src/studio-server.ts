@@ -6,6 +6,7 @@ import http from "node:http";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import type { CollectionItem } from "./models.js";
 import {
   getWorkspacePaths,
   workspaceExists,
@@ -14,10 +15,12 @@ import {
   listWorkflowVersionFiles,
   versionFromFileName,
   readRunFile,
-  readMutationFile,
-  readArtifactSchema,
-  listArtifactKindsForRun,
-  readArtifacts,
+  updateRunFile,
+  runExists,
+  readCollectionSchema,
+  listCollectionKindsForRun,
+  readCollections,
+  readGlobalEntityStore,
 } from "./workspace.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -32,7 +35,7 @@ function sendJson(res: http.ServerResponse, status: number, data: unknown): void
 
 function setCors(res: http.ServerResponse): void {
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET, PATCH, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 }
 
@@ -97,56 +100,32 @@ async function handleApiRunEvents(cwd: string, runId: string): Promise<unknown[]
     .map((line) => JSON.parse(line) as unknown);
 }
 
-async function handleApiArtifactsSchema(cwd: string): Promise<unknown> {
-  return readArtifactSchema(cwd);
+async function handleApiCollectionsSchema(cwd: string): Promise<unknown> {
+  return readCollectionSchema(cwd);
 }
 
-async function handleApiArtifactsKinds(cwd: string, runId: string): Promise<string[]> {
-  return listArtifactKindsForRun(runId, cwd);
+async function handleApiCollectionsKinds(cwd: string, runId: string): Promise<string[]> {
+  return listCollectionKindsForRun(runId, cwd);
 }
 
-async function handleApiArtifactsKind(cwd: string, runId: string, kind: string): Promise<unknown> {
-  return readArtifacts(runId, kind, cwd);
-}
-
-async function handleApiMutations(cwd: string): Promise<unknown[]> {
-  const p = getWorkspacePaths(cwd);
-  const entries = await fs.readdir(p.mutationsDir, { withFileTypes: true }).catch(() => []);
-  const mutations: unknown[] = [];
-  for (const e of entries) {
-    if (!e.isFile() || !e.name.endsWith(".json")) continue;
-    const mutationId = e.name.replace(/\.json$/, "");
-    try {
-      const record = await readMutationFile(mutationId, cwd);
-      mutations.push(record);
-    } catch {
-      // skip invalid
-    }
-  }
-  mutations.sort((a, b) => {
-    const aTs = (a as { created_at?: string }).created_at ?? "";
-    const bTs = (b as { created_at?: string }).created_at ?? "";
-    return bTs.localeCompare(aTs);
-  });
-  return mutations;
-}
-
-async function handleApiMutation(cwd: string, mutationId: string): Promise<unknown> {
-  return readMutationFile(mutationId, cwd);
+async function handleApiCollectionsKind(cwd: string, runId: string, kind: string): Promise<unknown> {
+  return readCollections(runId, kind, cwd);
 }
 
 async function handleApi(
   cwd: string,
   method: string,
   pathname: string,
-  res: http.ServerResponse
+  res: http.ServerResponse,
+  body?: string,
+  searchParams?: URLSearchParams
 ): Promise<boolean> {
   if (method === "OPTIONS") {
     res.writeHead(204);
     res.end();
     return true;
   }
-  if (method !== "GET") {
+  if (method !== "GET" && method !== "PATCH") {
     sendJson(res, 405, { error: "Method not allowed" });
     return true;
   }
@@ -154,6 +133,29 @@ async function handleApi(
   const apiMatch = pathname.replace(/^\/api\/?/, "").split("/").filter(Boolean);
 
   try {
+    // PATCH /api/runs/:id — update run name
+    if (method === "PATCH" && apiMatch[0] === "runs" && apiMatch.length === 2) {
+      const runId = apiMatch[1];
+      if (!(await runExists(runId, cwd))) {
+        sendJson(res, 404, { error: `Run "${runId}" not found` });
+        return true;
+      }
+      let payload: { name?: string };
+      try {
+        payload = body ? (JSON.parse(body) as { name?: string }) : {};
+      } catch {
+        sendJson(res, 400, { error: "Invalid JSON body" });
+        return true;
+      }
+      if (typeof payload.name !== "string") {
+        sendJson(res, 400, { error: "Body must have { name: string }" });
+        return true;
+      }
+      await updateRunFile(runId, { name: payload.name }, cwd);
+      const updated = await readRunFile(runId, cwd);
+      sendJson(res, 200, updated);
+      return true;
+    }
     // GET /api/workspace
     if (apiMatch[0] === "workspace" && apiMatch.length === 1) {
       const data = await handleApiWorkspace(cwd);
@@ -202,33 +204,55 @@ async function handleApi(
       sendJson(res, 200, data);
       return true;
     }
-    // GET /api/artifacts/schema
-    if (apiMatch[0] === "artifacts" && apiMatch[1] === "schema" && apiMatch.length === 2) {
-      const data = await handleApiArtifactsSchema(cwd);
+    // GET /api/entities/:kind (entity data; for global kinds from store; for per-run kinds aggregated from runs)
+    if (apiMatch[0] === "entities" && apiMatch.length === 2) {
+      const kind = apiMatch[1];
+      const runId = searchParams?.get("run_id") ?? undefined;
+      const schema = await readCollectionSchema(cwd);
+      if (!schema.kinds[kind]) {
+        sendJson(res, 404, { error: `Unknown entity kind "${kind}"` });
+        return true;
+      }
+      if (schema.kinds[kind].global) {
+        const store = await readGlobalEntityStore(kind, cwd);
+        let items = store.items;
+        if (runId) items = items.filter((i) => (i.run_id as string) === runId);
+        sendJson(res, 200, items);
+      } else {
+        const runs = await handleApiRuns(cwd);
+        const allItems: Array<CollectionItem & { run_id: string }> = [];
+        for (const run of runs) {
+          try {
+            const runId = (run as { run_id: string }).run_id;
+            const store = await readCollections(runId, kind, cwd);
+            for (const item of store.items) {
+              allItems.push({ ...item, run_id: runId } as CollectionItem & { run_id: string });
+            }
+          } catch {
+            // skip
+          }
+        }
+        let items = allItems;
+        if (runId) items = items.filter((i) => i.run_id === runId);
+        sendJson(res, 200, items);
+      }
+      return true;
+    }
+    // GET /api/collections/schema
+    if (apiMatch[0] === "collections" && apiMatch[1] === "schema" && apiMatch.length === 2) {
+      const data = await handleApiCollectionsSchema(cwd);
       sendJson(res, 200, data);
       return true;
     }
-    // GET /api/artifacts/:runId
-    if (apiMatch[0] === "artifacts" && apiMatch.length === 2) {
-      const data = await handleApiArtifactsKinds(cwd, apiMatch[1]);
+    // GET /api/collections/:runId
+    if (apiMatch[0] === "collections" && apiMatch.length === 2) {
+      const data = await handleApiCollectionsKinds(cwd, apiMatch[1]);
       sendJson(res, 200, data);
       return true;
     }
-    // GET /api/artifacts/:runId/:kind
-    if (apiMatch[0] === "artifacts" && apiMatch.length === 3) {
-      const data = await handleApiArtifactsKind(cwd, apiMatch[1], apiMatch[2]);
-      sendJson(res, 200, data);
-      return true;
-    }
-    // GET /api/mutations
-    if (apiMatch[0] === "mutations" && apiMatch.length === 1) {
-      const data = await handleApiMutations(cwd);
-      sendJson(res, 200, data);
-      return true;
-    }
-    // GET /api/mutations/:id
-    if (apiMatch[0] === "mutations" && apiMatch.length === 2) {
-      const data = await handleApiMutation(cwd, apiMatch[1]);
+    // GET /api/collections/:runId/:kind
+    if (apiMatch[0] === "collections" && apiMatch.length === 3) {
+      const data = await handleApiCollectionsKind(cwd, apiMatch[1], apiMatch[2]);
       sendJson(res, 200, data);
       return true;
     }
@@ -306,7 +330,13 @@ export function createStudioServer(workspacePath: string, options: StudioServerO
     const pathname = url.pathname;
 
     if (pathname.startsWith("/api")) {
-      const handled = await handleApi(cwd, req.method ?? "GET", pathname, res);
+      let body: string | undefined;
+      if (req.method === "PATCH" && req.headers["content-type"]?.includes("application/json")) {
+        const chunks: Buffer[] = [];
+        for await (const chunk of req) chunks.push(chunk);
+        body = Buffer.concat(chunks).toString("utf-8");
+      }
+      const handled = await handleApi(cwd, req.method ?? "GET", pathname, res, body, url.searchParams);
       if (handled) return;
     }
 

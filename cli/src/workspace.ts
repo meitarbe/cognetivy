@@ -5,33 +5,33 @@ import type {
   WorkflowVersion,
   RunRecord,
   EventPayload,
-  MutationRecord,
-  ArtifactSchemaConfig,
-  ArtifactItem,
-  ArtifactStore,
+  CollectionSchemaConfig,
+  CollectionItem,
+  CollectionStore,
+  GlobalEntityStore,
 } from "./models.js";
 import {
   createDefaultPointer,
   createDefaultWorkflowVersion,
   DEFAULT_WORKFLOW_ID,
 } from "./default-workflow.js";
-import { validateArtifactItem, validateArtifactItems } from "./validate-artifact.js";
+import { validateCollectionItem, validateCollectionItems } from "./validate-collection.js";
 
 export const WORKSPACE_DIR = ".cognetivy";
 export const WORKFLOW_JSON = "workflow.json";
 export const WORKFLOW_VERSIONS_DIR = "workflow.versions";
 export const RUNS_DIR = "runs";
 export const EVENTS_DIR = "events";
-export const MUTATIONS_DIR = "mutations";
-export const ARTIFACTS_DIR = "artifacts";
-export const ARTIFACT_SCHEMA_JSON = "artifact-schema.json";
+export const COLLECTIONS_DIR = "collections";
+export const COLLECTION_SCHEMA_JSON = "collection-schema.json";
+export const DATA_DIR = "data";
 
 const GITIGNORE_SNIPPET = `
 # cognetivy — ignore runtime data; commit workflow.versions/
 .cognetivy/runs/
 .cognetivy/events/
-.cognetivy/mutations/
-.cognetivy/artifacts/
+.cognetivy/collections/
+.cognetivy/data/
 `.trim();
 
 export interface WorkspacePaths {
@@ -40,9 +40,9 @@ export interface WorkspacePaths {
   workflowVersionsDir: string;
   runsDir: string;
   eventsDir: string;
-  mutationsDir: string;
-  artifactsDir: string;
-  artifactSchemaPath: string;
+  collectionsDir: string;
+  collectionSchemaPath: string;
+  dataDir: string;
 }
 
 /**
@@ -64,9 +64,9 @@ export function getWorkspacePaths(cwd: string = process.cwd()): WorkspacePaths {
     workflowVersionsDir: path.join(root, WORKFLOW_VERSIONS_DIR),
     runsDir: path.join(root, RUNS_DIR),
     eventsDir: path.join(root, EVENTS_DIR),
-    mutationsDir: path.join(root, MUTATIONS_DIR),
-    artifactsDir: path.join(root, ARTIFACTS_DIR),
-    artifactSchemaPath: path.join(root, ARTIFACT_SCHEMA_JSON),
+    collectionsDir: path.join(root, COLLECTIONS_DIR),
+    collectionSchemaPath: path.join(root, COLLECTION_SCHEMA_JSON),
+    dataDir: path.join(root, DATA_DIR),
   };
 }
 
@@ -96,13 +96,22 @@ export async function ensureWorkspace(
   await fs.mkdir(p.workflowVersionsDir, { recursive: true });
   await fs.mkdir(p.runsDir, { recursive: true });
   await fs.mkdir(p.eventsDir, { recursive: true });
-  await fs.mkdir(p.mutationsDir, { recursive: true });
-  await fs.mkdir(p.artifactsDir, { recursive: true });
 
-  const schemaPath = p.artifactSchemaPath;
-  if (!(await fileExists(schemaPath)) || options.force) {
-    const { DEFAULT_ARTIFACT_SCHEMA } = await import("./default-artifact-schema.js");
-    await fs.writeFile(schemaPath, JSON.stringify(DEFAULT_ARTIFACT_SCHEMA, null, 2), "utf-8");
+  const legacySchemaPath = path.join(p.root, "artifact-schema.json");
+  const legacyArtifactsPath = path.join(p.root, "artifacts");
+  const collectionsPath = path.join(p.root, COLLECTIONS_DIR);
+  if (await fileExists(legacySchemaPath) && !(await fileExists(p.collectionSchemaPath))) {
+    const raw = await fs.readFile(legacySchemaPath, "utf-8");
+    await fs.writeFile(p.collectionSchemaPath, raw, "utf-8");
+  }
+  if (await dirExists(legacyArtifactsPath) && !(await dirExists(collectionsPath))) {
+    await copyDirRecursive(legacyArtifactsPath, collectionsPath);
+  }
+  await fs.mkdir(p.collectionsDir, { recursive: true });
+
+  if (!(await fileExists(p.collectionSchemaPath)) || options.force) {
+    const { DEFAULT_COLLECTION_SCHEMA } = await import("./default-collection-schema.js");
+    await fs.writeFile(p.collectionSchemaPath, JSON.stringify(DEFAULT_COLLECTION_SCHEMA, null, 2), "utf-8");
   }
 
   const pointerPath = p.workflowJson;
@@ -135,6 +144,29 @@ async function fileExists(filePath: string): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+async function dirExists(dirPath: string): Promise<boolean> {
+  try {
+    const stat = await fs.stat(dirPath);
+    return stat.isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+async function copyDirRecursive(src: string, dest: string): Promise<void> {
+  await fs.mkdir(dest, { recursive: true });
+  const entries = await fs.readdir(src, { withFileTypes: true });
+  for (const e of entries) {
+    const srcPath = path.join(src, e.name);
+    const destPath = path.join(dest, e.name);
+    if (e.isDirectory()) {
+      await copyDirRecursive(srcPath, destPath);
+    } else {
+      await fs.copyFile(srcPath, destPath);
+    }
   }
 }
 
@@ -273,11 +305,6 @@ export function getEventsFilePath(runId: string, cwd: string = process.cwd()): s
   return path.join(p.eventsDir, `${runId}.ndjson`);
 }
 
-export function getMutationFilePath(mutationId: string, cwd: string = process.cwd()): string {
-  const p = getWorkspacePaths(cwd);
-  return path.join(p.mutationsDir, `${mutationId}.json`);
-}
-
 export async function runExists(runId: string, cwd: string = process.cwd()): Promise<boolean> {
   await requireWorkspace(cwd);
   const filePath = getRunFilePath(runId, cwd);
@@ -339,101 +366,182 @@ export async function appendEventLine(
   }
 }
 
-export async function writeMutationFile(
-  record: MutationRecord,
-  cwd: string = process.cwd()
-): Promise<void> {
-  const p = await requireWorkspace(cwd);
-  const filePath = path.join(p.mutationsDir, `${record.mutation_id}.json`);
-  await fs.writeFile(filePath, JSON.stringify(record, null, 2), "utf-8");
+// --- Global entity store (for kinds with global: true in schema) ---
+
+function generateItemId(prefix: string): string {
+  const ts = Date.now().toString(36);
+  const rand = Math.random().toString(36).slice(2, 8);
+  return `${prefix}_${ts}_${rand}`;
 }
 
-export async function readMutationFile(
-  mutationId: string,
-  cwd: string = process.cwd()
-): Promise<MutationRecord> {
+function getGlobalEntityPath(kind: string, cwd: string = process.cwd()): string {
+  const p = getWorkspacePaths(cwd);
+  const safeKind = kind.replace(/[^a-z0-9_-]/gi, "_");
+  return path.join(p.dataDir, `${safeKind}.json`);
+}
+
+function isGlobalKind(schema: CollectionSchemaConfig, kind: string): boolean {
+  return schema.kinds[kind]?.global === true;
+}
+
+export async function readGlobalEntityStore(kind: string, cwd: string = process.cwd()): Promise<GlobalEntityStore> {
   await requireWorkspace(cwd);
-  const filePath = getMutationFilePath(mutationId, cwd);
+  const filePath = getGlobalEntityPath(kind, cwd);
   try {
     const raw = await fs.readFile(filePath, "utf-8");
-    return JSON.parse(raw) as MutationRecord;
-  } catch (err) {
-    throw new Error(`Mutation "${mutationId}" not found.`);
+    return JSON.parse(raw) as GlobalEntityStore;
+  } catch {
+    return { kind, items: [], updated_at: new Date().toISOString() };
   }
 }
 
-export async function updateMutationFile(
-  mutationId: string,
-  updates: Partial<MutationRecord>,
+export async function listGlobalEntities(
+  kind: string,
+  options: { run_id?: string } = {},
+  cwd: string = process.cwd()
+): Promise<CollectionItem[]> {
+  const store = await readGlobalEntityStore(kind, cwd);
+  let items = store.items;
+  if (options.run_id) {
+    items = items.filter((i) => (i.run_id as string) === options.run_id);
+  }
+  return items;
+}
+
+async function setGlobalEntitiesForRun(
+  runId: string,
+  kind: string,
+  items: CollectionItem[],
   cwd: string = process.cwd()
 ): Promise<void> {
-  const existing = await readMutationFile(mutationId, cwd);
-  const updated = { ...existing, ...updates };
-  await writeMutationFile(updated, cwd);
+  const schema = await readCollectionSchema(cwd);
+  validateCollectionItems(schema, kind, items);
+  const store = await readGlobalEntityStore(kind, cwd);
+  store.items = store.items.filter((i) => (i.run_id as string) !== runId);
+  const now = new Date().toISOString();
+  const prefix = kind.slice(0, 3);
+  for (const { id, created_at, ...payload } of items) {
+    store.items.push({
+      ...payload,
+      id: (id as string) ?? generateItemId(prefix),
+      created_at: created_at ?? now,
+      run_id: runId,
+    });
+  }
+  store.updated_at = now;
+  await fs.mkdir(path.dirname(getGlobalEntityPath(kind, cwd)), { recursive: true });
+  await fs.writeFile(getGlobalEntityPath(kind, cwd), JSON.stringify(store, null, 2), "utf-8");
 }
 
-// --- Artifact schema and storage ---
+async function appendToGlobalStore(
+  runId: string,
+  kind: string,
+  payload: Record<string, unknown>,
+  options: { id?: string },
+  cwd: string = process.cwd()
+): Promise<CollectionItem> {
+  const schema = await readCollectionSchema(cwd);
+  validateCollectionItem(schema, kind, payload);
+  const store = await readGlobalEntityStore(kind, cwd);
+  const now = new Date().toISOString();
+  const prefix = kind.slice(0, 3);
+  const item: CollectionItem = {
+    ...payload,
+    id: (options.id as string) ?? generateItemId(prefix),
+    created_at: now,
+    run_id: runId,
+  };
+  store.items.push(item);
+  store.updated_at = now;
+  await fs.mkdir(path.dirname(getGlobalEntityPath(kind, cwd)), { recursive: true });
+  await fs.writeFile(getGlobalEntityPath(kind, cwd), JSON.stringify(store, null, 2), "utf-8");
+  return item;
+}
 
-export function getRunArtifactsDir(runId: string, cwd: string = process.cwd()): string {
+// --- Collection schema and storage ---
+
+export function getRunCollectionsDir(runId: string, cwd: string = process.cwd()): string {
   const p = getWorkspacePaths(cwd);
-  return path.join(p.artifactsDir, runId);
+  return path.join(p.collectionsDir, runId);
 }
 
-export function getArtifactStorePath(runId: string, kind: string, cwd: string = process.cwd()): string {
-  const dir = getRunArtifactsDir(runId, cwd);
+export function getCollectionStorePath(runId: string, kind: string, cwd: string = process.cwd()): string {
+  const dir = getRunCollectionsDir(runId, cwd);
   const safeKind = kind.replace(/[^a-z0-9_-]/gi, "_");
   return path.join(dir, `${safeKind}.json`);
 }
 
-export async function readArtifactSchema(cwd: string = process.cwd()): Promise<ArtifactSchemaConfig> {
+export async function readCollectionSchema(cwd: string = process.cwd()): Promise<CollectionSchemaConfig> {
   const p = await requireWorkspace(cwd);
   try {
-    const raw = await fs.readFile(p.artifactSchemaPath, "utf-8");
-    return JSON.parse(raw) as ArtifactSchemaConfig;
+    const raw = await fs.readFile(p.collectionSchemaPath, "utf-8");
+    return JSON.parse(raw) as CollectionSchemaConfig;
   } catch {
-    const { DEFAULT_ARTIFACT_SCHEMA } = await import("./default-artifact-schema.js");
-    await fs.writeFile(p.artifactSchemaPath, JSON.stringify(DEFAULT_ARTIFACT_SCHEMA, null, 2), "utf-8");
-    return DEFAULT_ARTIFACT_SCHEMA;
+    const { DEFAULT_COLLECTION_SCHEMA } = await import("./default-collection-schema.js");
+    await fs.writeFile(p.collectionSchemaPath, JSON.stringify(DEFAULT_COLLECTION_SCHEMA, null, 2), "utf-8");
+    return DEFAULT_COLLECTION_SCHEMA;
   }
 }
 
-export async function writeArtifactSchema(
-  schema: ArtifactSchemaConfig,
+export async function writeCollectionSchema(
+  schema: CollectionSchemaConfig,
   cwd: string = process.cwd()
 ): Promise<void> {
   const p = await requireWorkspace(cwd);
-  await fs.writeFile(p.artifactSchemaPath, JSON.stringify(schema, null, 2), "utf-8");
+  await fs.writeFile(p.collectionSchemaPath, JSON.stringify(schema, null, 2), "utf-8");
 }
 
-export async function listArtifactKindsForRun(runId: string, cwd: string = process.cwd()): Promise<string[]> {
+export async function listCollectionKindsForRun(runId: string, cwd: string = process.cwd()): Promise<string[]> {
   await requireWorkspace(cwd);
   if (!(await runExists(runId, cwd))) {
     throw new Error(`Run "${runId}" not found.`);
   }
-  const dir = getRunArtifactsDir(runId, cwd);
+  const kinds = new Set<string>();
+  const schema = await readCollectionSchema(cwd);
+  const dir = getRunCollectionsDir(runId, cwd);
   try {
     const entries = await fs.readdir(dir, { withFileTypes: true });
-    return entries
-      .filter((e) => e.isFile() && e.name.endsWith(".json"))
-      .map((e) => e.name.replace(/\.json$/, ""));
+    for (const e of entries) {
+      if (e.isFile() && e.name.endsWith(".json")) {
+        kinds.add(e.name.replace(/\.json$/, ""));
+      }
+    }
   } catch {
-    return [];
+    // dir may not exist
   }
+  for (const kind of Object.keys(schema.kinds)) {
+    if (schema.kinds[kind].global) {
+      const items = await listGlobalEntities(kind, { run_id: runId }, cwd);
+      if (items.length > 0) kinds.add(kind);
+    }
+  }
+  return Array.from(kinds);
 }
 
-export async function readArtifacts(
+export async function readCollections(
   runId: string,
   kind: string,
   cwd: string = process.cwd()
-): Promise<ArtifactStore> {
+): Promise<CollectionStore> {
   await requireWorkspace(cwd);
   if (!(await runExists(runId, cwd))) {
     throw new Error(`Run "${runId}" not found.`);
   }
-  const filePath = getArtifactStorePath(runId, kind, cwd);
+  const schema = await readCollectionSchema(cwd);
+  if (isGlobalKind(schema, kind)) {
+    const items = await listGlobalEntities(kind, { run_id: runId }, cwd);
+    const store = await readGlobalEntityStore(kind, cwd);
+    return {
+      run_id: runId,
+      kind,
+      updated_at: store.updated_at,
+      items,
+    };
+  }
+  const filePath = getCollectionStorePath(runId, kind, cwd);
   try {
     const raw = await fs.readFile(filePath, "utf-8");
-    return JSON.parse(raw) as ArtifactStore;
+    return JSON.parse(raw) as CollectionStore;
   } catch {
     return {
       run_id: runId,
@@ -444,55 +552,62 @@ export async function readArtifacts(
   }
 }
 
-export async function writeArtifacts(
+export async function writeCollections(
   runId: string,
   kind: string,
-  items: ArtifactItem[],
+  items: CollectionItem[],
   cwd: string = process.cwd()
 ): Promise<void> {
   await requireWorkspace(cwd);
   if (!(await runExists(runId, cwd))) {
     throw new Error(`Run "${runId}" not found.`);
   }
-  const schema = await readArtifactSchema(cwd);
-  validateArtifactItems(schema, kind, items);
-  const dir = getRunArtifactsDir(runId, cwd);
+  const collectionSchema = await readCollectionSchema(cwd);
+  if (isGlobalKind(collectionSchema, kind)) {
+    await setGlobalEntitiesForRun(runId, kind, items, cwd);
+    return;
+  }
+  validateCollectionItems(collectionSchema, kind, items);
+  const dir = getRunCollectionsDir(runId, cwd);
   await fs.mkdir(dir, { recursive: true });
-  const store: ArtifactStore = {
+  const store: CollectionStore = {
     run_id: runId,
     kind,
     updated_at: new Date().toISOString(),
     items,
   };
-  const filePath = getArtifactStorePath(runId, kind, cwd);
+  const filePath = getCollectionStorePath(runId, kind, cwd);
   await fs.writeFile(filePath, JSON.stringify(store, null, 2), "utf-8");
 }
 
-export async function appendArtifact(
+export async function appendCollection(
   runId: string,
   kind: string,
   payload: Record<string, unknown>,
   options: { id?: string } = {},
   cwd: string = process.cwd()
-): Promise<ArtifactItem> {
+): Promise<CollectionItem> {
   await requireWorkspace(cwd);
   if (!(await runExists(runId, cwd))) {
     throw new Error(`Run "${runId}" not found.`);
   }
-  const schema = await readArtifactSchema(cwd);
-  validateArtifactItem(schema, kind, payload);
-  const existing = await readArtifacts(runId, kind, cwd);
+  const collectionSchema = await readCollectionSchema(cwd);
+  if (isGlobalKind(collectionSchema, kind)) {
+    return appendToGlobalStore(runId, kind, payload, { id: options.id }, cwd);
+  }
+  validateCollectionItem(collectionSchema, kind, payload);
+  const existing = await readCollections(runId, kind, cwd);
   const now = new Date().toISOString();
-  const item: ArtifactItem = {
+  const item: CollectionItem = {
     ...payload,
-    id: options.id ?? `art_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    id: options.id ?? `col_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     created_at: now,
   };
   existing.items.push(item);
   existing.updated_at = now;
-  const dir = getRunArtifactsDir(runId, cwd);
+  const dir = getRunCollectionsDir(runId, cwd);
   await fs.mkdir(dir, { recursive: true });
-  const filePath = getArtifactStorePath(runId, kind, cwd);
+  const filePath = getCollectionStorePath(runId, kind, cwd);
   await fs.writeFile(filePath, JSON.stringify(existing, null, 2), "utf-8");
   return item;
 }

@@ -21,7 +21,7 @@ cognetivy run start --input sample_input.json
 ```
 ./.cognetivy/
   workflow.json              # pointer to current workflow version
-  artifact-schema.json        # artifact kinds and required fields (modifiable)
+  artifact-schema.json        # entity kinds and schema (agent-defined; empty by default)
   workflow.versions/
     wf_v1.json               # immutable workflow version files
   runs/
@@ -32,9 +32,9 @@ cognetivy run start --input sample_input.json
     <mutation_id>.json       # proposed mutation patches + status
   artifacts/
     <run_id>/
-      sources.json            # structured sources per run (schema-validated)
-      collected.json          # collected data
-      ideas.json              # output ideas / proposals
+      <kind>.json            # per-run artifact data (when kind has global: false)
+  data/
+    <kind>.json              # cross-run entity data (when kind has global: true)
 ```
 
 By default, `cognetivy init` adds a `.gitignore` snippet so `runs/`, `events/`, `mutations/`, and `artifacts/` are ignored; `workflow.versions/` and `artifact-schema.json` are intended to be committed. Use `--no-gitignore` to skip.
@@ -46,7 +46,8 @@ By default, `cognetivy init` adds a `.gitignore` snippet so `runs/`, `events/`, 
 | `cognetivy init` | Create `.cognetivy/` and default workflow. Options: `--no-gitignore`, `--force` |
 | `cognetivy workflow get` | Print current workflow version JSON to stdout |
 | `cognetivy workflow set --file <path>` | Set workflow from JSON file (creates new version, updates pointer) |
-| `cognetivy run start --input <path> [--by <string>]` | Start a run; prints `run_id` |
+| `cognetivy run start --input <path> [--name <string>] [--by <string>]` | Start a run; prints `run_id` |
+| `cognetivy run set-name --run <run_id> --name <string>` | Set human-readable name for an existing run |
 | `cognetivy event append --run <run_id> --file <path> [--by <string>]` | Append one event (JSON) to run's NDJSON log |
 | `cognetivy mutate propose --patch <path> --reason "<text>" [--by <string>]` | Propose a mutation (JSON Patch); prints `mutation_id` |
 | `cognetivy mutate apply <mutation_id> [--by <string>]` | Apply a proposed mutation (new version, update pointer) |
@@ -64,14 +65,14 @@ By default, `cognetivy init` adds a `.gitignore` snippet so `runs/`, `events/`, 
 
 - `workflow_get()` — get current workflow JSON
 - `workflow_set(workflow_json)` — set workflow (new version)
-- `run_start(input_json, by?)` — start run; returns `run_id`
+- `run_start(input_json, name?, by?)` — start run; returns `run_id`
 - `event_append(run_id, event_json, by?)` — append event to run
 - `mutate_propose(patch_json, reason, by?)` — propose mutation; returns `mutation_id`
 - `mutate_apply(mutation_id, by?)` — apply mutation
 - `artifact_schema_get()` — get artifact schema (kinds and required fields)
-- `artifact_schema_set(schema_json)` — set artifact schema (modifiable)
+- `artifact_schema_set(schema_json)` — set artifact schema (agent defines kinds; use `global: true` for cross-run kinds)
 - `artifact_list(run_id)` — list artifact kinds with data for run
-- `artifact_get(run_id, kind)` — get structured artifacts (sources, collected, ideas)
+- `artifact_get(run_id, kind)` — get structured artifacts for a kind
 - `artifact_set(run_id, kind, items)` — replace all items for a kind (schema-validated)
 - `artifact_append(run_id, kind, payload, id?)` — append one item (schema-validated); returns item with `id`, `created_at`
 
@@ -150,7 +151,7 @@ To run the Studio UI in **development mode** (Vite hot reload) against a specifi
 - **workflow.versions/wf_vN.json**: `{ "workflow_id", "version", "nodes", "edges" }` (nodes have `id`, `type`, `contract`, optional `description`)
 - **artifact-schema.json**: `{ "kinds": { "<kind>": { "description", "required": [], "properties": {} } } }` — modifiable; default kinds: `sources`, `collected`, `ideas`
 - **artifacts/<run_id>/<kind>.json**: `{ "run_id", "kind", "updated_at", "items": [ { "id?", "created_at?", ...payload } ] }` — items validated against schema
-- **runs/<run_id>.json**: `{ "run_id", "workflow_id", "workflow_version", "status", "input", "created_at" }`
+- **runs/<run_id>.json**: `{ "run_id", optional "name", "workflow_id", "workflow_version", "status", "input", "created_at" }`
 - **events/<run_id>.ndjson**: one JSON object per line (`ts`, `type`, `by`, `data`)
 - **mutations/<mutation_id>.json**: RFC 6902 JSON Patch + `target`, `reason`, `status`, `applied_to_version` when applied
 

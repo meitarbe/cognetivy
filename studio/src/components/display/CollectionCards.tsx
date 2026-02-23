@@ -1,13 +1,13 @@
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import type { ArtifactItem } from "@/api";
+import type { CollectionItem } from "@/api";
 
-interface ArtifactCardsProps {
+interface CollectionCardsProps {
   kind: string;
-  items: ArtifactItem[];
+  items: CollectionItem[];
 }
 
-function SourceCard({ item }: { item: ArtifactItem }) {
+function SourceCard({ item }: { item: CollectionItem }) {
   const url = (item.url as string) ?? "";
   const title = (item.title as string) ?? url;
   const snippet = (item.snippet as string) ?? "";
@@ -36,7 +36,7 @@ function SourceCard({ item }: { item: ArtifactItem }) {
   );
 }
 
-function CollectedCard({ item }: { item: ArtifactItem }) {
+function CollectedCard({ item }: { item: CollectionItem }) {
   const themes = (item.themes as string[] | undefined) ?? [];
   const signals = (item.signals as Record<string, unknown> | undefined) ?? {};
   const raw = (item.raw as string[] | undefined) ?? [];
@@ -77,7 +77,7 @@ function CollectedCard({ item }: { item: ArtifactItem }) {
   );
 }
 
-function IdeaCard({ item }: { item: ArtifactItem }) {
+function IdeaCard({ item }: { item: CollectionItem }) {
   const name = (item.name as string) ?? "—";
   const whyNow = (item.why_now as string) ?? "";
   const description = (item.description as string) ?? "";
@@ -132,7 +132,7 @@ function IdeaCard({ item }: { item: ArtifactItem }) {
   );
 }
 
-export function ArtifactCards({ kind, items }: ArtifactCardsProps) {
+export function CollectionCards({ kind, items }: CollectionCardsProps) {
   if (items.length === 0) {
     return <p className="text-sm text-muted-foreground">No {kind} yet.</p>;
   }
@@ -154,7 +154,7 @@ export function ArtifactCards({ kind, items }: ArtifactCardsProps) {
   );
 }
 
-function GenericCard({ item }: { item: ArtifactItem }) {
+function GenericCard({ item }: { item: CollectionItem }) {
   const { id, created_at, ...rest } = item;
   const entries = Object.entries(rest).filter(
     ([_, v]) => v !== undefined && v !== null && v !== ""

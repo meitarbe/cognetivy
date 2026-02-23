@@ -1,15 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  ReactFlow,
-  type Node,
-  type Edge,
-  Controls,
-  Background,
-  BackgroundVariant,
-  MarkerType,
-  ReactFlowProvider,
-} from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
+import { Link, useSearchParams } from "react-router-dom";
+import type { Node, Edge } from "@xyflow/react";
 import { api, type WorkflowVersion } from "@/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -22,42 +13,19 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { getWorkflowLayout } from "@/lib/workflowLayout";
-import { WorkflowNode, type WorkflowNodeData } from "@/components/workflow/WorkflowNode";
+import { workflowToNodesEdges } from "@/lib/workflowCanvas";
+import { WorkflowCanvas } from "@/components/workflow/WorkflowCanvas";
+import { type WorkflowNodeData } from "@/components/workflow/WorkflowNode";
 import { diffWorkflowVersions } from "@/lib/workflowDiff";
 
 const POLL_MS = 3000;
-const nodeTypes = { workflow: WorkflowNode };
-
-function workflowToNodesEdges(wf: WorkflowVersion): { nodes: Node[]; edges: Edge[] } {
-  const { positions } = getWorkflowLayout(wf);
-  const nodes: Node[] = wf.nodes.map((n) => {
-    const pos = positions.get(n.id);
-    return {
-      id: n.id,
-      type: "workflow",
-      position: pos ? { x: pos.x, y: pos.y } : { x: 0, y: 0 },
-      data: {
-        label: n.id,
-        nodeId: n.id,
-        type: n.type,
-        input: n.contract?.input ?? [],
-        output: n.contract?.output ?? [],
-        description: n.description,
-      } as WorkflowNodeData,
-    };
-  });
-  const edges: Edge[] = wf.edges.map((e) => ({
-    id: `${e.from}-${e.to}`,
-    source: e.from,
-    target: e.to,
-  }));
-  return { nodes, edges };
-}
 
 function WorkflowPageInner() {
+  const [searchParams] = useSearchParams();
+  const versionFromUrl = searchParams.get("version");
   const [data, setData] = useState<{ pointer: { current_version: string }; workflow: WorkflowVersion } | null>(null);
   const [versions, setVersions] = useState<{ version: string; filename: string }[]>([]);
-  const [selectedVersion, setSelectedVersion] = useState<string | null>(null);
+  const [selectedVersion, setSelectedVersion] = useState<string | null>(versionFromUrl);
   const [prevVersionWf, setPrevVersionWf] = useState<WorkflowVersion | null>(null);
   const [error, setError] = useState<string | null>(null);
   /** Single source of truth: the workflow we're displaying (from API). */
@@ -68,12 +36,18 @@ function WorkflowPageInner() {
       const [workflowRes, versionsList] = await Promise.all([api.getWorkflow(), api.getWorkflowVersions()]);
       setData(workflowRes);
       setVersions(versionsList);
-      if (!selectedVersion) setSelectedVersion(workflowRes.pointer.current_version);
+      if (!selectedVersion) setSelectedVersion(versionFromUrl ?? workflowRes.pointer.current_version);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
   }, [selectedVersion]);
+
+  useEffect(() => {
+    if (versionFromUrl && versions.some((v) => v.version === versionFromUrl)) {
+      setSelectedVersion(versionFromUrl);
+    }
+  }, [versionFromUrl, versions]);
 
   useEffect(() => {
     load();
@@ -132,12 +106,12 @@ function WorkflowPageInner() {
     if (!showChanges || !diffState || !prevVersionWf) return base;
 
     const { diff } = diffState;
-    const baseNodes = base.nodes.map((node) => {
+    const baseNodes: Node[] = base.nodes.map((node) => {
       const d = node.data as WorkflowNodeData;
       const changeStatus = diff.nodesAdded.includes(node.id) ? "added" as const : diff.nodesChanged.includes(node.id) ? "changed" as const : undefined;
       return { ...node, data: { ...d, changeStatus } };
     });
-    let displayNodes = baseNodes;
+    let displayNodes: Node[] = baseNodes;
     if (diff.nodesRemoved.length > 0) {
       const prevPositions = getWorkflowLayout(prevVersionWf).positions;
       const removedNodes: Node[] = diff.nodesRemoved.map((id) => {
@@ -176,7 +150,7 @@ function WorkflowPageInner() {
       }));
     displayEdges = [...displayEdges, ...removedEdges];
 
-    return { nodes: displayNodes, edges: displayEdges };
+    return { nodes: displayNodes as Node[], edges: displayEdges };
   }, [currentWorkflow, showChanges, diffState, prevVersionWf]);
 
   if (error) {
@@ -225,6 +199,14 @@ function WorkflowPageInner() {
             </SelectContent>
           </Select>
         )}
+        {selectedVersion && (
+          <Link
+            to={`/runs?version=${encodeURIComponent(selectedVersion)}`}
+            className="text-xs text-primary hover:underline font-medium"
+          >
+            Runs ({selectedVersion})
+          </Link>
+        )}
         {diffState && (
           <div className="flex items-center gap-2 ml-auto">
             <span className="text-xs text-muted-foreground">Show changes</span>
@@ -233,33 +215,26 @@ function WorkflowPageInner() {
         )}
       </div>
       <div className="flex-1 min-h-0">
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          onNodesChange={() => {}}
-          onEdgesChange={() => {}}
-          nodeTypes={nodeTypes}
-          defaultEdgeOptions={{
-            type: "smoothstep",
-            markerEnd: { type: MarkerType.ArrowClosed },
-          }}
-          nodeOrigin={[0.5, 0.5]}
-          fitView
-          fitViewOptions={{ padding: 0.2, duration: 200 }}
-          className="bg-muted/30"
-        >
-          <Background variant={BackgroundVariant.Dots} />
-          <Controls />
-        </ReactFlow>
+        {currentWorkflow ? (
+          <WorkflowCanvas
+            workflow={currentWorkflow}
+            nodesOverride={nodes}
+            edgesOverride={edges}
+            readOnly
+            showControls
+            showBackground
+            className="bg-muted/30"
+          />
+        ) : (
+          <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+            No workflow selected
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 export function WorkflowPage() {
-  return (
-    <ReactFlowProvider>
-      <WorkflowPageInner />
-    </ReactFlowProvider>
-  );
+  return <WorkflowPageInner />;
 }
