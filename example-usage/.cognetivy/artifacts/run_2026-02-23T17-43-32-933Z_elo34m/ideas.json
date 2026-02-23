@@ -1,0 +1,37 @@
+{
+  "run_id": "run_2026-02-23T17-43-32-933Z_elo34m",
+  "kind": "ideas",
+  "updated_at": "2026-02-23T17:46:21.041Z",
+  "items": [
+    {
+      "name": "1033-native BaaS compliance layer for regional banks",
+      "why_now": "CFPB 1033 April 2026+ rollout; BaaS partner oversight tightening via consent orders; regional banks below $250B need compliant data APIs before 2027–2030 deadlines. Plaid/Yodlee aggregating; gap is bank-owned or white-label 1033 readiness.",
+      "description": "B2B SaaS that bundles 1033 consumer consent UX + secure API aggregation for regional banks and credit unions. Sell as \"1033 readiness\" to institutions approaching 2027–2030 compliance. Target: US banks $10B–$250B assets.",
+      "signals": [
+        "CFPB 1033 April 2026",
+        "BaaS oversight consent orders",
+        "Plaid/Yodlee 1033 positioning"
+      ]
+    },
+    {
+      "name": "EU AI Act compliance platform for fintech",
+      "why_now": "EU AI Act obligations begin 2025 (general-purpose) and 2026 (high-risk); 70% of fintech report 5%+ revenue from AI; compliance shifting from cost center to growth function. No single vendor owns AI compliance for mid-market fintech.",
+      "description": "Vertical SaaS for EU-touching fintech: risk assessments, documentation, monitoring for AI systems. Target mid-market fintech (€50M–€500M AUM) lacking in-house AI governance. Price €50K–150K/year.",
+      "signals": [
+        "EU AI Act 2025/2026",
+        "70% AI revenue impact",
+        "Compliance as differentiator"
+      ]
+    },
+    {
+      "name": "AI vendor evaluation platform for enterprise buyers",
+      "why_now": "AI chatbots are #1 vendor shortlist source (17.1%); 88% power users pay premium for AI; IT participation in purchases at 50%. Buying committees shrinking to 3–4; no structured way to evaluate AI vendors against security/compliance.",
+      "description": "B2B platform that helps procurement/IT evaluate AI software vendors: security, compliance, ROI evidence. Integrates with AI search and review sites. Target: enterprises with 10–50 software purchases/year.",
+      "signals": [
+        "AI chatbots 17.1% shortlist",
+        "88% AI premium",
+        "50% IT in purchases"
+      ]
+    }
+  ]
+}

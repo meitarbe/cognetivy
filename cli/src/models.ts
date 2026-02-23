@@ -17,6 +17,8 @@ export interface WorkflowNode {
   id: string;
   type: "TASK";
   contract: NodeContract;
+  /** Human-readable description of what this step does. */
+  description?: string;
 }
 
 export interface WorkflowEdge {

@@ -1,0 +1,43 @@
+{
+  "run_id": "run_2026-02-23T17-50-07-958Z_acodrl",
+  "kind": "sources",
+  "updated_at": "2026-02-23T17:50:35.999Z",
+  "items": [
+    {
+      "url": "https://www.mews.com/en/press/ai-tipping-point-mews",
+      "title": "Mews AI Tipping Point 2026",
+      "snippet": "2026 make-or-break; 12-18 month window; structured content for AI discovery",
+      "type": "article"
+    },
+    {
+      "url": "https://stateofdistribution.com/reports/The-State-of-Distribution-Report-2025.pdf",
+      "title": "State of Distribution 2025",
+      "snippet": "4 in 5 hotels spend 2 days/week stitching reports; revenue platforms focus only on RM",
+      "type": "report"
+    },
+    {
+      "url": "https://skift.com/insights/state-of-hospitality-tech-in-2025",
+      "title": "Skift State of Hospitality Tech 2025",
+      "snippet": "65% reduction in guest service calls with gen AI",
+      "type": "article"
+    },
+    {
+      "url": "https://oxmaint.com/industries/hospitality/ai-housekeeping-optimization-workforce-scheduling",
+      "title": "Oxmaint AI Housekeeping",
+      "snippet": "72% use spreadsheets; 18-25% labor reduction; $85-175K/300-room savings",
+      "type": "vendor"
+    },
+    {
+      "url": "https://stayfi.com/vrm-insider/2025/11/04/ota-fees/",
+      "title": "OTA Commission Rates 2025",
+      "snippet": "15-30%; direct = 60% more revenue per stay",
+      "type": "article"
+    },
+    {
+      "url": "https://www.hospitalitynet.org/news/4130143.html",
+      "title": "Hotel Labor Costs 2025",
+      "snippet": "Labor cost per room up 2-11.2%; staffing below 2019",
+      "type": "article"
+    }
+  ]
+}

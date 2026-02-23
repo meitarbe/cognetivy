@@ -10,9 +10,16 @@
   "scripts": {
     "build": "tsc",
     "prepare": "npm run build",
-    "test": "npm run build && node --test test/*.test.mjs"
+    "test": "npm run build && node --test test/*.test.mjs",
+    "build:studio": "cd ../studio && npm run build && node -e \"require('fs').cpSync(require('path').join(process.cwd(),'dist'), require('path').join(process.cwd(),'../cli/dist/studio'), {recursive:true})\"",
+    "build:full": "npm run build && npm run build:studio"
   },
-  "keywords": ["cli", "workflow", "reasoning", "mcp"],
+  "keywords": [
+    "cli",
+    "workflow",
+    "reasoning",
+    "mcp"
+  ],
   "license": "MIT",
   "engines": {
     "node": ">=18"
@@ -20,11 +27,14 @@
   "dependencies": {
     "commander": "^12.1.0",
     "env-paths": "^3.0.0",
-    "fast-json-patch": "^3.1.1"
+    "fast-json-patch": "^3.1.1",
+    "open": "^11.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
     "typescript": "^5.7.0"
   },
-  "files": ["dist"]
+  "files": [
+    "dist"
+  ]
 }

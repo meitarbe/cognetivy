@@ -5,6 +5,7 @@ Reasoning orchestration state: workflow structure, run logs, versioned mutations
 - **Global CLI**: install once, use in any folder. All project state lives in a folder-local workspace (`.cognetivy/`).
 - **Config**: user-level defaults in `~/.config/cognetivy/config.json` (via [env-paths](https://www.npmjs.com/package/env-paths)); local overrides in `.cognetivy/config.json`.
 - **MCP server**: same operations exposed as tools for Cursor/agents via `cognetivy mcp [--workspace <path>]`.
+- **Studio**: read-only browser UI for workflow, runs, events, artifacts, and mutations via `cognetivy studio [--workspace <path>] [--port <port>]`.
 
 ## Quickstart
 
@@ -56,6 +57,8 @@ By default, `cognetivy init` adds a `.gitignore` snippet so `runs/`, `events/`, 
 | `cognetivy artifact set --run <run_id> --kind <kind> --file <path>` | Replace artifacts of a kind (JSON array) |
 | `cognetivy artifact append --run <run_id> --kind <kind> --file <path> [--id <id>]` | Append one artifact item (validated) |
 | `cognetivy mcp [--workspace <path>]` | Start MCP server over stdio for Cursor/agents |
+| `cognetivy studio [--workspace <path>] [--port <port>]` | Start read-only Studio and open in browser |
+| `cognetivy studio --api-only [--workspace <path>] [--port <port>]` | Serve only the Studio API (for dev with Vite; see Studio dev mode below) |
 
 ## MCP tools (1:1 with CLI)
 
@@ -118,10 +121,33 @@ So Cursor (or another MCP client) can call cognetivy tools:
 
 In this repo, the root `.cursor/mcp.json` is set to `--workspace example-usage` so the agent uses the `example-usage` workspace when you have the cognetivy repo open.
 
+## Studio (read-only visualization)
+
+Run `cognetivy studio [--workspace <path>] [--port <port>]` to start a local HTTP server and open a browser to a read-only UI that shows the current workflow (DAG), runs, events, artifacts, mutations, and artifact schema. Default port is 3742. The server binds to 127.0.0.1. No write operations; the UI polls the API every few seconds for updates.
+
+From the repo, build the CLI and Studio together so the Studio app is embedded: `cd cli && npm run build:full`. Then run `cognetivy studio --workspace example-usage` (or `node cli/dist/cli.js studio --workspace example-usage`).
+
+### Studio dev mode (hot reload with a selected workspace)
+
+To run the Studio UI in **development mode** (Vite hot reload) against a specific workspace:
+
+1. **Terminal 1 — API only** (from repo root or any directory):
+   ```bash
+   cognetivy studio --api-only --workspace <path-to-workspace> [--port 3742]
+   ```
+   Example: `cognetivy studio --api-only --workspace example-usage`  
+   Leave this running. Default port is 3742; if you use a different `--port`, update the proxy in `studio/vite.config.ts` to match.
+
+2. **Terminal 2 — Vite dev server**:
+   ```bash
+   cd studio && npm run dev
+   ```
+   Then open **http://localhost:5173** in your browser. The app proxies `/api` to the API server, so the UI uses the workspace you started in terminal 1.
+
 ## Data formats
 
 - **workflow.json**: `{ "workflow_id", "current_version" }`
-- **workflow.versions/wf_vN.json**: `{ "workflow_id", "version", "nodes", "edges" }` (nodes have `id`, `type`, `contract`)
+- **workflow.versions/wf_vN.json**: `{ "workflow_id", "version", "nodes", "edges" }` (nodes have `id`, `type`, `contract`, optional `description`)
 - **artifact-schema.json**: `{ "kinds": { "<kind>": { "description", "required": [], "properties": {} } } }` — modifiable; default kinds: `sources`, `collected`, `ideas`
 - **artifacts/<run_id>/<kind>.json**: `{ "run_id", "kind", "updated_at", "items": [ { "id?", "created_at?", ...payload } ] }` — items validated against schema
 - **runs/<run_id>.json**: `{ "run_id", "workflow_id", "workflow_version", "status", "input", "created_at" }`
@@ -137,7 +163,9 @@ npm run build
 npm test
 ```
 
-Tests use Node's built-in test runner and cover: init structure, run start + event append, and mutate apply (v2 + pointer update).
+To build the CLI with the Studio app embedded (so `cognetivy studio` serves the UI): `npm run build:full` from the `cli` directory (builds the sibling `studio/` app and copies its output into `cli/dist/studio`).
+
+Tests use Node's built-in test runner and cover: init structure, run start + event append, artifact schema/storage, and mutate apply (v2 + pointer update).
 
 ## License
 

@@ -30,6 +30,8 @@ import { validateWorkflow } from "./validate.js";
 import { applyMutationToWorkspace } from "./mutation.js";
 import type { RunRecord, EventPayload, MutationRecord, MutationTarget, JsonPatchOperation, ArtifactSchemaConfig, ArtifactItem } from "./models.js";
 import { runMcpServer } from "./mcp.js";
+import { startStudioServer, STUDIO_DEFAULT_PORT } from "./studio-server.js";
+import open from "open";
 
 const DEFAULT_BY = "cli";
 
@@ -335,6 +337,29 @@ program
   .action(async (opts: { workspace?: string }) => {
     const workspacePath = opts.workspace ? path.resolve(process.cwd(), opts.workspace) : process.cwd();
     await runMcpServer(workspacePath);
+  });
+
+program
+  .command("studio")
+  .description("Open read-only Studio (workflow, runs, events, artifacts) in browser")
+  .option("--workspace <path>", "Workspace directory (default: cwd)")
+  .option("--port <number>", "Port for Studio server", (v) => parseInt(v, 10), STUDIO_DEFAULT_PORT)
+  .option("--api-only", "Only serve API (for use with Vite dev server; see studio/README)")
+  .action(async (opts: { workspace?: string; port?: number; apiOnly?: boolean }) => {
+    const cwd = process.cwd();
+    const workspacePath = opts.workspace ? path.resolve(cwd, opts.workspace) : cwd;
+    await requireWorkspace(workspacePath);
+    const port = opts.port ?? STUDIO_DEFAULT_PORT;
+    const { server } = await startStudioServer(workspacePath, port, { apiOnly: opts.apiOnly });
+    if (!opts.apiOnly) {
+      const url = `http://127.0.0.1:${port}`;
+      await open(url);
+      console.log(`Studio at ${url} (workspace: ${workspacePath}). Press Ctrl+C to stop.`);
+    } else {
+      console.log(`Studio API at http://127.0.0.1:${port} (workspace: ${workspacePath}).`);
+      console.log(`Run the app in dev: cd studio && npm run dev, then open http://localhost:5173`);
+      console.log("Press Ctrl+C to stop.");
+    }
   });
 
 program.parse();

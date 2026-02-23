@@ -1,0 +1,25 @@
+{
+  "run_id": "run_2026-02-23T17-43-32-933Z_elo34m",
+  "kind": "sources",
+  "updated_at": "2026-02-23T17:46:12.681Z",
+  "items": [
+    {
+      "url": "https://storm2.com/resources/industry-insights/navigating-regulatory-complexity-a-fintech-leaders-compliance-playbook-2025/",
+      "title": "FinTech Compliance Playbook 2026",
+      "snippet": "CFPB 1033, EU AI Act 2025/2026, BaaS oversight, beneficial ownership 2026",
+      "type": "article"
+    },
+    {
+      "url": "https://www.cbinsights.com/research/report/fintech-trends-q3-2025/",
+      "title": "State of Fintech Q3 2025 - CB Insights",
+      "snippet": "AI captured ~25% fintech funding; Ramp, AppZen in top 10 deals",
+      "type": "article"
+    },
+    {
+      "url": "https://company.g2.com/news/buyer-behavior-in-2025",
+      "title": "G2 Buyer Behavior 2025",
+      "snippet": "57% anticipate increased software spend; 88% pay premium for AI; AI chatbots #1 vendor shortlist source",
+      "type": "article"
+    }
+  ]
+}

@@ -19,11 +19,13 @@ export function createDefaultWorkflowVersion(): WorkflowVersion {
         id: "retrieve",
         type: "TASK",
         contract: { input: ["topic"], output: ["sources"] },
+        description: "Retrieves relevant sources for the given topic.",
       },
       {
         id: "synthesize",
         type: "TASK",
         contract: { input: ["sources"], output: ["summary"] },
+        description: "Synthesizes the retrieved sources into a summary.",
       },
     ],
     edges: [{ from: "retrieve", to: "synthesize" }],

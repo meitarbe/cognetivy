@@ -1,0 +1,33 @@
+{
+  "run_id": "run_2026-02-23T17-47-37-753Z_8x89ku",
+  "kind": "collected",
+  "updated_at": "2026-02-23T17:47:56.428Z",
+  "items": [
+    {
+      "themes": [
+        "sec_climate_disclosure_uncertainty",
+        "fda_ai_medical_devices_2025",
+        "ai_carbon_accounting",
+        "enterprise_sustainability_reporting_gap",
+        "voluntary_carbon_market"
+      ],
+      "signals": {
+        "reg": {
+          "sec_climate": "2025 retreat",
+          "fda_ai": "Jan 2025 draft, April 7 comment",
+          "vcm": "Limited federal"
+        },
+        "tech": {
+          "climate_trace": "744M assets",
+          "carbonai": "10K projects",
+          "carbon_analytics": "80% manual reduction"
+        },
+        "behavior": {
+          "70_pct": "Maintain/increase spend",
+          "7_pct": "Report all scopes",
+          "scope3": "69.5% S&P 500"
+        }
+      }
+    }
+  ]
+}
