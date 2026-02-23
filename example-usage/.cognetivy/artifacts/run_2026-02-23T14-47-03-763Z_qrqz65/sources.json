@@ -1,0 +1,31 @@
+{
+  "run_id": "run_2026-02-23T14-47-03-763Z_qrqz65",
+  "kind": "sources",
+  "updated_at": "2026-02-23T14:47:37.722Z",
+  "items": [
+    {
+      "url": "https://www.gov.uk/government/news/regulatory-innovation-office",
+      "title": "UK Regulatory Innovation Office fintech",
+      "snippet": "Streamline fintech regulation; provisional licenses regime; AI tools for compliance.",
+      "type": "regulation",
+      "id": "art_1771858051491_o7fmwi",
+      "created_at": "2026-02-23T14:47:31.491Z"
+    },
+    {
+      "url": "https://www.madrona.com/ai-agent-infrastructure-three-layers",
+      "title": "AI Agent Infrastructure Stack (Madrona)",
+      "snippet": "Tools, data, orchestration; agent economy; Cursor, Bolt, Lovable.",
+      "type": "article",
+      "id": "art_1771858055784_o8ppmb",
+      "created_at": "2026-02-23T14:47:35.784Z"
+    },
+    {
+      "url": "https://explodingtopics.com/blog/gen-z-spending",
+      "title": "Gen Z Spending Habits 2025",
+      "snippet": "13% spending cut; social commerce 53%; 2hr delivery 65%; Gen AI for shopping 24%.",
+      "type": "article",
+      "id": "art_1771858057722_hkj230",
+      "created_at": "2026-02-23T14:47:37.722Z"
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "run_id": "run_2026-02-23T14-47-03-763Z_qrqz65",
+  "kind": "collected",
+  "updated_at": "2026-02-23T14:48:23.728Z",
+  "items": [
+    {
+      "themes": [
+        "regulation_policy",
+        "technology_inflection",
+        "consumer_behavior"
+      ],
+      "signals": {
+        "signals_reg": {
+          "EU_Regime_0": "Europe-wide incorporation",
+          "UK_RegInnovation": "Fintech provisional licenses"
+        },
+        "signals_tech": {
+          "agent_economy": "Cursor, Bolt, Lovable",
+          "edge_inference": "OpenInfer"
+        },
+        "signals_behavior": {
+          "social_commerce": "53%",
+          "quick_commerce": "65% 2hr",
+          "Gen_AI_shopping": "24%"
+        }
+      }
+    }
+  ]
+}

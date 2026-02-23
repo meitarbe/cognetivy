@@ -1,0 +1,161 @@
+{
+  "workflow_id": "wf_default",
+  "version": "v4",
+  "nodes": [
+    {
+      "id": "theme_scan",
+      "type": "TASK",
+      "contract": {
+        "input": [
+          "goal",
+          "scope"
+        ],
+        "output": [
+          "themes"
+        ]
+      }
+    },
+    {
+      "id": "signal_search_reg",
+      "type": "TASK",
+      "contract": {
+        "input": [
+          "themes"
+        ],
+        "output": [
+          "signals_reg"
+        ]
+      }
+    },
+    {
+      "id": "signal_search_tech",
+      "type": "TASK",
+      "contract": {
+        "input": [
+          "themes"
+        ],
+        "output": [
+          "signals_tech"
+        ]
+      }
+    },
+    {
+      "id": "signal_search_behavior",
+      "type": "TASK",
+      "contract": {
+        "input": [
+          "themes"
+        ],
+        "output": [
+          "signals_behavior"
+        ]
+      }
+    },
+    {
+      "id": "merge_signals",
+      "type": "TASK",
+      "contract": {
+        "input": [
+          "signals_reg",
+          "signals_tech",
+          "signals_behavior"
+        ],
+        "output": [
+          "signals"
+        ]
+      }
+    },
+    {
+      "id": "synthesize",
+      "type": "TASK",
+      "contract": {
+        "input": [
+          "signals"
+        ],
+        "output": [
+          "ideas"
+        ]
+      }
+    },
+    {
+      "id": "evaluate",
+      "type": "TASK",
+      "contract": {
+        "input": [
+          "ideas"
+        ],
+        "output": [
+          "scored_ideas"
+        ]
+      }
+    },
+    {
+      "id": "reflect",
+      "type": "TASK",
+      "contract": {
+        "input": [
+          "scored_ideas",
+          "run_artifacts"
+        ],
+        "output": [
+          "learnings",
+          "workflow_suggestions"
+        ]
+      }
+    },
+    {
+      "id": "why_now_validate",
+      "type": "TASK",
+      "contract": {
+        "input": [
+          "ideas"
+        ],
+        "output": [
+          "validated_ideas"
+        ]
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "theme_scan",
+      "to": "signal_search_reg"
+    },
+    {
+      "from": "theme_scan",
+      "to": "signal_search_tech"
+    },
+    {
+      "from": "theme_scan",
+      "to": "signal_search_behavior"
+    },
+    {
+      "from": "signal_search_reg",
+      "to": "merge_signals"
+    },
+    {
+      "from": "signal_search_tech",
+      "to": "merge_signals"
+    },
+    {
+      "from": "signal_search_behavior",
+      "to": "merge_signals"
+    },
+    {
+      "from": "merge_signals",
+      "to": "synthesize"
+    },
+    {
+      "from": "synthesize",
+      "to": "why_now_validate"
+    },
+    {
+      "from": "why_now_validate",
+      "to": "evaluate"
+    },
+    {
+      "from": "evaluate",
+      "to": "reflect"
+    }
+  ]
+}
