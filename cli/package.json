@@ -1,0 +1,30 @@
+{
+  "name": "cognetivy",
+  "version": "0.1.0",
+  "description": "Reasoning orchestration state: workflow structure, run logs, and versioned mutations",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "cognetivy": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "prepare": "npm run build",
+    "test": "npm run build && node --test test/*.test.mjs"
+  },
+  "keywords": ["cli", "workflow", "reasoning", "mcp"],
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "env-paths": "^3.0.0",
+    "fast-json-patch": "^3.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  },
+  "files": ["dist"]
+}
