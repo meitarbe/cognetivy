@@ -12,7 +12,8 @@
         "output": [
           "sources"
         ]
-      }
+      },
+      "description": "Retrieves relevant sources for the given topic."
     },
     {
       "id": "synthesize",
@@ -24,7 +25,8 @@
         "output": [
           "summary"
         ]
-      }
+      },
+      "description": "Synthesizes the retrieved sources into a summary."
     }
   ],
   "edges": [

@@ -1,0 +1,28 @@
+{
+  "kinds": {
+    "sources": {
+      "description": "Structured research source with reliability and importance qualification. Each source must explain why it is reliable and why it matters for the startup thesis.",
+      "required": ["url", "title", "reliability", "reliability_reason", "importance", "importance_reason", "category"],
+      "properties": {
+        "url": { "type": "string", "description": "Source URL or citation" },
+        "title": { "type": "string", "description": "Source title or headline" },
+        "reliability": { "type": "string", "description": "1-5 scale or tier: primary/academic, industry-report, news, blog, social" },
+        "reliability_reason": { "type": "string", "description": "Why this source is trustworthy (methodology, author, recency)" },
+        "importance": { "type": "string", "description": "high/medium/low for why-now thesis" },
+        "importance_reason": { "type": "string", "description": "Why this source matters for the startup timing thesis" },
+        "category": { "type": "string", "description": "tech|market|regulatory|competitor|funding|behavior" },
+        "excerpt": { "type": "string", "description": "Key quote or summary" }
+      }
+    },
+    "ideas": {
+      "description": "Startup idea with a strong why-now thesis backed by qualified sources.",
+      "required": ["idea_summary", "why_now_thesis", "supporting_sources", "confidence"],
+      "properties": {
+        "idea_summary": { "type": "string", "description": "One-paragraph idea description" },
+        "why_now_thesis": { "type": "string", "description": "Compelling argument for why this is the right moment" },
+        "supporting_sources": { "type": "array", "description": "IDs or refs to sources that back the thesis" },
+        "confidence": { "type": "string", "description": "high/medium/low" }
+      }
+    }
+  }
+}

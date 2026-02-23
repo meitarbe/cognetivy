@@ -1,0 +1,20 @@
+[
+  {
+    "idea_summary": "AI-native IDE for vertical domains (e.g., legal, healthcare, finance) that combines code generation with domain-specific compliance and documentation. Unlike general-purpose Cursor/Copilot, this would ship with pre-built templates, audit trails, and EU AI Act / HIPAA-ready workflows out of the box.",
+    "why_now_thesis": "Three signals converge: (1) LLM code quality crossed the 95% HumanEval threshold (arxiv 2406.00515), making vertical specialization viable; (2) EU AI Act and GPAI Code of Practice (EC 2025) create mandatory compliance demand—enterprises need tools that bake this in; (3) 97% developer adoption (GitHub) but org support varies (US 88%, Germany 59%)—compliance-ready tools unlock the hesitant segment. High reliability: academic + regulatory primary sources.",
+    "supporting_sources": ["arxiv-2406.00515", "EU-AI-Act", "GPAI-Code", "GitHub-survey", "Neon-2025"],
+    "confidence": "high"
+  },
+  {
+    "idea_summary": "AI-powered automated program repair as a standalone product—focusing on bug detection, semantic errors, and security vulnerabilities with context-aware fixes. Sits between static analysis (Snyk, Sonar) and full code generation.",
+    "why_now_thesis": "Research frontier shifted from generation to repair (arxiv 2411.07586, Nov 2024). CodeNav and similar work show agents can now navigate real codebases (arxiv 2406.12276). Market: $8B→$127B by 2032 (MarketsandMarkets); Cursor and Codeium validated capital availability. Gap: incumbents (Snyk, Sonar) are bolt-ons; no native AI repair platform. High reliability: multiple academic + industry reports.",
+    "supporting_sources": ["arxiv-2411.07586", "arxiv-2406.12276", "MarketsandMarkets", "Cursor-TechCrunch", "Codeium-TechCrunch"],
+    "confidence": "high"
+  },
+  {
+    "idea_summary": "B2B AI coding tool adoption platform—helping enterprises roll out Copilot/Cursor/Codeium with governance, usage analytics, and ROI measurement. Targets the 59% (Germany) to 88% (US) org support gap.",
+    "why_now_thesis": "81% of developers install Copilot day-one, 67% use 5+ days/week (Opsera/Accenture)—individual adoption is done. But org support varies by region; 80% of licenses in use (Opsera) suggests under-provisioning. Enterprises need: governance, compliance mapping (EU AI Act), and proof of ROI (GitHub: 9.6→2.4 day time-to-PR). No dedicated adoption/ROI platform exists. Medium reliability: survey data.",
+    "supporting_sources": ["GitHub-survey", "Opsera-Copilot", "Neon-2025", "EU-AI-Act"],
+    "confidence": "medium"
+  }
+]
