@@ -37,7 +37,10 @@ export function AppLayout() {
     <div className="flex h-screen bg-background">
       <aside className="w-48 border-r border-border flex flex-col bg-sidebar">
         <div className="p-2.5 border-b border-border">
-          <h1 className="font-semibold text-sm">Cognetivy Studio</h1>
+          <div className="flex items-center gap-2">
+            <img src="/icon.jpg" alt="" className="h-8 w-8 rounded object-contain" aria-hidden />
+            <h1 className="font-semibold text-sm">Cognetivy Studio</h1>
+          </div>
           <p className="text-[10px] text-muted-foreground mt-0.5">Read-only</p>
           <div className="flex items-center gap-1.5 mt-2">
             <span className="text-xs text-muted-foreground">Dark</span>
