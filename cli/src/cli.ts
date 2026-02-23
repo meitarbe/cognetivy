@@ -18,11 +18,17 @@ import {
   readMutationFile,
   updateMutationFile,
   writeMutationFile,
+  readArtifactSchema,
+  writeArtifactSchema,
+  listArtifactKindsForRun,
+  readArtifacts,
+  writeArtifacts,
+  appendArtifact,
 } from "./workspace.js";
 import { getMergedConfig } from "./config.js";
 import { validateWorkflow } from "./validate.js";
 import { applyMutationToWorkspace } from "./mutation.js";
-import type { RunRecord, EventPayload, MutationRecord, MutationTarget, JsonPatchOperation } from "./models.js";
+import type { RunRecord, EventPayload, MutationRecord, MutationTarget, JsonPatchOperation, ArtifactSchemaConfig, ArtifactItem } from "./models.js";
 import { runMcpServer } from "./mcp.js";
 
 const DEFAULT_BY = "cli";
@@ -172,6 +178,88 @@ eventCmd
     };
     await appendEventLine(opts.run, event, cwd);
     console.log("Appended event.");
+  });
+
+const artifactSchemaCmd = program
+  .command("artifact-schema")
+  .description("Artifact schema (defines kinds and required fields for structured artifacts)");
+artifactSchemaCmd
+  .command("get")
+  .description("Print current artifact schema JSON to stdout")
+  .action(async () => {
+    const cwd = process.cwd();
+    const schema = await readArtifactSchema(cwd);
+    console.log(JSON.stringify(schema, null, 2));
+  });
+artifactSchemaCmd
+  .command("set")
+  .description("Set artifact schema from JSON file")
+  .requiredOption("--file <path>", "Path to artifact-schema JSON file")
+  .action(async (opts: { file: string }) => {
+    const cwd = process.cwd();
+    await requireWorkspace(cwd);
+    const raw = await fs.readFile(path.resolve(cwd, opts.file), "utf-8");
+    const schema = JSON.parse(raw) as ArtifactSchemaConfig;
+    if (!schema.kinds || typeof schema.kinds !== "object") {
+      console.error("Error: schema must have a 'kinds' object.");
+      process.exit(1);
+    }
+    await writeArtifactSchema(schema, cwd);
+    console.log("Artifact schema updated.");
+  });
+
+const artifactCmd = program
+  .command("artifact")
+  .description("Structured artifacts per run (sources, collected, ideas — schema-backed)");
+artifactCmd
+  .command("list")
+  .description("List artifact kinds that have data for a run")
+  .requiredOption("--run <run_id>", "Run ID")
+  .action(async (opts: { run: string }) => {
+    const cwd = process.cwd();
+    const kinds = await listArtifactKindsForRun(opts.run, cwd);
+    console.log(JSON.stringify(kinds, null, 2));
+  });
+artifactCmd
+  .command("get")
+  .description("Get all artifacts of a kind for a run")
+  .requiredOption("--run <run_id>", "Run ID")
+  .requiredOption("--kind <kind>", "Artifact kind (e.g. sources, collected, ideas)")
+  .action(async (opts: { run: string; kind: string }) => {
+    const cwd = process.cwd();
+    const store = await readArtifacts(opts.run, opts.kind, cwd);
+    console.log(JSON.stringify(store, null, 2));
+  });
+artifactCmd
+  .command("set")
+  .description("Replace all artifacts of a kind for a run (from JSON file)")
+  .requiredOption("--run <run_id>", "Run ID")
+  .requiredOption("--kind <kind>", "Artifact kind")
+  .requiredOption("--file <path>", "Path to JSON file (array of artifact items)")
+  .action(async (opts: { run: string; kind: string; file: string }) => {
+    const cwd = process.cwd();
+    const raw = await fs.readFile(path.resolve(cwd, opts.file), "utf-8");
+    const items = JSON.parse(raw) as ArtifactItem[];
+    if (!Array.isArray(items)) {
+      console.error("Error: file must contain a JSON array of artifact items.");
+      process.exit(1);
+    }
+    await writeArtifacts(opts.run, opts.kind, items, cwd);
+    console.log(`Set ${items.length} artifact(s) for kind "${opts.kind}".`);
+  });
+artifactCmd
+  .command("append")
+  .description("Append one artifact item (from JSON file) to a run's kind")
+  .requiredOption("--run <run_id>", "Run ID")
+  .requiredOption("--kind <kind>", "Artifact kind")
+  .requiredOption("--file <path>", "Path to JSON file (single artifact payload)")
+  .option("--id <string>", "Optional artifact id")
+  .action(async (opts: { run: string; kind: string; file: string; id?: string }) => {
+    const cwd = process.cwd();
+    const raw = await fs.readFile(path.resolve(cwd, opts.file), "utf-8");
+    const payload = JSON.parse(raw) as Record<string, unknown>;
+    const item = await appendArtifact(opts.run, opts.kind, payload, { id: opts.id }, cwd);
+    console.log(JSON.stringify(item, null, 2));
   });
 
 const mutateCmd = program

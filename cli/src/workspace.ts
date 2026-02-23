@@ -6,12 +6,16 @@ import type {
   RunRecord,
   EventPayload,
   MutationRecord,
+  ArtifactSchemaConfig,
+  ArtifactItem,
+  ArtifactStore,
 } from "./models.js";
 import {
   createDefaultPointer,
   createDefaultWorkflowVersion,
   DEFAULT_WORKFLOW_ID,
 } from "./default-workflow.js";
+import { validateArtifactItem, validateArtifactItems } from "./validate-artifact.js";
 
 export const WORKSPACE_DIR = ".cognetivy";
 export const WORKFLOW_JSON = "workflow.json";
@@ -19,12 +23,15 @@ export const WORKFLOW_VERSIONS_DIR = "workflow.versions";
 export const RUNS_DIR = "runs";
 export const EVENTS_DIR = "events";
 export const MUTATIONS_DIR = "mutations";
+export const ARTIFACTS_DIR = "artifacts";
+export const ARTIFACT_SCHEMA_JSON = "artifact-schema.json";
 
 const GITIGNORE_SNIPPET = `
 # cognetivy — ignore runtime data; commit workflow.versions/
 .cognetivy/runs/
 .cognetivy/events/
 .cognetivy/mutations/
+.cognetivy/artifacts/
 `.trim();
 
 export interface WorkspacePaths {
@@ -34,6 +41,8 @@ export interface WorkspacePaths {
   runsDir: string;
   eventsDir: string;
   mutationsDir: string;
+  artifactsDir: string;
+  artifactSchemaPath: string;
 }
 
 /**
@@ -56,6 +65,8 @@ export function getWorkspacePaths(cwd: string = process.cwd()): WorkspacePaths {
     runsDir: path.join(root, RUNS_DIR),
     eventsDir: path.join(root, EVENTS_DIR),
     mutationsDir: path.join(root, MUTATIONS_DIR),
+    artifactsDir: path.join(root, ARTIFACTS_DIR),
+    artifactSchemaPath: path.join(root, ARTIFACT_SCHEMA_JSON),
   };
 }
 
@@ -86,6 +97,13 @@ export async function ensureWorkspace(
   await fs.mkdir(p.runsDir, { recursive: true });
   await fs.mkdir(p.eventsDir, { recursive: true });
   await fs.mkdir(p.mutationsDir, { recursive: true });
+  await fs.mkdir(p.artifactsDir, { recursive: true });
+
+  const schemaPath = p.artifactSchemaPath;
+  if (!(await fileExists(schemaPath)) || options.force) {
+    const { DEFAULT_ARTIFACT_SCHEMA } = await import("./default-artifact-schema.js");
+    await fs.writeFile(schemaPath, JSON.stringify(DEFAULT_ARTIFACT_SCHEMA, null, 2), "utf-8");
+  }
 
   const pointerPath = p.workflowJson;
   const versionFileName = `wf_${createDefaultWorkflowVersion().version}.json`;
@@ -352,4 +370,129 @@ export async function updateMutationFile(
   const existing = await readMutationFile(mutationId, cwd);
   const updated = { ...existing, ...updates };
   await writeMutationFile(updated, cwd);
+}
+
+// --- Artifact schema and storage ---
+
+export function getRunArtifactsDir(runId: string, cwd: string = process.cwd()): string {
+  const p = getWorkspacePaths(cwd);
+  return path.join(p.artifactsDir, runId);
+}
+
+export function getArtifactStorePath(runId: string, kind: string, cwd: string = process.cwd()): string {
+  const dir = getRunArtifactsDir(runId, cwd);
+  const safeKind = kind.replace(/[^a-z0-9_-]/gi, "_");
+  return path.join(dir, `${safeKind}.json`);
+}
+
+export async function readArtifactSchema(cwd: string = process.cwd()): Promise<ArtifactSchemaConfig> {
+  const p = await requireWorkspace(cwd);
+  try {
+    const raw = await fs.readFile(p.artifactSchemaPath, "utf-8");
+    return JSON.parse(raw) as ArtifactSchemaConfig;
+  } catch {
+    const { DEFAULT_ARTIFACT_SCHEMA } = await import("./default-artifact-schema.js");
+    await fs.writeFile(p.artifactSchemaPath, JSON.stringify(DEFAULT_ARTIFACT_SCHEMA, null, 2), "utf-8");
+    return DEFAULT_ARTIFACT_SCHEMA;
+  }
+}
+
+export async function writeArtifactSchema(
+  schema: ArtifactSchemaConfig,
+  cwd: string = process.cwd()
+): Promise<void> {
+  const p = await requireWorkspace(cwd);
+  await fs.writeFile(p.artifactSchemaPath, JSON.stringify(schema, null, 2), "utf-8");
+}
+
+export async function listArtifactKindsForRun(runId: string, cwd: string = process.cwd()): Promise<string[]> {
+  await requireWorkspace(cwd);
+  if (!(await runExists(runId, cwd))) {
+    throw new Error(`Run "${runId}" not found.`);
+  }
+  const dir = getRunArtifactsDir(runId, cwd);
+  try {
+    const entries = await fs.readdir(dir, { withFileTypes: true });
+    return entries
+      .filter((e) => e.isFile() && e.name.endsWith(".json"))
+      .map((e) => e.name.replace(/\.json$/, ""));
+  } catch {
+    return [];
+  }
+}
+
+export async function readArtifacts(
+  runId: string,
+  kind: string,
+  cwd: string = process.cwd()
+): Promise<ArtifactStore> {
+  await requireWorkspace(cwd);
+  if (!(await runExists(runId, cwd))) {
+    throw new Error(`Run "${runId}" not found.`);
+  }
+  const filePath = getArtifactStorePath(runId, kind, cwd);
+  try {
+    const raw = await fs.readFile(filePath, "utf-8");
+    return JSON.parse(raw) as ArtifactStore;
+  } catch {
+    return {
+      run_id: runId,
+      kind,
+      updated_at: new Date().toISOString(),
+      items: [],
+    };
+  }
+}
+
+export async function writeArtifacts(
+  runId: string,
+  kind: string,
+  items: ArtifactItem[],
+  cwd: string = process.cwd()
+): Promise<void> {
+  await requireWorkspace(cwd);
+  if (!(await runExists(runId, cwd))) {
+    throw new Error(`Run "${runId}" not found.`);
+  }
+  const schema = await readArtifactSchema(cwd);
+  validateArtifactItems(schema, kind, items);
+  const dir = getRunArtifactsDir(runId, cwd);
+  await fs.mkdir(dir, { recursive: true });
+  const store: ArtifactStore = {
+    run_id: runId,
+    kind,
+    updated_at: new Date().toISOString(),
+    items,
+  };
+  const filePath = getArtifactStorePath(runId, kind, cwd);
+  await fs.writeFile(filePath, JSON.stringify(store, null, 2), "utf-8");
+}
+
+export async function appendArtifact(
+  runId: string,
+  kind: string,
+  payload: Record<string, unknown>,
+  options: { id?: string } = {},
+  cwd: string = process.cwd()
+): Promise<ArtifactItem> {
+  await requireWorkspace(cwd);
+  if (!(await runExists(runId, cwd))) {
+    throw new Error(`Run "${runId}" not found.`);
+  }
+  const schema = await readArtifactSchema(cwd);
+  validateArtifactItem(schema, kind, payload);
+  const existing = await readArtifacts(runId, kind, cwd);
+  const now = new Date().toISOString();
+  const item: ArtifactItem = {
+    ...payload,
+    id: options.id ?? `art_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    created_at: now,
+  };
+  existing.items.push(item);
+  existing.updated_at = now;
+  const dir = getRunArtifactsDir(runId, cwd);
+  await fs.mkdir(dir, { recursive: true });
+  const filePath = getArtifactStorePath(runId, kind, cwd);
+  await fs.writeFile(filePath, JSON.stringify(existing, null, 2), "utf-8");
+  return item;
 }

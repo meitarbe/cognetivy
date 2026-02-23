@@ -1,6 +1,6 @@
 # cognetivy
 
-Reasoning orchestration state: workflow structure, run logs, and versioned mutations. **No LLMs** — cognetivy only stores workflow definitions, run metadata, append-only event logs (NDJSON), and workflow mutations (JSON Patch).
+Reasoning orchestration state: workflow structure, run logs, versioned mutations, and **structured artifacts**. **No LLMs** — cognetivy stores workflow definitions, run metadata, append-only event logs (NDJSON), workflow mutations (JSON Patch), and schema-backed artifact entities (sources, collected data, ideas) that agents can read and write with a known, modifiable schema.
 
 - **Global CLI**: install once, use in any folder. All project state lives in a folder-local workspace (`.cognetivy/`).
 - **Config**: user-level defaults in `~/.config/cognetivy/config.json` (via [env-paths](https://www.npmjs.com/package/env-paths)); local overrides in `.cognetivy/config.json`.
@@ -20,6 +20,7 @@ cognetivy run start --input sample_input.json
 ```
 ./.cognetivy/
   workflow.json              # pointer to current workflow version
+  artifact-schema.json        # artifact kinds and required fields (modifiable)
   workflow.versions/
     wf_v1.json               # immutable workflow version files
   runs/
@@ -28,9 +29,14 @@ cognetivy run start --input sample_input.json
     <run_id>.ndjson          # append-only event log per run
   mutations/
     <mutation_id>.json       # proposed mutation patches + status
+  artifacts/
+    <run_id>/
+      sources.json            # structured sources per run (schema-validated)
+      collected.json          # collected data
+      ideas.json              # output ideas / proposals
 ```
 
-By default, `cognetivy init` adds a `.gitignore` snippet so `runs/`, `events/`, and `mutations/` are ignored; `workflow.versions/` is intended to be committed. Use `--no-gitignore` to skip.
+By default, `cognetivy init` adds a `.gitignore` snippet so `runs/`, `events/`, `mutations/`, and `artifacts/` are ignored; `workflow.versions/` and `artifact-schema.json` are intended to be committed. Use `--no-gitignore` to skip.
 
 ## CLI commands
 
@@ -43,6 +49,12 @@ By default, `cognetivy init` adds a `.gitignore` snippet so `runs/`, `events/`, 
 | `cognetivy event append --run <run_id> --file <path> [--by <string>]` | Append one event (JSON) to run's NDJSON log |
 | `cognetivy mutate propose --patch <path> --reason "<text>" [--by <string>]` | Propose a mutation (JSON Patch); prints `mutation_id` |
 | `cognetivy mutate apply <mutation_id> [--by <string>]` | Apply a proposed mutation (new version, update pointer) |
+| `cognetivy artifact-schema get` | Print artifact schema (kinds + required fields) to stdout |
+| `cognetivy artifact-schema set --file <path>` | Set artifact schema from JSON file |
+| `cognetivy artifact list --run <run_id>` | List artifact kinds that have data for a run |
+| `cognetivy artifact get --run <run_id> --kind <kind>` | Get all artifacts of a kind for a run |
+| `cognetivy artifact set --run <run_id> --kind <kind> --file <path>` | Replace artifacts of a kind (JSON array) |
+| `cognetivy artifact append --run <run_id> --kind <kind> --file <path> [--id <id>]` | Append one artifact item (validated) |
 | `cognetivy mcp [--workspace <path>]` | Start MCP server over stdio for Cursor/agents |
 
 ## MCP tools (1:1 with CLI)
@@ -53,13 +65,65 @@ By default, `cognetivy init` adds a `.gitignore` snippet so `runs/`, `events/`, 
 - `event_append(run_id, event_json, by?)` — append event to run
 - `mutate_propose(patch_json, reason, by?)` — propose mutation; returns `mutation_id`
 - `mutate_apply(mutation_id, by?)` — apply mutation
+- `artifact_schema_get()` — get artifact schema (kinds and required fields)
+- `artifact_schema_set(schema_json)` — set artifact schema (modifiable)
+- `artifact_list(run_id)` — list artifact kinds with data for run
+- `artifact_get(run_id, kind)` — get structured artifacts (sources, collected, ideas)
+- `artifact_set(run_id, kind, items)` — replace all items for a kind (schema-validated)
+- `artifact_append(run_id, kind, payload, id?)` — append one item (schema-validated); returns item with `id`, `created_at`
 
 If the workspace is missing, the MCP server exits with a message to run `cognetivy init`.
+
+## Connecting Cursor to cognetivy MCP
+
+So Cursor (or another MCP client) can call cognetivy tools:
+
+1. **Install cognetivy** (if not already):  
+   `npm i -g cognetivy` or from this repo: `npm i -g ./cli`
+
+2. **Add the MCP server** in Cursor:
+
+   - **Settings → Tools & MCP → Add new MCP server**, then:
+     - **Name**: `cognetivy`
+     - **Type**: `command`
+     - **Command**: `cognetivy` (or full path to the CLI)
+     - **Args**: `mcp` — or `mcp`, `--workspace`, `/path/to/your/project` if the project with `.cognetivy/` is not the current folder.
+
+   - **Or** put a config file in your project (the one that has `.cognetivy/`):
+
+     **Project-level** — in the project root (e.g. `example-usage/.cursor/mcp.json`):
+
+     ```json
+     {
+       "mcpServers": {
+         "cognetivy": {
+           "command": "cognetivy",
+           "args": ["mcp"]
+         }
+       }
+     }
+     ```
+
+     Cursor usually starts the server with the project root as cwd, so `cognetivy mcp` will use that project’s `.cognetivy/`.
+
+   - **Or** use a **global** config at `~/.cursor/mcp.json` with the same `mcpServers.cognetivy` entry. Then the workspace is the folder you have open in Cursor; if your repo root is not the folder with `.cognetivy/`, use:
+
+     ```json
+     "args": ["mcp", "--workspace", "/absolute/path/to/folder/with/.cognetivy"]
+     ```
+
+3. **Restart Cursor** so it picks up the new MCP server.
+
+4. In chat, the cognetivy tools (workflow, run, event, mutate, and **artifact** / **artifact_schema**) should appear and be callable by the agent.
+
+In this repo, the root `.cursor/mcp.json` is set to `--workspace example-usage` so the agent uses the `example-usage` workspace when you have the cognetivy repo open.
 
 ## Data formats
 
 - **workflow.json**: `{ "workflow_id", "current_version" }`
 - **workflow.versions/wf_vN.json**: `{ "workflow_id", "version", "nodes", "edges" }` (nodes have `id`, `type`, `contract`)
+- **artifact-schema.json**: `{ "kinds": { "<kind>": { "description", "required": [], "properties": {} } } }` — modifiable; default kinds: `sources`, `collected`, `ideas`
+- **artifacts/<run_id>/<kind>.json**: `{ "run_id", "kind", "updated_at", "items": [ { "id?", "created_at?", ...payload } ] }` — items validated against schema
 - **runs/<run_id>.json**: `{ "run_id", "workflow_id", "workflow_version", "status", "input", "created_at" }`
 - **events/<run_id>.ndjson**: one JSON object per line (`ts`, `type`, `by`, `data`)
 - **mutations/<mutation_id>.json**: RFC 6902 JSON Patch + `target`, `reason`, `status`, `applied_to_version` when applied

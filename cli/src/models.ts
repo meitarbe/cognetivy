@@ -82,3 +82,32 @@ export interface JsonPatchOperation {
   value?: unknown;
   from?: string;
 }
+
+// --- Artifacts (structured, schema-backed entities per run) ---
+
+/** Schema for one artifact kind: required keys and optional property descriptions. */
+export interface ArtifactKindSchema {
+  description: string;
+  required: string[];
+  properties?: Record<string, { type?: string; description?: string }>;
+}
+
+/** Full artifact schema: map of kind name to schema. Stored in .cognetivy/artifact-schema.json */
+export interface ArtifactSchemaConfig {
+  kinds: Record<string, ArtifactKindSchema>;
+}
+
+/** One stored artifact item (payload plus optional id and timestamp). */
+export interface ArtifactItem {
+  id?: string;
+  created_at?: string;
+  [key: string]: unknown;
+}
+
+/** File format for a run's artifacts of one kind. */
+export interface ArtifactStore {
+  run_id: string;
+  kind: string;
+  updated_at: string;
+  items: ArtifactItem[];
+}

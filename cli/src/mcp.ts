@@ -19,6 +19,12 @@ import {
   readMutationFile,
   updateMutationFile,
   writeMutationFile,
+  readArtifactSchema,
+  writeArtifactSchema,
+  listArtifactKindsForRun,
+  readArtifacts,
+  writeArtifacts,
+  appendArtifact,
 } from "./workspace.js";
 import { getMergedConfig } from "./config.js";
 import { validateWorkflow } from "./validate.js";
@@ -29,6 +35,8 @@ import type {
   MutationRecord,
   MutationTarget,
   JsonPatchOperation,
+  ArtifactSchemaConfig,
+  ArtifactItem,
 } from "./models.js";
 
 const DEFAULT_BY = "mcp";
@@ -118,6 +126,68 @@ const TOOLS: Array<{ name: string; description: string; inputSchema: { type: "ob
         by: { type: "string" },
       },
       required: ["mutation_id"],
+    },
+  },
+  {
+    name: "artifact_schema_get",
+    description: "Get the current artifact schema (kinds and required fields). Defines structure for sources, collected, ideas, etc.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "artifact_schema_set",
+    description: "Set artifact schema from JSON. Must have 'kinds' object; each kind has description, required (array), optional properties.",
+    inputSchema: {
+      type: "object",
+      properties: { schema_json: { type: "object", description: "ArtifactSchemaConfig with kinds" } },
+      required: ["schema_json"],
+    },
+  },
+  {
+    name: "artifact_list",
+    description: "List artifact kinds that have data for a run.",
+    inputSchema: {
+      type: "object",
+      properties: { run_id: { type: "string" } },
+      required: ["run_id"],
+    },
+  },
+  {
+    name: "artifact_get",
+    description: "Get all artifacts of a kind for a run (structured store: run_id, kind, updated_at, items).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        run_id: { type: "string" },
+        kind: { type: "string", description: "e.g. sources, collected, ideas" },
+      },
+      required: ["run_id", "kind"],
+    },
+  },
+  {
+    name: "artifact_set",
+    description: "Replace all artifacts of a kind for a run. Items are validated against artifact schema.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        run_id: { type: "string" },
+        kind: { type: "string" },
+        items: { type: "array", description: "Array of artifact items (each must satisfy schema required fields)" },
+      },
+      required: ["run_id", "kind", "items"],
+    },
+  },
+  {
+    name: "artifact_append",
+    description: "Append one artifact item to a run's kind. Validated against schema. Returns the created item (with id, created_at).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        run_id: { type: "string" },
+        kind: { type: "string" },
+        payload: { type: "object", description: "Artifact payload (must include required fields for kind)" },
+        id: { type: "string", description: "Optional id for the item" },
+      },
+      required: ["run_id", "kind", "payload"],
     },
   },
 ];
@@ -255,6 +325,47 @@ async function handleToolsCall(
           cwd
         );
         return newVersion;
+      }
+      case "artifact_schema_get": {
+        const schema = await readArtifactSchema(cwd);
+        return JSON.stringify(schema, null, 2);
+      }
+      case "artifact_schema_set": {
+        const schemaJson = args.schema_json as ArtifactSchemaConfig;
+        if (!schemaJson.kinds || typeof schemaJson.kinds !== "object") {
+          throw new Error("schema_json must have a 'kinds' object.");
+        }
+        await writeArtifactSchema(schemaJson, cwd);
+        return "Artifact schema updated.";
+      }
+      case "artifact_list": {
+        const runIdList = args.run_id as string;
+        const kinds = await listArtifactKindsForRun(runIdList, cwd);
+        return JSON.stringify(kinds);
+      }
+      case "artifact_get": {
+        const runIdGet = args.run_id as string;
+        const kindGet = args.kind as string;
+        const store = await readArtifacts(runIdGet, kindGet, cwd);
+        return JSON.stringify(store, null, 2);
+      }
+      case "artifact_set": {
+        const runIdSet = args.run_id as string;
+        const kindSet = args.kind as string;
+        const items = args.items as ArtifactItem[];
+        if (!Array.isArray(items)) {
+          throw new Error("items must be an array.");
+        }
+        await writeArtifacts(runIdSet, kindSet, items, cwd);
+        return `Set ${items.length} artifact(s) for kind "${kindSet}".`;
+      }
+      case "artifact_append": {
+        const runIdApp = args.run_id as string;
+        const kindApp = args.kind as string;
+        const payload = args.payload as Record<string, unknown>;
+        const idOpt = args.id as string | undefined;
+        const item = await appendArtifact(runIdApp, kindApp, payload, { id: idOpt }, cwd);
+        return JSON.stringify(item, null, 2);
       }
       default:
         throw new Error(`Unknown tool: ${name}`);

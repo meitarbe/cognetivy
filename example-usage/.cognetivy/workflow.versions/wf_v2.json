@@ -1,0 +1,87 @@
+{
+  "workflow_id": "wf_default",
+  "version": "v2",
+  "nodes": [
+    {
+      "id": "theme_scan",
+      "type": "TASK",
+      "contract": {
+        "input": [
+          "goal",
+          "scope"
+        ],
+        "output": [
+          "themes"
+        ]
+      }
+    },
+    {
+      "id": "signal_search",
+      "type": "TASK",
+      "contract": {
+        "input": [
+          "themes"
+        ],
+        "output": [
+          "signals"
+        ]
+      }
+    },
+    {
+      "id": "synthesize",
+      "type": "TASK",
+      "contract": {
+        "input": [
+          "signals"
+        ],
+        "output": [
+          "ideas"
+        ]
+      }
+    },
+    {
+      "id": "evaluate",
+      "type": "TASK",
+      "contract": {
+        "input": [
+          "ideas"
+        ],
+        "output": [
+          "scored_ideas"
+        ]
+      }
+    },
+    {
+      "id": "reflect",
+      "type": "TASK",
+      "contract": {
+        "input": [
+          "scored_ideas",
+          "run_artifacts"
+        ],
+        "output": [
+          "learnings",
+          "workflow_suggestions"
+        ]
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "theme_scan",
+      "to": "signal_search"
+    },
+    {
+      "from": "signal_search",
+      "to": "synthesize"
+    },
+    {
+      "from": "synthesize",
+      "to": "evaluate"
+    },
+    {
+      "from": "evaluate",
+      "to": "reflect"
+    }
+  ]
+}
