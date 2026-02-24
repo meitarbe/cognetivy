@@ -176,7 +176,7 @@ export function RunDetailPage() {
           onStepClick={handleStepClick}
           readOnly
           nodesDraggable
-          showControls={false}
+          showControls
           showBackground={false}
           className="bg-transparent"
         />
