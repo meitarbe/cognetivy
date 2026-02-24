@@ -15,20 +15,19 @@ import "@xyflow/react/dist/style.css";
 import type { WorkflowVersion, EventPayload } from "@/api";
 import { WorkflowNode } from "@/components/workflow/WorkflowNode";
 import { type WorkflowNodeData, nodeIdToDisplayName } from "@/components/workflow/WorkflowNode";
-import { CollectionNode } from "@/components/workflow/CollectionNode";
 import { workflowToNodesEdges, getStepStatuses } from "@/lib/workflowCanvas";
 import { Link } from "react-router-dom";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from "@/components/ui/sheet";
 import { TABLE_LINK_CLASS } from "@/lib/utils";
 import { CopyableId } from "@/components/ui/CopyableId";
 
-const nodeTypes = { workflow: WorkflowNode, collection: CollectionNode };
+const nodeTypes = { workflow: WorkflowNode };
 
 export interface WorkflowCanvasProps {
   workflow: WorkflowVersion;
@@ -111,20 +110,20 @@ function WorkflowCanvasInner({
       {showControls && <Controls showInteractive={false} />}
     </ReactFlow>
 
-    <Dialog open={!!selectedNode} onOpenChange={(open: boolean) => !open && setSelectedNode(null)}>
-      <DialogContent className="max-w-xl max-h-[80vh] overflow-y-auto">
+    <Sheet open={!!selectedNode} onOpenChange={(open: boolean) => !open && setSelectedNode(null)}>
+      <SheetContent side="right" className="w-full max-w-md">
         {selectedNode && (
           <>
-            <DialogHeader>
-              <DialogTitle className="text-base">{nodeIdToDisplayName(selectedNode.data.nodeId)}</DialogTitle>
-              <DialogDescription className="sr-only">
+            <SheetHeader>
+              <SheetTitle className="text-base">{nodeIdToDisplayName(selectedNode.data.nodeId)}</SheetTitle>
+              <SheetDescription className="sr-only">
                 Workflow step details: {selectedNode.data.nodeId}
-              </DialogDescription>
+              </SheetDescription>
               <div className="text-xs text-muted-foreground mt-1">
                 <CopyableId value={selectedNode.data.nodeId} />
               </div>
-            </DialogHeader>
-            <div className="space-y-3 pt-2">
+            </SheetHeader>
+            <div className="space-y-4 pt-4">
               {selectedNode.data.description && (
                 <div>
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Prompt</p>
@@ -133,15 +132,13 @@ function WorkflowCanvasInner({
                   </p>
                 </div>
               )}
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Input</p>
-                  <p className="mt-0.5 font-mono text-xs">{(selectedNode.data.input ?? []).join(", ") || "—"}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Output</p>
-                  <p className="mt-0.5 font-mono text-xs">{(selectedNode.data.output ?? []).join(", ") || "—"}</p>
-                </div>
+              <div>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Input collections</p>
+                <p className="font-mono text-sm">{(selectedNode.data.input ?? []).join(", ") || "—"}</p>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Output collections</p>
+                <p className="font-mono text-sm">{(selectedNode.data.output ?? []).join(", ") || "—"}</p>
               </div>
               {selectedNode.data.stepStatus && (
                 <div>
@@ -150,7 +147,7 @@ function WorkflowCanvasInner({
                 </div>
               )}
               {runsVersionForLink && (
-                <div className="pt-2 border-t border-border">
+                <div className="pt-4 border-t border-border">
                   <Link
                     to={`/runs?version=${encodeURIComponent(runsVersionForLink)}`}
                     className={`text-sm font-medium ${TABLE_LINK_CLASS}`}
@@ -162,8 +159,8 @@ function WorkflowCanvasInner({
             </div>
           </>
         )}
-      </DialogContent>
-    </Dialog>
+      </SheetContent>
+    </Sheet>
     </>
   );
 }
