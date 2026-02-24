@@ -4,16 +4,17 @@
  */
 
 import * as readline from "node:readline";
-import type { WorkflowVersion } from "./models.js";
 import {
   workspaceExists,
-  readWorkflowPointer,
-  readWorkflowVersion,
-  writeWorkflowPointer,
-  writeWorkflowVersion,
-  listWorkflowVersionFiles,
-  versionFromFileName,
+  readWorkflowIndex,
+  readWorkflowRecord,
+  writeWorkflowIndex,
+  writeWorkflowRecord,
+  listWorkflowVersionIds,
+  readWorkflowVersionRecord,
+  writeWorkflowVersionRecord,
   writeRunFile,
+  readRunFile,
   updateRunFile,
   appendEventLine,
   runExists,
@@ -23,16 +24,20 @@ import {
   readCollections,
   writeCollections,
   appendCollection,
+  writeNodeResult,
 } from "./workspace.js";
 import { getMergedConfig } from "./config.js";
-import { validateWorkflow } from "./validate.js";
+import { validateWorkflowVersion } from "./validate.js";
 import type {
   RunRecord,
   EventPayload,
   CollectionSchemaConfig,
-  CollectionItem,
   CollectionKindSchema,
+  NodeResultRecord,
+  WorkflowVersionRecord,
+  WorkflowRecordSummary,
 } from "./models.js";
+import { NodeResultStatus } from "./models.js";
 import { CollectionValidationError } from "./validate-collection.js";
 import { mergeKindTemplate } from "./kind-templates.js";
 import { listSkills, getSkillByName } from "./skills.js";
@@ -245,11 +250,11 @@ const TOOLS: Array<{ name: string; description: string; inputSchema: { type: "ob
   },
 ];
 
-/** Extract suggested collection kinds from workflow node outputs (contract.output). */
-function getSuggestedCollectionKinds(workflow: WorkflowVersion): string[] {
+/** Extract suggested collection kinds from workflow node outputs. */
+function getSuggestedCollectionKinds(workflow: WorkflowVersionRecord): string[] {
   const kinds = new Set<string>();
   for (const node of workflow.nodes) {
-    const outputs = node.contract?.output ?? [];
+    const outputs = node.output_collections ?? [];
     for (const out of outputs) {
       if (out && typeof out === "string" && !["vertical", "trends"].includes(out)) {
         kinds.add(out);
@@ -282,12 +287,15 @@ async function handleToolsCall(
   const runTool = async (): Promise<string> => {
     switch (name) {
       case "workflow_get": {
-        const pointer = await readWorkflowPointer(cwd);
-        const workflow = await readWorkflowVersion(pointer.current_version, cwd);
-        const suggested_collection_kinds = getSuggestedCollectionKinds(workflow);
+        const index = await readWorkflowIndex(cwd);
+        const workflowId = index.current_workflow_id;
+        const wf = await readWorkflowRecord(workflowId, cwd);
+        const version = await readWorkflowVersionRecord(workflowId, wf.current_version_id, cwd);
+        const suggested_collection_kinds = getSuggestedCollectionKinds(version);
         return JSON.stringify(
           {
-            ...workflow,
+            workflow: wf,
+            version,
             suggested_collection_kinds,
             _hint:
               suggested_collection_kinds.length > 0
@@ -300,23 +308,33 @@ async function handleToolsCall(
       }
       case "workflow_set": {
         const workflowJson = args.workflow_json as object;
-        validateWorkflow(workflowJson);
-        const pointer = await readWorkflowPointer(cwd);
-        const files = await listWorkflowVersionFiles(cwd);
-        const versions = files.map(versionFromFileName);
-        const maxNum = Math.max(0, ...versions.map((v) => parseInt(v.replace(/^v/, ""), 10) || 0));
-        const newVersion = `v${maxNum + 1}`;
-        const workflow: WorkflowVersion = {
-          ...(workflowJson as WorkflowVersion),
-          workflow_id: pointer.workflow_id,
-          version: newVersion,
+        const index = await readWorkflowIndex(cwd);
+        const workflowId = index.current_workflow_id;
+        const wf = await readWorkflowRecord(workflowId, cwd);
+        const existing = await listWorkflowVersionIds(workflowId, cwd);
+        const nums = existing.map((v) => parseInt(v.replace(/^v/, ""), 10)).filter((n) => !Number.isNaN(n));
+        const nextNum = Math.max(0, ...nums) + 1;
+        const newVersionId = `v${nextNum}`;
+        const version: WorkflowVersionRecord = {
+          ...(workflowJson as unknown as Omit<WorkflowVersionRecord, "workflow_id" | "version_id" | "created_at">),
+          workflow_id: workflowId,
+          version_id: newVersionId,
+          created_at: new Date().toISOString(),
+          nodes: (workflowJson as { nodes?: unknown[] }).nodes as WorkflowVersionRecord["nodes"],
         };
-        await writeWorkflowVersion(workflow, cwd);
-        await writeWorkflowPointer(
-          { workflow_id: pointer.workflow_id, current_version: newVersion },
+        validateWorkflowVersion(version);
+        await writeWorkflowVersionRecord(version, cwd);
+        await writeWorkflowRecord({ ...wf, current_version_id: newVersionId }, cwd);
+        await writeWorkflowIndex(
+          {
+            ...index,
+            workflows: (index.workflows ?? []).map((w) =>
+              w.workflow_id === workflowId ? { ...w, current_version_id: newVersionId } : w
+            ),
+          },
           cwd
         );
-        return newVersion;
+        return newVersionId;
       }
       case "run_start": {
         const inputJson = args.input_json as Record<string, unknown>;
@@ -328,14 +346,17 @@ async function handleToolsCall(
         }
         const name = String(nameRaw).trim();
         const by = (args.by as string) ?? (await resolveBy(cwd));
-        const pointer = await readWorkflowPointer(cwd);
+        const index = await readWorkflowIndex(cwd);
+        const workflowId = index.current_workflow_id;
+        const wf = await readWorkflowRecord(workflowId, cwd);
+        const versionId = wf.current_version_id;
         const runId = generateId("run");
         const now = new Date().toISOString();
         const runRecord: RunRecord = {
           run_id: runId,
           name,
-          workflow_id: pointer.workflow_id,
-          workflow_version: pointer.current_version,
+          workflow_id: workflowId,
+          workflow_version_id: versionId,
           status: "running",
           input: inputJson,
           created_at: now,
@@ -345,10 +366,34 @@ async function handleToolsCall(
           ts: now,
           type: "run_started",
           by,
-          data: { workflow_version: pointer.current_version, input: inputJson },
+          data: { workflow_id: workflowId, workflow_version_id: versionId, input: inputJson },
         };
         await appendEventLine(runId, event, cwd);
-        const workflow = await readWorkflowVersion(pointer.current_version, cwd);
+
+        const systemNodeId = "__system__";
+        const systemNodeResultId = generateId("node_result");
+        const nodeResult: NodeResultRecord = {
+          node_result_id: systemNodeResultId,
+          run_id: runId,
+          workflow_id: workflowId,
+          workflow_version_id: versionId,
+          node_id: systemNodeId,
+          status: NodeResultStatus.Completed,
+          started_at: now,
+          completed_at: now,
+          output: JSON.stringify(inputJson, null, 2),
+          writes: [{ kind: "run_input", item_ids: ["run_input"] }],
+        };
+        await writeNodeResult(runId, systemNodeId, nodeResult, cwd);
+        await appendCollection(
+          runId,
+          "run_input",
+          inputJson,
+          { id: "run_input", created_by_node_id: systemNodeId, created_by_node_result_id: systemNodeResultId },
+          cwd
+        );
+
+        const workflow = await readWorkflowVersionRecord(workflowId, versionId, cwd);
         const suggested_collection_kinds = getSuggestedCollectionKinds(workflow);
         return JSON.stringify({
           run_id: runId,
@@ -388,7 +433,8 @@ async function handleToolsCall(
         return "Appended event.";
       }
       case "collection_schema_get": {
-        const schema = await readCollectionSchema(cwd);
+        const index = await readWorkflowIndex(cwd);
+        const schema = await readCollectionSchema(index.current_workflow_id, cwd);
         return JSON.stringify(schema, null, 2);
       }
       case "collection_schema_set": {
@@ -396,28 +442,48 @@ async function handleToolsCall(
         if (!schemaJson.kinds || typeof schemaJson.kinds !== "object") {
           throw new Error("schema_json must have a 'kinds' object.");
         }
+        const index = await readWorkflowIndex(cwd);
+        const workflowId = index.current_workflow_id;
         const merged: CollectionSchemaConfig = {
+          workflow_id: workflowId,
           kinds: {},
         };
         for (const [k, v] of Object.entries(schemaJson.kinds)) {
           merged.kinds[k] = mergeKindTemplate(k, v);
         }
-        await writeCollectionSchema(merged, cwd);
+        await writeCollectionSchema(workflowId, merged, cwd);
         return "Collection schema updated.";
       }
       case "collection_schema_add_kind": {
         const kind = args.kind as string;
         const description = args.description as string;
-        const required = args.required as string[];
-        const properties = args.properties as Record<string, { type?: string; description?: string }> | undefined;
-        if (!kind || !description || !Array.isArray(required)) {
-          throw new Error("collection_schema_add_kind requires: kind, description, required (array).");
+        const required = (args.required as string[] | undefined) ?? [];
+        const properties = (args.properties as Record<string, { type?: string; description?: string }> | undefined) ?? undefined;
+        if (!kind || !description) {
+          throw new Error("collection_schema_add_kind requires: kind, description.");
         }
-        const schema = await readCollectionSchema(cwd);
-        let kindSchema: CollectionKindSchema = { description, required, properties };
+        const index = await readWorkflowIndex(cwd);
+        const workflowId = index.current_workflow_id;
+        const schema = await readCollectionSchema(workflowId, cwd);
+        const jsonSchemaProps: Record<string, Record<string, unknown>> = {};
+        for (const [k, v] of Object.entries(properties ?? {})) {
+          jsonSchemaProps[k] = {
+            type: v.type ?? "string",
+            ...(v.description ? { description: v.description } : {}),
+          };
+        }
+        let kindSchema: CollectionKindSchema = {
+          description,
+          item_schema: {
+            type: "object",
+            properties: jsonSchemaProps,
+            required,
+            additionalProperties: true,
+          },
+        };
         kindSchema = mergeKindTemplate(kind, kindSchema);
         schema.kinds = { ...schema.kinds, [kind]: kindSchema };
-        await writeCollectionSchema(schema, cwd);
+        await writeCollectionSchema(workflowId, schema, cwd);
         return `Added kind "${kind}". Schema now has kinds: ${Object.keys(schema.kinds).join(", ")}.`;
       }
       case "collection_list": {
@@ -434,19 +500,29 @@ async function handleToolsCall(
       case "collection_set": {
         const runIdSet = args.run_id as string;
         const kindSet = args.kind as string;
-        const items = args.items as CollectionItem[];
-        if (!Array.isArray(items)) {
-          throw new Error("items must be an array.");
+        const payloads = args.items as Array<Record<string, unknown>>;
+        const createdByNodeId = args.created_by_node_id as string;
+        const createdByNodeResultId = args.created_by_node_result_id as string;
+        if (!Array.isArray(payloads)) throw new Error("items must be an array.");
+        if (!createdByNodeId || !createdByNodeResultId) {
+          throw new Error("collection_set requires created_by_node_id and created_by_node_result_id.");
         }
         try {
-          await writeCollections(runIdSet, kindSet, items, cwd);
-          return `Set ${items.length} collection(s) for kind "${kindSet}".`;
+          await writeCollections(
+            runIdSet,
+            kindSet,
+            payloads,
+            { created_by_node_id: createdByNodeId, created_by_node_result_id: createdByNodeResultId },
+            cwd
+          );
+          return `Set ${payloads.length} collection(s) for kind "${kindSet}".`;
         } catch (err) {
           if (err instanceof CollectionValidationError) {
-            const schema = await readCollectionSchema(cwd);
+            const run = await readRunFile(runIdSet, cwd);
+            const schema = await readCollectionSchema(run.workflow_id, cwd);
             const kindSchema = schema.kinds[kindSet];
             throw new Error(
-              `${err.message} Schema for "${kindSet}": required=[${(kindSchema?.required ?? []).join(", ")}], properties=${JSON.stringify(kindSchema?.properties ?? {})}. Fix schema with collection_schema_add_kind or collection_schema_set.`
+              `${err.message} Details: ${(err.details ?? []).join("; ")}. Schema for "${kindSet}": item_schema=${JSON.stringify(kindSchema?.item_schema ?? {})}. Fix schema with collection_schema_add_kind or collection_schema_set.`
             );
           }
           throw err;
@@ -457,15 +533,27 @@ async function handleToolsCall(
         const kindApp = args.kind as string;
         const payload = args.payload as Record<string, unknown>;
         const idOpt = args.id as string | undefined;
+        const createdByNodeId = args.created_by_node_id as string;
+        const createdByNodeResultId = args.created_by_node_result_id as string;
+        if (!createdByNodeId || !createdByNodeResultId) {
+          throw new Error("collection_append requires created_by_node_id and created_by_node_result_id.");
+        }
         try {
-          const item = await appendCollection(runIdApp, kindApp, payload, { id: idOpt }, cwd);
+          const item = await appendCollection(
+            runIdApp,
+            kindApp,
+            payload,
+            { id: idOpt, created_by_node_id: createdByNodeId, created_by_node_result_id: createdByNodeResultId },
+            cwd
+          );
           return JSON.stringify(item, null, 2);
         } catch (err) {
           if (err instanceof CollectionValidationError) {
-            const schema = await readCollectionSchema(cwd);
+            const run = await readRunFile(runIdApp, cwd);
+            const schema = await readCollectionSchema(run.workflow_id, cwd);
             const kindSchema = schema.kinds[kindApp];
             throw new Error(
-              `${err.message} Schema for "${kindApp}": required=[${(kindSchema?.required ?? []).join(", ")}], properties=${JSON.stringify(kindSchema?.properties ?? {})}. Fix schema with collection_schema_add_kind or collection_schema_set.`
+              `${err.message} Details: ${(err.details ?? []).join("; ")}. Schema for "${kindApp}": item_schema=${JSON.stringify(kindSchema?.item_schema ?? {})}. Fix schema with collection_schema_add_kind or collection_schema_set.`
             );
           }
           throw err;

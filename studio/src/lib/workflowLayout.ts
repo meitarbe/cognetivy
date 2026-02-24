@@ -1,4 +1,14 @@
-import type { WorkflowVersion, WorkflowEdge } from "@/api";
+export type DataflowVertexType = "node" | "collection";
+
+export interface DataflowVertex {
+  id: string;
+  type: DataflowVertexType;
+}
+
+export interface DataflowEdge {
+  from: string;
+  to: string;
+}
 
 export interface NodePosition {
   id: string;
@@ -14,22 +24,25 @@ const HORIZONTAL_GAP = 80;
 const VERTICAL_GAP = 100;
 
 /**
- * Top-to-bottom layout: row 0 = roots (no incoming), row N = nodes whose predecessors are in row < N.
+ * Top-to-bottom layout for a generic DAG:
+ * row 0 = roots (no incoming), row N = nodes whose predecessors are in row < N.
  * Within each row, nodes are spread horizontally.
  */
-export function getWorkflowLayout(wf: WorkflowVersion): {
+export function getDataflowLayout(input: {
+  vertices: DataflowVertex[];
+  edges: DataflowEdge[];
+}): {
   positions: Map<string, NodePosition>;
   rows: string[][];
 } {
-  const { nodes, edges } = wf;
-  const nodeIds = new Set(nodes.map((n) => n.id));
+  const nodeIds = new Set(input.vertices.map((v) => v.id));
   const inEdges: Record<string, string[]> = {};
   const outEdges: Record<string, string[]> = {};
   nodeIds.forEach((id) => {
     inEdges[id] = [];
     outEdges[id] = [];
   });
-  edges.forEach((e: WorkflowEdge) => {
+  input.edges.forEach((e: DataflowEdge) => {
     if (nodeIds.has(e.from) && nodeIds.has(e.to)) {
       inEdges[e.to].push(e.from);
       outEdges[e.from].push(e.to);
@@ -84,8 +97,11 @@ export function getWorkflowLayout(wf: WorkflowVersion): {
   return { positions, rows };
 }
 
-export function getLayoutDimensions(wf: WorkflowVersion): { width: number; height: number } {
-  const { rows } = getWorkflowLayout(wf);
+export function getLayoutDimensions(input: { vertices: DataflowVertex[]; edges: DataflowEdge[] }): {
+  width: number;
+  height: number;
+} {
+  const { rows } = getDataflowLayout(input);
   if (rows.length === 0) return { width: 400, height: 300 };
   const maxCols = Math.max(...rows.map((r) => r.length));
   const width = maxCols * (NODE_WIDTH + HORIZONTAL_GAP) + 40;

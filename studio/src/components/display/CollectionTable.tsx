@@ -15,15 +15,6 @@ import { downloadCollectionItemAsPdf } from "@/lib/collectionItemToPdf";
 import { Copy, FileDown, ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const CATEGORY_TO_STEP: Record<string, string> = {
-  tech: "tech_breakthroughs",
-  market: "market_signals",
-  regulatory: "regulatory_signals",
-  competitor: "competitor_landscape",
-  funding: "funding_signals",
-  behavior: "consumer_behavior",
-};
-
 interface CollectionTableProps {
   kind: string;
   items: CollectionItem[];
@@ -36,13 +27,9 @@ interface CollectionTableProps {
   searchQuery?: string;
 }
 
-export function inferSourceStep(kind: string, item: CollectionItem): string | null {
-  if (kind === "ideas") return "synthesize_why_now";
-  if (kind === "sources") {
-    const cat = item.category as string | undefined;
-    return cat ? CATEGORY_TO_STEP[cat] ?? null : null;
-  }
-  return null;
+export function getCreatedByNodeId(item: CollectionItem): string | null {
+  const id = item.created_by_node_id as string | undefined;
+  return id && id.trim() ? id : null;
 }
 
 function getDisplayKeys(items: CollectionItem[]): string[] {
@@ -100,8 +87,8 @@ export function CollectionTable({ kind, items, workflow, runId, stepFilter, sear
   const safeItems = items ?? [];
   const filteredItems = safeItems.filter((item) => {
     if (stepFilter != null && stepFilter !== "") {
-      const step = inferSourceStep(kind, item);
-      if (step !== stepFilter) return false;
+      const createdBy = getCreatedByNodeId(item);
+      if (createdBy !== stepFilter) return false;
     }
     if (searchQuery != null && !itemMatchesSearch(item, searchQuery)) return false;
     return true;
@@ -136,7 +123,7 @@ export function CollectionTable({ kind, items, workflow, runId, stepFilter, sear
           <TableHead className="w-8 min-w-8 text-center">#</TableHead>
           <TableHead className="min-w-[120px]">Added</TableHead>
           {showTraceability && (
-            <TableHead className="min-w-[120px]">Collected by</TableHead>
+            <TableHead className="min-w-[140px]">Created by node</TableHead>
           )}
           {columns.map((col) => (
             <TableHead key={col} className="capitalize min-w-[120px]">
@@ -148,7 +135,7 @@ export function CollectionTable({ kind, items, workflow, runId, stepFilter, sear
       </TableHeader>
       <TableBody>
         {filteredItems.map((item, i) => {
-          const step = showTraceability ? inferSourceStep(kind, item) : null;
+          const step = showTraceability ? getCreatedByNodeId(item) : null;
           const itemPath = getItemPagePath(kind, item, i, runId);
           const rowKey = (item.id as string) ?? `row-${i}`;
           const isExpanded = expandedRowKey === rowKey;

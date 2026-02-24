@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { api, type CollectionSchemaConfig, type CollectionItem, type RunRecord } from "@/api";
+import { useWorkflowSelection } from "@/contexts/WorkflowSelectionContext";
 import { formatTimestamp } from "@/lib/utils";
 import { downloadCollectionItemAsPdf } from "@/lib/collectionItemToPdf";
 import { RichText, isRichTextField } from "@/components/display/RichText";
@@ -15,7 +16,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 import { cn, downloadTableCsv, getCollectionColor, TABLE_LINK_CLASS } from "@/lib/utils";
 
 const POLL_MS = 5000;
@@ -31,6 +31,7 @@ function formatCellValue(value: unknown): string {
 
 export function EntityPage() {
   const { kind } = useParams<{ kind: string }>();
+  const { selectedWorkflowId, selectedWorkflow } = useWorkflowSelection();
   const [schema, setSchema] = useState<CollectionSchemaConfig | null>(null);
   const [items, setItems] = useState<CollectionItem[]>([]);
   const [runs, setRuns] = useState<RunRecord[]>([]);
@@ -48,9 +49,10 @@ export function EntityPage() {
   const load = useCallback(async () => {
     if (!kind) return;
     try {
+      if (!selectedWorkflowId) return;
       const [schemaData, itemsData, runsData] = await Promise.all([
-        api.getCollectionSchema(),
-        api.getEntityData(kind),
+        api.getCollectionSchema(selectedWorkflowId),
+        api.getEntityData(kind, { workflowId: selectedWorkflowId }),
         api.getRuns(),
       ]);
       setSchema(schemaData);
@@ -60,7 +62,7 @@ export function EntityPage() {
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
-  }, [kind]);
+  }, [kind, selectedWorkflowId]);
 
   useEffect(() => {
     load();
@@ -85,13 +87,22 @@ export function EntityPage() {
   }
 
   const kindSchema = schema?.kinds[kind];
-  const columns = kindSchema?.properties
-    ? Object.keys(kindSchema.properties)
-    : items.length > 0
-      ? Array.from(
-          new Set(items.flatMap((i) => Object.keys(i).filter((k) => !["id", "created_at"].includes(k))))
-        )
-      : [];
+  const references = kindSchema?.references ?? {};
+  const columns = useMemo(() => {
+    const itemSchema = kindSchema?.item_schema;
+    if (itemSchema && typeof itemSchema === "object") {
+      const props = (itemSchema as Record<string, unknown>).properties;
+      if (props && typeof props === "object") {
+        return Object.keys(props as Record<string, unknown>);
+      }
+    }
+    if (items.length > 0) {
+      return Array.from(
+        new Set(items.flatMap((i) => Object.keys(i).filter((k) => !["id", "created_at"].includes(k))))
+      );
+    }
+    return [];
+  }, [items, kindSchema]);
 
   const displayColumns = columns.filter((c, i, a) => a.indexOf(c) === i && c !== "run_id");
 
@@ -133,13 +144,8 @@ export function EntityPage() {
 
       {kindSchema && (
         <div className="text-xs text-muted-foreground py-1.5 px-2 rounded-md bg-muted/40 border border-border/50">
-          <span className="font-medium text-foreground/80">Schema:</span> {kindSchema.description}
-          {kindSchema.required && kindSchema.required.length > 0 && (
-            <span className="ml-2">Required: {kindSchema.required.join(", ")}</span>
-          )}
-          {kindSchema.global && (
-            <Badge variant="secondary" className="ml-2 text-[10px]">Cross-run</Badge>
-          )}
+          <span className="font-medium text-foreground/80">Workflow:</span> {selectedWorkflow?.name ?? "—"}
+          <span className="ml-2"><span className="font-medium text-foreground/80">Schema:</span> {kindSchema.description}</span>
         </div>
       )}
 
@@ -208,9 +214,37 @@ export function EntityPage() {
                       {displayColumns.map((col) => {
                         const value = item[col];
                         const isRich = isRichTextField(col) && typeof value === "string";
+                        const ref = references[col];
                         return (
                           <TableCell key={col} className="text-sm min-w-[120px] max-w-[500px] whitespace-normal break-words align-top">
-                            {col === "url" && value ? (
+                            {ref && value ? (
+                              Array.isArray(value) ? (
+                                <span className="space-x-1">
+                                  {(value as unknown[]).map((v, idx) => {
+                                    const id = String(v);
+                                    const runIdQuery = item.run_id ? `?run_id=${encodeURIComponent(String(item.run_id))}` : "";
+                                    return (
+                                      <Link
+                                        key={`${col}-${id}-${idx}`}
+                                        to={`/data/${encodeURIComponent(ref.kind)}/items/${encodeURIComponent(id)}${runIdQuery}`}
+                                        className={TABLE_LINK_CLASS}
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        {id}
+                                      </Link>
+                                    );
+                                  })}
+                                </span>
+                              ) : (
+                                <Link
+                                  to={`/data/${encodeURIComponent(ref.kind)}/items/${encodeURIComponent(String(value))}${item.run_id ? `?run_id=${encodeURIComponent(String(item.run_id))}` : ""}`}
+                                  className={TABLE_LINK_CLASS}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  {String(value)}
+                                </Link>
+                              )
+                            ) : col === "url" && value ? (
                               <a
                                 href={value as string}
                                 target="_blank"

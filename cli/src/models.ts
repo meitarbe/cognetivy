@@ -3,34 +3,48 @@
  * All timestamps are ISO 8601 strings.
  */
 
-export interface WorkflowPointer {
-  workflow_id: string;
-  current_version: string;
+export enum WorkflowNodeType {
+  Prompt = "PROMPT",
+  HumanInTheLoop = "HUMAN_IN_THE_LOOP",
 }
 
-export interface NodeContract {
-  input: string[];
-  output: string[];
+export interface WorkflowIndexRecord {
+  current_workflow_id: string;
+  workflows: WorkflowRecordSummary[];
+}
+
+export interface WorkflowRecordSummary {
+  workflow_id: string;
+  name: string;
+  description?: string;
+  current_version_id: string;
+}
+
+export interface WorkflowRecord extends WorkflowRecordSummary {
+  created_at: string;
 }
 
 export interface WorkflowNode {
   id: string;
-  type: "TASK";
-  contract: NodeContract;
-  /** Human-readable description of what this step does. */
+  type: WorkflowNodeType;
+  input_collections: string[];
+  output_collections: string[];
+  /**
+   * Prompt/instructions for this node.
+   * For Prompt nodes this is the prompt; for HITL nodes this is instructions for the human.
+   */
+  prompt?: string;
+  /** Optional longer description shown in UI. */
   description?: string;
 }
 
-export interface WorkflowEdge {
-  from: string;
-  to: string;
-}
-
-export interface WorkflowVersion {
+export interface WorkflowVersionRecord {
   workflow_id: string;
-  version: string;
+  version_id: string;
+  name?: string;
+  description?: string;
+  created_at: string;
   nodes: WorkflowNode[];
-  edges: WorkflowEdge[];
 }
 
 export type RunStatus = "running" | "completed" | "failed";
@@ -40,7 +54,7 @@ export interface RunRecord {
   /** Human-readable name for the run (e.g. "Q1 ideas exploration"). */
   name?: string;
   workflow_id: string;
-  workflow_version: string;
+  workflow_version_id: string;
   status: RunStatus;
   input: Record<string, unknown>;
   created_at: string;
@@ -65,7 +79,7 @@ export interface EventPayload {
 export interface MutationTarget {
   type: "workflow";
   workflow_id: string;
-  from_version: string;
+  from_version_id: string;
 }
 
 export type MutationStatus = "proposed" | "applied" | "rejected";
@@ -78,7 +92,7 @@ export interface MutationRecord {
   status: MutationStatus;
   created_by: string;
   created_at: string;
-  applied_to_version?: string;
+  applied_to_version_id?: string;
 }
 
 /** RFC 6902 JSON Patch operation */
@@ -89,41 +103,79 @@ export interface JsonPatchOperation {
   from?: string;
 }
 
-// --- Collections (structured, schema-backed entities per run) ---
+// --- Collections (workflow-scoped schemas + per-run item stores) ---
 
-/** Schema for one collection kind. Agent-defined; strict type validation. */
-export interface CollectionKindSchema {
-  description: string;
-  required: string[];
-  /** When true, store globally across runs; when false, store per-run. */
-  global?: boolean;
-  properties?: Record<string, { type?: string; description?: string }>;
+export enum CollectionReferenceCardinality {
+  One = "one",
+  Many = "many",
 }
 
-/** Full collection schema. Stored in .cognetivy/collection-schema.json */
+export interface CollectionFieldReference {
+  kind: string;
+  cardinality: CollectionReferenceCardinality;
+  /** Optional label for UI. */
+  label?: string;
+}
+
+/**
+ * Strict JSON Schema for collection items (validated with Ajv).
+ * Stored alongside optional `references` metadata for easy navigation in Studio.
+ */
+export interface CollectionKindSchema {
+  name?: string;
+  description: string;
+  /** JSON Schema (object) that describes the item payload (excluding system provenance fields). */
+  item_schema: Record<string, unknown>;
+  /** Field-level references for navigation. Keys are top-level field names in the item. */
+  references?: Record<string, CollectionFieldReference>;
+}
+
 export interface CollectionSchemaConfig {
+  workflow_id: string;
   kinds: Record<string, CollectionKindSchema>;
 }
 
-/** One stored collection item (payload plus optional id and timestamp). */
-export interface CollectionItem {
-  id?: string;
-  created_at?: string;
-  [key: string]: unknown;
+export interface CollectionItemMeta {
+  id: string;
+  created_at: string;
+  run_id: string;
+  created_by_node_id: string;
+  created_by_node_result_id: string;
 }
 
-/** File format for a run's collections of one kind. */
+export type CollectionItem = CollectionItemMeta & Record<string, unknown>;
+
 export interface CollectionStore {
   run_id: string;
+  workflow_id: string;
+  workflow_version_id: string;
   kind: string;
   updated_at: string;
   items: CollectionItem[];
 }
 
-/** File format for a global (cross-run) entity store. */
-export interface GlobalEntityStore {
+export enum NodeResultStatus {
+  Started = "started",
+  Completed = "completed",
+  Failed = "failed",
+  NeedsHuman = "needs_human",
+}
+
+export interface NodeResultWrite {
   kind: string;
-  items: CollectionItem[];
-  updated_at: string;
+  item_ids: string[];
+}
+
+export interface NodeResultRecord {
+  node_result_id: string;
+  run_id: string;
+  workflow_id: string;
+  workflow_version_id: string;
+  node_id: string;
+  status: NodeResultStatus;
+  started_at: string;
+  completed_at?: string;
+  output?: string;
+  writes?: NodeResultWrite[];
 }
 

@@ -6,4 +6,4 @@
 export * from "./workspace.js";
 export * from "./models.js";
 export * from "./config.js";
-export { validateWorkflow } from "./validate.js";
+export { validateWorkflowVersion } from "./validate.js";

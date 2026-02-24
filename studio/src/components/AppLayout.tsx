@@ -1,10 +1,18 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import { cn, getCollectionColor } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
 import { useTheme } from "@/contexts/ThemeContext";
 import { api, type CollectionSchemaConfig, type RunRecord, type WorkspaceInfo } from "@/api";
+import { useWorkflowSelection } from "@/contexts/WorkflowSelectionContext";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   ChevronDown,
   ChevronLeft,
@@ -42,6 +50,7 @@ function setSidebarOpenStored(open: boolean) {
 export function AppLayout() {
   const location = useLocation();
   const { theme, setTheme } = useTheme();
+  const { workflows, selectedWorkflowId, setSelectedWorkflowId, selectedWorkflow } = useWorkflowSelection();
   const [schema, setSchema] = useState<CollectionSchemaConfig | null>(null);
   const [runs, setRuns] = useState<RunRecord[]>([]);
   const [workspace, setWorkspace] = useState<WorkspaceInfo | null>(null);
@@ -55,8 +64,15 @@ export function AppLayout() {
   }, []);
 
   useEffect(() => {
-    api.getCollectionSchema().then(setSchema).catch(() => setSchema({ kinds: {} }));
-  }, []);
+    if (!selectedWorkflowId) {
+      setSchema(null);
+      return;
+    }
+    api
+      .getCollectionSchema(selectedWorkflowId)
+      .then(setSchema)
+      .catch(() => setSchema(null));
+  }, [selectedWorkflowId]);
 
   useEffect(() => {
     function loadRuns() {
@@ -75,7 +91,68 @@ export function AppLayout() {
     });
   }
 
-  const entityKinds = schema ? Object.keys(schema.kinds) : [];
+  const entityKinds = useMemo(() => (schema ? Object.keys(schema.kinds) : []), [schema]);
+
+  function handleThemeToggle(checked: boolean) {
+    setTheme(checked ? "light" : "dark");
+  }
+
+  function handleWorkflowChange(workflowId: string) {
+    setSelectedWorkflowId(workflowId);
+  }
+
+  function handleToggleCollectionsExpanded() {
+    setCollectionExpanded((e) => !e);
+  }
+
+  function renderStaticNavItem(item: { to: string; label: string; icon: LucideIcon }) {
+    const Icon = item.icon;
+    const isActive = location.pathname === item.to || (item.to !== "/" && location.pathname.startsWith(item.to));
+    const showRunning = item.to === "/runs" && runningCount > 0;
+    return (
+      <Link
+        key={item.to}
+        to={item.to}
+        title={item.label + (showRunning ? ` (${runningCount} running)` : "")}
+        className={cn(
+          "flex items-center rounded-md text-xs font-medium transition-colors",
+          sidebarOpen ? "gap-2 px-2.5 py-1.5 w-full" : "p-2 justify-center",
+          isActive ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+        )}
+      >
+        <Icon className="size-3.5 shrink-0" />
+        {sidebarOpen && (
+          <>
+            {item.label}
+            {showRunning && (
+              <span className="ml-auto text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1">
+                <span className="size-1 rounded-full bg-amber-500 animate-pulse" aria-hidden />
+                {runningCount}
+              </span>
+            )}
+          </>
+        )}
+      </Link>
+    );
+  }
+
+  function renderEntityKindLink(kind: string) {
+    return (
+      <Link
+        key={kind}
+        to={`/data/${encodeURIComponent(kind)}`}
+        className={cn(
+          "block px-2 py-1 rounded-md text-xs font-medium transition-colors border-l-4",
+          location.pathname === `/data/${kind}`
+            ? "bg-accent text-accent-foreground"
+            : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+        )}
+        style={{ borderLeftColor: getCollectionColor(kind) }}
+      >
+        {kind}
+      </Link>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-background">
@@ -88,7 +165,7 @@ export function AppLayout() {
         <div className="p-2.5 border-b border-border flex items-center gap-2 min-w-0">
           {sidebarOpen ? (
             <>
-              <img src="/icon.jpg" alt="" className="h-8 w-8 rounded object-contain shrink-0" aria-hidden />
+              <img src="/favicon.png" alt="" className="h-8 w-8 rounded object-contain shrink-0" aria-hidden />
               <div className="min-w-0 flex-1">
                 <h1 className="font-semibold text-sm truncate">Cognetivy Studio</h1>
                 <p className="text-[10px] text-muted-foreground">Read-only</p>
@@ -108,44 +185,36 @@ export function AppLayout() {
             <span className="text-xs text-muted-foreground">Dark</span>
             <Switch
               checked={theme === "light"}
-              onCheckedChange={(checked) => setTheme(checked ? "light" : "dark")}
+              onCheckedChange={handleThemeToggle}
             />
             <span className="text-xs text-muted-foreground">Light</span>
           </div>
         )}
+        {sidebarOpen && workflows.length > 0 && (
+          <div className="px-2.5 py-2 border-b border-border">
+            <div className="text-[10px] text-muted-foreground mb-1">Workflow</div>
+            <Select value={selectedWorkflowId ?? ""} onValueChange={handleWorkflowChange}>
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue placeholder="Select workflow" />
+              </SelectTrigger>
+              <SelectContent>
+                {workflows.map((w) => (
+                  <SelectItem key={w.workflow_id} value={w.workflow_id}>
+                    {w.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {selectedWorkflow?.description && (
+              <p className="mt-1 text-[10px] text-muted-foreground line-clamp-2">
+                {selectedWorkflow.description}
+              </p>
+            )}
+          </div>
+        )}
         <ScrollArea className="flex-1">
           <nav className={cn("p-1.5 space-y-0.5", !sidebarOpen && "flex flex-col items-center gap-1")}>
-            {staticNavItems.map((item) => {
-              const Icon = item.icon;
-              const isActive =
-                location.pathname === item.to || (item.to !== "/" && location.pathname.startsWith(item.to));
-              const showRunning = item.to === "/runs" && runningCount > 0;
-              return (
-                <Link
-                  key={item.to}
-                  to={item.to}
-                  title={item.label + (showRunning ? ` (${runningCount} running)` : "")}
-                  className={cn(
-                    "flex items-center rounded-md text-xs font-medium transition-colors",
-                    sidebarOpen ? "gap-2 px-2.5 py-1.5 w-full" : "p-2 justify-center",
-                    isActive ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
-                  )}
-                >
-                  <Icon className="size-3.5 shrink-0" />
-                  {sidebarOpen && (
-                    <>
-                      {item.label}
-                      {showRunning && (
-                        <span className="ml-auto text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1">
-                          <span className="size-1 rounded-full bg-amber-500 animate-pulse" aria-hidden />
-                          {runningCount}
-                        </span>
-                      )}
-                    </>
-                  )}
-                </Link>
-              );
-            })}
+            {staticNavItems.map(renderStaticNavItem)}
             {entityKinds.length > 0 && (
               <div className={cn("pt-1", !sidebarOpen && "w-full flex flex-col items-center")}>
                 {sidebarOpen ? (
@@ -153,7 +222,7 @@ export function AppLayout() {
                     <div className="flex items-center gap-0.5 w-full">
                       <button
                         type="button"
-                        onClick={() => setCollectionExpanded((e) => !e)}
+                        onClick={handleToggleCollectionsExpanded}
                         className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted"
                         aria-label={collectionExpanded ? "Collapse collections" : "Expand collections"}
                       >
@@ -174,21 +243,7 @@ export function AppLayout() {
                     </div>
                     {collectionExpanded && (
                       <div className="ml-3 mt-0.5 space-y-0.5 border-l border-border pl-2">
-                        {entityKinds.map((kind) => (
-                          <Link
-                            key={kind}
-                            to={`/data/${encodeURIComponent(kind)}`}
-                            className={cn(
-                              "block px-2 py-1 rounded-md text-xs font-medium transition-colors border-l-4",
-                              location.pathname === `/data/${kind}`
-                                ? "bg-accent text-accent-foreground"
-                                : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
-                            )}
-                            style={{ borderLeftColor: getCollectionColor(kind) }}
-                          >
-                            {kind}
-                          </Link>
-                        ))}
+                        {entityKinds.map(renderEntityKindLink)}
                       </div>
                     )}
                   </>

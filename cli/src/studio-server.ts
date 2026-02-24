@@ -10,17 +10,18 @@ import type { CollectionItem } from "./models.js";
 import {
   getWorkspacePaths,
   workspaceExists,
-  readWorkflowPointer,
-  readWorkflowVersion,
-  listWorkflowVersionFiles,
-  versionFromFileName,
+  readWorkflowIndex,
+  listWorkflows,
+  readWorkflowRecord,
+  listWorkflowVersionIds,
+  readWorkflowVersionRecord,
   readRunFile,
   updateRunFile,
   runExists,
   readCollectionSchema,
   listCollectionKindsForRun,
   readCollections,
-  readGlobalEntityStore,
+  listNodeResults,
 } from "./workspace.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -45,22 +46,27 @@ async function handleApiWorkspace(cwd: string): Promise<{ path: string; exists: 
   return { path: p.root, exists };
 }
 
-async function handleApiWorkflow(cwd: string): Promise<{
-  pointer: { workflow_id: string; current_version: string };
-  workflow: unknown;
-}> {
-  const pointer = await readWorkflowPointer(cwd);
-  const workflow = await readWorkflowVersion(pointer.current_version, cwd);
-  return { pointer, workflow };
+async function handleApiWorkflows(cwd: string): Promise<unknown[]> {
+  const index = await readWorkflowIndex(cwd);
+  const workflows = await listWorkflows(cwd);
+  return workflows.map((w) => ({ ...w, current: w.workflow_id === index.current_workflow_id }));
 }
 
-async function handleApiWorkflowVersions(cwd: string): Promise<Array<{ version: string; filename: string }>> {
-  const files = await listWorkflowVersionFiles(cwd);
-  return files.map((filename) => ({ version: versionFromFileName(filename), filename }));
+async function handleApiWorkflowRecord(cwd: string, workflowId: string): Promise<unknown> {
+  return readWorkflowRecord(workflowId, cwd);
 }
 
-async function handleApiWorkflowVersion(cwd: string, version: string): Promise<unknown> {
-  return readWorkflowVersion(version, cwd);
+async function handleApiWorkflowVersions(cwd: string, workflowId: string): Promise<Array<{ version_id: string }>> {
+  const ids = await listWorkflowVersionIds(workflowId, cwd);
+  return ids.map((version_id) => ({ version_id }));
+}
+
+async function handleApiWorkflowVersion(
+  cwd: string,
+  workflowId: string,
+  versionId: string
+): Promise<unknown> {
+  return readWorkflowVersionRecord(workflowId, versionId, cwd);
 }
 
 async function handleApiRuns(cwd: string): Promise<unknown[]> {
@@ -100,8 +106,12 @@ async function handleApiRunEvents(cwd: string, runId: string): Promise<unknown[]
     .map((line) => JSON.parse(line) as unknown);
 }
 
-async function handleApiCollectionsSchema(cwd: string): Promise<unknown> {
-  return readCollectionSchema(cwd);
+async function handleApiWorkflowCollectionsSchema(cwd: string, workflowId: string): Promise<unknown> {
+  return readCollectionSchema(workflowId, cwd);
+}
+
+async function handleApiRunNodeResults(cwd: string, runId: string): Promise<unknown> {
+  return listNodeResults(runId, cwd);
 }
 
 async function handleApiCollectionsKinds(cwd: string, runId: string): Promise<string[]> {
@@ -167,21 +177,38 @@ async function handleApi(
       sendJson(res, 200, data);
       return true;
     }
-    // GET /api/workflow (current pointer + full workflow)
-    if (apiMatch[0] === "workflow" && apiMatch.length === 1) {
-      const data = await handleApiWorkflow(cwd);
+    // GET /api/workflows
+    if (apiMatch[0] === "workflows" && apiMatch.length === 1) {
+      const data = await handleApiWorkflows(cwd);
       sendJson(res, 200, data);
       return true;
     }
-    // GET /api/workflow/versions
-    if (apiMatch[0] === "workflow" && apiMatch[1] === "versions" && apiMatch.length === 2) {
-      const data = await handleApiWorkflowVersions(cwd);
+    // GET /api/workflows/:workflowId
+    if (apiMatch[0] === "workflows" && apiMatch.length === 2) {
+      const data = await handleApiWorkflowRecord(cwd, apiMatch[1]);
       sendJson(res, 200, data);
       return true;
     }
-    // GET /api/workflow/versions/:version
-    if (apiMatch[0] === "workflow" && apiMatch[1] === "versions" && apiMatch.length === 3) {
-      const data = await handleApiWorkflowVersion(cwd, apiMatch[2]);
+    // GET /api/workflows/:workflowId/versions
+    if (apiMatch[0] === "workflows" && apiMatch[2] === "versions" && apiMatch.length === 3) {
+      const data = await handleApiWorkflowVersions(cwd, apiMatch[1]);
+      sendJson(res, 200, data);
+      return true;
+    }
+    // GET /api/workflows/:workflowId/versions/:versionId
+    if (apiMatch[0] === "workflows" && apiMatch[2] === "versions" && apiMatch.length === 4) {
+      const data = await handleApiWorkflowVersion(cwd, apiMatch[1], apiMatch[3]);
+      sendJson(res, 200, data);
+      return true;
+    }
+    // GET /api/workflows/:workflowId/collections/schema
+    if (
+      apiMatch[0] === "workflows" &&
+      apiMatch[2] === "collections" &&
+      apiMatch[3] === "schema" &&
+      apiMatch.length === 4
+    ) {
+      const data = await handleApiWorkflowCollectionsSchema(cwd, apiMatch[1]);
       sendJson(res, 200, data);
       return true;
     }
@@ -197,9 +224,9 @@ async function handleApi(
       sendJson(res, 200, data);
       return true;
     }
-    // GET /api/runs/:id/events (before /api/runs/:id)
-    if (apiMatch[0] === "runs" && apiMatch.length === 3 && apiMatch[2] === "events") {
-      const data = await handleApiRunEvents(cwd, apiMatch[1]);
+    // GET /api/runs/:id/node-results (before /api/runs/:id)
+    if (apiMatch[0] === "runs" && apiMatch.length === 3 && apiMatch[2] === "node-results") {
+      const data = await handleApiRunNodeResults(cwd, apiMatch[1]);
       sendJson(res, 200, data);
       return true;
     }
@@ -209,44 +236,32 @@ async function handleApi(
       sendJson(res, 200, data);
       return true;
     }
-    // GET /api/entities/:kind (entity data; for global kinds from store; for per-run kinds aggregated from runs)
+    // GET /api/entities/:kind (entity data aggregated across runs; filter by run_id and workflow_id)
     if (apiMatch[0] === "entities" && apiMatch.length === 2) {
       const kind = apiMatch[1];
       const runId = searchParams?.get("run_id") ?? undefined;
-      const schema = await readCollectionSchema(cwd);
+      const workflowIdParam = searchParams?.get("workflow_id") ?? undefined;
+      const workflowId = workflowIdParam ?? (await readWorkflowIndex(cwd)).current_workflow_id;
+      const schema = await readCollectionSchema(workflowId, cwd);
       if (!schema.kinds[kind]) {
-        sendJson(res, 404, { error: `Unknown entity kind "${kind}"` });
+        sendJson(res, 404, { error: `Unknown entity kind "${kind}" in workflow "${workflowId}"` });
         return true;
       }
-      if (schema.kinds[kind].global) {
-        const store = await readGlobalEntityStore(kind, cwd);
-        let items = store.items;
-        if (runId) items = items.filter((i) => (i.run_id as string) === runId);
-        sendJson(res, 200, items);
-      } else {
-        const runs = await handleApiRuns(cwd);
-        const allItems: Array<CollectionItem & { run_id: string }> = [];
-        for (const run of runs) {
-          try {
-            const runId = (run as { run_id: string }).run_id;
-            const store = await readCollections(runId, kind, cwd);
-            for (const item of store.items) {
-              allItems.push({ ...item, run_id: runId } as CollectionItem & { run_id: string });
-            }
-          } catch {
-            // skip
-          }
+
+      const runs = await handleApiRuns(cwd);
+      const allItems: CollectionItem[] = [];
+      for (const run of runs) {
+        try {
+          const r = run as { run_id: string; workflow_id?: string };
+          if (workflowId && r.workflow_id && r.workflow_id !== workflowId) continue;
+          if (runId && r.run_id !== runId) continue;
+          const store = await readCollections(r.run_id, kind, cwd);
+          for (const item of store.items) allItems.push(item);
+        } catch {
+          // skip
         }
-        let items = allItems;
-        if (runId) items = items.filter((i) => i.run_id === runId);
-        sendJson(res, 200, items);
       }
-      return true;
-    }
-    // GET /api/collections/schema
-    if (apiMatch[0] === "collections" && apiMatch[1] === "schema" && apiMatch.length === 2) {
-      const data = await handleApiCollectionsSchema(cwd);
-      sendJson(res, 200, data);
+      sendJson(res, 200, allItems);
       return true;
     }
     // GET /api/collections/:runId

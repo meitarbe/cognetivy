@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useSearchParams, Link } from "react-router-dom";
-import { api, type CollectionItem } from "@/api";
+import { api, type CollectionFieldReference, type CollectionItem } from "@/api";
+import { useWorkflowSelection } from "@/contexts/WorkflowSelectionContext";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatTimestamp } from "@/lib/utils";
 import { RichText, isRichTextField, type SourceRef } from "@/components/display/RichText";
 import { CopyableId } from "@/components/ui/CopyableId";
-import { inferSourceStep } from "@/components/display/CollectionTable";
+import { getCreatedByNodeId } from "@/components/display/CollectionTable";
 import { downloadCollectionItemAsPdf } from "@/lib/collectionItemToPdf";
 import { FileDown } from "lucide-react";
 
@@ -33,9 +34,11 @@ export function CollectionItemPage() {
   const runId = params.runId ?? searchParams.get("run_id") ?? null;
   const kind = params.kind ?? "";
   const itemId = params.itemId ?? "";
+  const { selectedWorkflowId } = useWorkflowSelection();
 
   const [item, setItem] = useState<CollectionItem | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [references, setReferences] = useState<Record<string, CollectionFieldReference>>({});
 
   const load = useCallback(async () => {
     if (!kind || !itemId) return;
@@ -64,6 +67,27 @@ export function CollectionItemPage() {
     load();
   }, [load]);
 
+  useEffect(() => {
+    async function loadRefs() {
+      if (!kind) return;
+      try {
+        if (runId) {
+          const run = await api.getRun(runId);
+          const schema = await api.getCollectionSchema(run.workflow_id);
+          setReferences(schema.kinds[kind]?.references ?? {});
+        } else if (selectedWorkflowId) {
+          const schema = await api.getCollectionSchema(selectedWorkflowId);
+          setReferences(schema.kinds[kind]?.references ?? {});
+        } else {
+          setReferences({});
+        }
+      } catch {
+        setReferences({});
+      }
+    }
+    loadRefs().catch(() => setReferences({}));
+  }, [kind, runId, selectedWorkflowId]);
+
   if (error || !kind) {
     return (
       <div className="p-3">
@@ -91,7 +115,7 @@ export function CollectionItemPage() {
   }
 
   const displayKind = kind.replace(/_/g, " ");
-  const step = inferSourceStep(kind, item);
+  const step = getCreatedByNodeId(item);
   const sourceRefs = getSourceRefs(item);
   const breadcrumbItems = runId
     ? [
@@ -137,7 +161,8 @@ export function CollectionItemPage() {
             )}
             {step && (
               <span>
-                Collected by: <code className="bg-muted px-1.5 py-0.5 rounded text-xs">{step.replace(/_/g, " ")}</code>
+                Created by node:{" "}
+                <code className="bg-muted px-1.5 py-0.5 rounded text-xs">{step.replace(/_/g, " ")}</code>
               </span>
             )}
           </div>
@@ -149,6 +174,7 @@ export function CollectionItemPage() {
               if (value === undefined || value === null) return null;
               const label = key.replace(/_/g, " ");
               const isRich = isRichTextField(key) && typeof value === "string";
+              const ref = references[key];
               return (
                 <section key={key}>
                   <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
@@ -170,6 +196,31 @@ export function CollectionItemPage() {
                         View run
                       </Link>
                     </span>
+                  ) : ref ? (
+                    Array.isArray(value) ? (
+                      <ul className="list-disc list-inside space-y-1 text-sm">
+                        {(value as unknown[]).map((v, i) => {
+                          const id = String(v);
+                          return (
+                            <li key={`${key}-${id}-${i}`}>
+                              <Link
+                                to={`/data/${encodeURIComponent(ref.kind)}/items/${encodeURIComponent(id)}${runId ? `?run_id=${encodeURIComponent(runId)}` : ""}`}
+                                className="text-primary hover:underline break-all"
+                              >
+                                {id}
+                              </Link>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    ) : (
+                      <Link
+                        to={`/data/${encodeURIComponent(ref.kind)}/items/${encodeURIComponent(String(value))}${runId ? `?run_id=${encodeURIComponent(runId)}` : ""}`}
+                        className="text-primary hover:underline break-all"
+                      >
+                        {String(value)}
+                      </Link>
+                    )
                   ) : isRich ? (
                     <RichText content={value} sourceRefs={sourceRefs} className="prose prose-sm dark:prose-invert max-w-none" />
                   ) : (

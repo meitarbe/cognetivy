@@ -14,40 +14,53 @@ export interface WorkspaceInfo {
   exists: boolean;
 }
 
-export interface WorkflowResponse {
-  pointer: { workflow_id: string; current_version: string };
-  workflow: WorkflowVersion;
+export const WORKFLOW_NODE_TYPE = {
+  Prompt: "PROMPT",
+  HumanInTheLoop: "HUMAN_IN_THE_LOOP",
+} as const;
+
+export type WorkflowNodeType = (typeof WORKFLOW_NODE_TYPE)[keyof typeof WORKFLOW_NODE_TYPE];
+
+export interface WorkflowSummary {
+  workflow_id: string;
+  name: string;
+  description?: string;
+  current_version_id: string;
+}
+
+export interface WorkflowRecord extends WorkflowSummary {
+  created_at: string;
 }
 
 export interface WorkflowVersion {
   workflow_id: string;
-  version: string;
+  version_id: string;
+  name?: string;
+  description?: string;
+  created_at: string;
   nodes: WorkflowNode[];
-  edges: WorkflowEdge[];
 }
 
 export interface WorkflowNode {
   id: string;
-  type: string;
-  contract: { input: string[]; output: string[] };
+  type: WorkflowNodeType;
+  input_collections: string[];
+  output_collections: string[];
+  prompt?: string;
   description?: string;
 }
 
-export interface WorkflowEdge {
-  from: string;
-  to: string;
-}
-
 export interface VersionListItem {
-  version: string;
-  filename: string;
+  version_id: string;
+  name?: string;
+  created_at?: string;
 }
 
 export interface RunRecord {
   run_id: string;
   name?: string;
   workflow_id: string;
-  workflow_version: string;
+  workflow_version_id: string;
   status: string;
   input: Record<string, unknown>;
   created_at: string;
@@ -63,42 +76,97 @@ export interface EventPayload {
 
 export interface CollectionStore {
   run_id: string;
+  workflow_id: string;
+  workflow_version_id: string;
   kind: string;
   updated_at: string;
   items: CollectionItem[];
 }
 
 export interface CollectionItem {
-  id?: string;
-  created_at?: string;
+  id: string;
+  created_at: string;
+  run_id: string;
+  created_by_node_id: string;
+  created_by_node_result_id: string;
   [key: string]: unknown;
 }
 
+export const COLLECTION_REFERENCE_CARDINALITY = {
+  One: "one",
+  Many: "many",
+} as const;
+
+export type CollectionReferenceCardinality =
+  (typeof COLLECTION_REFERENCE_CARDINALITY)[keyof typeof COLLECTION_REFERENCE_CARDINALITY];
+
+export interface CollectionFieldReference {
+  kind: string;
+  cardinality: CollectionReferenceCardinality;
+  label?: string;
+}
+
 export interface CollectionKindSchema {
+  name?: string;
   description: string;
-  required: string[];
-  global?: boolean;
-  properties?: Record<string, { type?: string; description?: string }>;
+  item_schema: Record<string, unknown>;
+  references?: Record<string, CollectionFieldReference>;
 }
 
 export interface CollectionSchemaConfig {
+  workflow_id: string;
   kinds: Record<string, CollectionKindSchema>;
+}
+
+export const NODE_RESULT_STATUS = {
+  Started: "started",
+  Completed: "completed",
+  Failed: "failed",
+  NeedsHuman: "needs_human",
+} as const;
+
+export type NodeResultStatus = (typeof NODE_RESULT_STATUS)[keyof typeof NODE_RESULT_STATUS];
+
+export interface NodeResultWrite {
+  kind: string;
+  item_ids: string[];
+}
+
+export interface NodeResultRecord {
+  node_result_id: string;
+  run_id: string;
+  workflow_id: string;
+  workflow_version_id: string;
+  node_id: string;
+  status: NodeResultStatus;
+  started_at: string;
+  completed_at?: string;
+  output?: string;
+  writes?: NodeResultWrite[];
 }
 
 export const api = {
   getWorkspace: () => get<WorkspaceInfo>("/workspace"),
-  getWorkflow: () => get<WorkflowResponse>("/workflow"),
-  getWorkflowVersions: () => get<VersionListItem[]>("/workflow/versions"),
-  getWorkflowVersion: (version: string) => get<WorkflowVersion>(`/workflow/versions/${encodeURIComponent(version)}`),
+  getWorkflows: () => get<WorkflowSummary[]>("/workflows"),
+  getWorkflow: (workflowId: string) => get<WorkflowRecord>(`/workflows/${encodeURIComponent(workflowId)}`),
+  getWorkflowVersions: (workflowId: string) =>
+    get<VersionListItem[]>(`/workflows/${encodeURIComponent(workflowId)}/versions`),
+  getWorkflowVersion: (workflowId: string, versionId: string) =>
+    get<WorkflowVersion>(`/workflows/${encodeURIComponent(workflowId)}/versions/${encodeURIComponent(versionId)}`),
   getRuns: () => get<RunRecord[]>("/runs"),
   getRun: (id: string) => get<RunRecord>(`/runs/${encodeURIComponent(id)}`),
   getRunEvents: (id: string) => get<EventPayload[]>(`/runs/${encodeURIComponent(id)}/events`),
-  getCollectionSchema: () => get<CollectionSchemaConfig>("/collections/schema"),
+  getNodeResults: (runId: string) => get<NodeResultRecord[]>(`/runs/${encodeURIComponent(runId)}/node-results`),
+  getCollectionSchema: (workflowId: string) =>
+    get<CollectionSchemaConfig>(`/workflows/${encodeURIComponent(workflowId)}/collections/schema`),
   getCollectionKinds: (runId: string) => get<string[]>(`/collections/${encodeURIComponent(runId)}`),
   getCollections: (runId: string, kind: string) =>
     get<CollectionStore>(`/collections/${encodeURIComponent(runId)}/${encodeURIComponent(kind)}`),
-  getEntityData: (kind: string, runId?: string) => {
-    const q = runId ? `?run_id=${encodeURIComponent(runId)}` : "";
-    return get<CollectionItem[]>(`/entities/${encodeURIComponent(kind)}${q}`);
+  getEntityData: (kind: string, options?: { runId?: string; workflowId?: string }) => {
+    const params = new URLSearchParams();
+    if (options?.runId) params.set("run_id", options.runId);
+    if (options?.workflowId) params.set("workflow_id", options.workflowId);
+    const qs = params.toString();
+    return get<CollectionItem[]>(`/entities/${encodeURIComponent(kind)}${qs ? `?${qs}` : ""}`);
   },
 };

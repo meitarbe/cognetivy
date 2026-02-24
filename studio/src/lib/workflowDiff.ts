@@ -1,4 +1,4 @@
-import type { WorkflowVersion, WorkflowNode, WorkflowEdge } from "@/api";
+import type { WorkflowVersion, WorkflowNode } from "@/api";
 
 export interface VersionDiff {
   nodesAdded: string[];
@@ -9,11 +9,7 @@ export interface VersionDiff {
 }
 
 function nodeKey(n: WorkflowNode): string {
-  return `${n.id}|${n.type}|${(n.contract?.input ?? []).join(",")}|${(n.contract?.output ?? []).join(",")}`;
-}
-
-function edgeKey(e: WorkflowEdge): string {
-  return `${e.from}->${e.to}`;
+  return `${n.id}|${n.type}|${(n.input_collections ?? []).join(",")}|${(n.output_collections ?? []).join(",")}|${n.prompt ?? ""}|${n.description ?? ""}`;
 }
 
 /**
@@ -35,14 +31,8 @@ export function diffWorkflowVersions(
   for (const id of prevNodes.keys()) {
     if (!currNodes.has(id)) nodesRemoved.push(id);
   }
-  const prevEdges = new Set(previous.edges.map(edgeKey));
-  const currEdges = new Set(current.edges.map(edgeKey));
-  const edgesAdded: { from: string; to: string }[] = current.edges.filter(
-    (e) => !prevEdges.has(edgeKey(e))
-  );
-  const edgesRemoved: { from: string; to: string }[] = previous.edges.filter(
-    (e) => !currEdges.has(edgeKey(e))
-  );
+  const edgesAdded: { from: string; to: string }[] = [];
+  const edgesRemoved: { from: string; to: string }[] = [];
   return {
     nodesAdded,
     nodesRemoved,

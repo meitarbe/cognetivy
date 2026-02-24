@@ -11,7 +11,7 @@ import {
 } from "../dist/workspace.js";
 
 describe("cognetivy init", () => {
-  it("creates workspace structure with workflow.json and wf_v1.json", async () => {
+  it("creates workspace structure with workflows/index.json and default workflow files", async () => {
     const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "cognetivy-test-"));
     await ensureWorkspace(cwd, { noGitignore: true });
 
@@ -19,22 +19,32 @@ describe("cognetivy init", () => {
     const p = getWorkspacePaths(cwd);
     assert.strictEqual(p.root, path.join(cwd, WORKSPACE_DIR));
 
-    await assert.doesNotReject(fs.access(p.workflowJson));
-    await assert.doesNotReject(fs.access(p.workflowVersionsDir));
+    await assert.doesNotReject(fs.access(p.workflowsIndexPath));
+    await assert.doesNotReject(fs.access(p.workflowsDir));
     await assert.doesNotReject(fs.access(p.runsDir));
     await assert.doesNotReject(fs.access(p.eventsDir));
     await assert.doesNotReject(fs.access(p.collectionsDir));
-    await assert.doesNotReject(fs.access(p.collectionSchemaPath));
+    await assert.doesNotReject(fs.access(p.nodeResultsDir));
 
-    const pointer = JSON.parse(await fs.readFile(p.workflowJson, "utf-8"));
-    assert.strictEqual(pointer.workflow_id, "wf_default");
-    assert.strictEqual(pointer.current_version, "v1");
+    const index = JSON.parse(await fs.readFile(p.workflowsIndexPath, "utf-8"));
+    assert.strictEqual(index.current_workflow_id, "wf_default");
+    assert.strictEqual(Array.isArray(index.workflows), true);
 
-    const versionPath = path.join(p.workflowVersionsDir, "wf_v1.json");
+    const wfDir = path.join(p.workflowsDir, "wf_default");
+    const wfPath = path.join(wfDir, "workflow.json");
+    const versionPath = path.join(wfDir, "versions", "v1.json");
+    const schemaPath = path.join(wfDir, "collections", "schema.json");
+    await assert.doesNotReject(fs.access(wfPath));
     await assert.doesNotReject(fs.access(versionPath));
-    const wf = JSON.parse(await fs.readFile(versionPath, "utf-8"));
-    assert.strictEqual(wf.version, "v1");
-    assert.strictEqual(Array.isArray(wf.nodes), true);
-    assert.strictEqual(Array.isArray(wf.edges), true);
+    await assert.doesNotReject(fs.access(schemaPath));
+
+    const wf = JSON.parse(await fs.readFile(wfPath, "utf-8"));
+    assert.strictEqual(wf.workflow_id, "wf_default");
+    assert.strictEqual(wf.current_version_id, "v1");
+
+    const version = JSON.parse(await fs.readFile(versionPath, "utf-8"));
+    assert.strictEqual(version.workflow_id, "wf_default");
+    assert.strictEqual(version.version_id, "v1");
+    assert.strictEqual(Array.isArray(version.nodes), true);
   });
 });

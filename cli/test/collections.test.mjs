@@ -18,16 +18,34 @@ describe("collection schema and storage", () => {
   it("init creates collection-schema.json and read returns default kinds", async () => {
     const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "cognetivy-collection-"));
     await ensureWorkspace(cwd, { noGitignore: true });
-    const schema = await readCollectionSchema(cwd);
+    const schema = await readCollectionSchema("wf_default", cwd);
     assert.ok(schema.kinds);
-    assert.strictEqual(Object.keys(schema.kinds).length, 0);
+    assert.ok(Object.keys(schema.kinds).includes("run_input"));
   });
 
   it("collection_append validates and stores item; collection_get returns store", async () => {
     const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "cognetivy-collection-"));
     await ensureWorkspace(cwd, { noGitignore: true });
     await writeCollectionSchema(
-      { kinds: { sources: { description: "Sources", required: ["url"], properties: {} } } },
+      "wf_default",
+      {
+        workflow_id: "wf_default",
+        kinds: {
+          run_input: {
+            description: "Run input",
+            item_schema: { type: "object", additionalProperties: true },
+          },
+          sources: {
+            description: "Sources",
+            item_schema: {
+              type: "object",
+              properties: { url: { type: "string" }, title: { type: "string" } },
+              required: ["url"],
+              additionalProperties: true,
+            },
+          },
+        },
+      },
       cwd
     );
     const runId = "run_2025-01-01_col1";
@@ -35,7 +53,7 @@ describe("collection schema and storage", () => {
       {
         run_id: runId,
         workflow_id: "wf_default",
-        workflow_version: "v1",
+        workflow_version_id: "v1",
         status: "running",
         input: {},
         created_at: new Date().toISOString(),
@@ -47,11 +65,12 @@ describe("collection schema and storage", () => {
       runId,
       "sources",
       { url: "https://example.com", title: "Example" },
-      {},
+      { created_by_node_id: "retrieve_sources", created_by_node_result_id: "nr_1" },
       cwd
     );
     assert.ok(item.id);
     assert.ok(item.created_at);
+    assert.strictEqual(item.created_by_node_id, "retrieve_sources");
     assert.strictEqual(item.url, "https://example.com");
     assert.strictEqual(item.title, "Example");
 
@@ -67,7 +86,20 @@ describe("collection schema and storage", () => {
     const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "cognetivy-collection-"));
     await ensureWorkspace(cwd, { noGitignore: true });
     await writeCollectionSchema(
-      { kinds: { sources: { description: "Sources", required: ["url"], properties: {} } } },
+      "wf_default",
+      {
+        workflow_id: "wf_default",
+        kinds: {
+          run_input: {
+            description: "Run input",
+            item_schema: { type: "object", additionalProperties: true },
+          },
+          sources: {
+            description: "Sources",
+            item_schema: { type: "object", properties: { url: { type: "string" } }, required: ["url"], additionalProperties: true },
+          },
+        },
+      },
       cwd
     );
     const runId = "run_2025-01-01_col2";
@@ -75,7 +107,7 @@ describe("collection schema and storage", () => {
       {
         run_id: runId,
         workflow_id: "wf_default",
-        workflow_version: "v1",
+        workflow_version_id: "v1",
         status: "running",
         input: {},
         created_at: new Date().toISOString(),
@@ -84,8 +116,15 @@ describe("collection schema and storage", () => {
     );
 
     await assert.rejects(
-      () => appendCollection(runId, "sources", { title: "No URL" }, {}, cwd),
-      /required|Missing/
+      () =>
+        appendCollection(
+          runId,
+          "sources",
+          { title: "No URL" },
+          { created_by_node_id: "retrieve_sources", created_by_node_result_id: "nr_1" },
+          cwd
+        ),
+      /schema validation/i
     );
   });
 
@@ -93,7 +132,20 @@ describe("collection schema and storage", () => {
     const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "cognetivy-collection-"));
     await ensureWorkspace(cwd, { noGitignore: true });
     await writeCollectionSchema(
-      { kinds: { ideas: { description: "Ideas", required: ["name"], properties: {} } } },
+      "wf_default",
+      {
+        workflow_id: "wf_default",
+        kinds: {
+          run_input: {
+            description: "Run input",
+            item_schema: { type: "object", additionalProperties: true },
+          },
+          ideas: {
+            description: "Ideas",
+            item_schema: { type: "object", properties: { name: { type: "string" } }, required: ["name"], additionalProperties: true },
+          },
+        },
+      },
       cwd
     );
     const runId = "run_2025-01-01_col3";
@@ -101,7 +153,7 @@ describe("collection schema and storage", () => {
       {
         run_id: runId,
         workflow_id: "wf_default",
-        workflow_version: "v1",
+        workflow_version_id: "v1",
         status: "running",
         input: {},
         created_at: new Date().toISOString(),
@@ -116,6 +168,7 @@ describe("collection schema and storage", () => {
         { name: "Idea A", why_now: "Because now" },
         { name: "Idea B", description: "Second" },
       ],
+      { created_by_node_id: "synthesize_summary", created_by_node_result_id: "nr_2" },
       cwd
     );
 

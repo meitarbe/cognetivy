@@ -40,10 +40,12 @@ function WorkflowNodeComponent(props: NodeProps) {
   const stepStatus = d.stepStatus;
   const changeStatus = d.changeStatus;
   const statusForStyle = stepStatus ?? changeStatus;
+  const isHitl = d.type === "HUMAN_IN_THE_LOOP";
   return (
     <div
       className={cn(
         "rounded-lg border-2 bg-card px-3 py-2 shadow-sm min-w-[160px] max-w-[200px] cursor-pointer",
+        isHitl && "border-violet-500/60 bg-violet-500/5 dark:bg-violet-500/10",
         stepStatus === "completed" && "border-emerald-500/70 bg-emerald-500/10 dark:bg-emerald-500/15",
         stepStatus === "running" && "border-amber-500/70 bg-amber-500/10 dark:bg-amber-500/15 animate-pulse",
         stepStatus === "pending" && "border-border bg-muted/30",
@@ -53,7 +55,7 @@ function WorkflowNodeComponent(props: NodeProps) {
         !statusForStyle && "border-primary/30"
       )}
     >
-      <Handle type="target" position={Position.Top} />
+      <Handle type="target" position={Position.Left} />
       <div className="font-semibold text-xs text-primary hover:underline cursor-pointer">
         {nodeIdToDisplayName(d.nodeId)}
       </div>
@@ -94,7 +96,7 @@ function WorkflowNodeComponent(props: NodeProps) {
           </span>
         </div>
       )}
-      <Handle type="source" position={Position.Bottom} />
+      <Handle type="source" position={Position.Right} />
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams, Link } from "react-router-dom";
-import { api, type RunRecord, type EventPayload, type CollectionStore, type WorkflowVersion } from "@/api";
+import { api, type RunRecord, type EventPayload, type CollectionStore, type WorkflowVersion, type NodeResultRecord } from "@/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -20,7 +20,7 @@ import { RichText } from "@/components/display/RichText";
 import { WorkflowCanvas } from "@/components/workflow/WorkflowCanvas";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { ResizablePanel } from "@/components/ui/ResizablePanel";
-import { downloadTableCsv, formatTimestamp, getStepIdFromEventData, getCollectionColor, TABLE_LINK_CLASS } from "@/lib/utils";
+import { downloadTableCsv, formatTimestamp, getCollectionColor, TABLE_LINK_CLASS } from "@/lib/utils";
 import { CopyableId } from "@/components/ui/CopyableId";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -65,6 +65,7 @@ export function RunDetailPage() {
   const [kinds, setKinds] = useState<string[]>([]);
   const [collections, setCollections] = useState<Record<string, CollectionStore>>({});
   const [workflow, setWorkflow] = useState<WorkflowVersion | null>(null);
+  const [nodeResults, setNodeResults] = useState<NodeResultRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [showWorkflowHint, setShowWorkflowHint] = useState(false);
   const [selectedCollectionTab, setSelectedCollectionTab] = useState<string | null>(null);
@@ -101,37 +102,28 @@ export function RunDetailPage() {
     downloadTableCsv(items, columnKeys, headers, `${kind}.csv`);
   }
 
-  function handleStepClick(stepId: string) {
-    const idx = events.findIndex((ev) => getStepIdFromEventData(ev.data) === stepId);
-    if (idx >= 0) {
-      setEventsDrawerOpen(true);
-      setTimeout(() => {
-        const rowEl = eventsScrollRef.current?.querySelector(`[data-event-index="${idx}"]`);
-        rowEl?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-      }, 300);
-    }
-  }
-
   const load = useCallback(async () => {
     if (!runId) return;
     try {
-      const [runData, eventsData, kindsData] = await Promise.all([
+      const [runData, eventsData, kindsData, nodeResultsData] = await Promise.all([
         api.getRun(runId),
         api.getRunEvents(runId),
         api.getCollectionKinds(runId),
+        api.getNodeResults(runId),
       ]);
       setRun(runData);
       setEvents(eventsData);
       setKinds(kindsData);
+      setNodeResults(nodeResultsData);
       setError(null);
       const col: Record<string, CollectionStore> = {};
       for (const kind of kindsData) {
         col[kind] = await api.getCollections(runId, kind);
       }
       setCollections(col);
-      if (runData?.workflow_version) {
+      if (runData?.workflow_id && runData?.workflow_version_id) {
         try {
-          const wf = await api.getWorkflowVersion(runData.workflow_version);
+          const wf = await api.getWorkflowVersion(runData.workflow_id, runData.workflow_version_id);
           setWorkflow(wf);
         } catch {
           setWorkflow(null);
@@ -217,7 +209,7 @@ export function RunDetailPage() {
       {showWorkflowHint && (
         <div className="px-2 py-1.5 border-b border-border bg-muted/50">
           <p className="text-[10px] text-muted-foreground">
-            Drag nodes to reposition · Click step to scroll to events
+            Drag nodes to reposition · Click nodes for details
           </p>
         </div>
       )}
@@ -225,7 +217,7 @@ export function RunDetailPage() {
         <WorkflowCanvas
           workflow={workflow}
           events={events}
-          onStepClick={handleStepClick}
+          nodeResults={nodeResults}
           readOnly
           nodesDraggable
           showControls
@@ -257,12 +249,12 @@ export function RunDetailPage() {
             >
               {run?.status}
             </Badge>
-            {run?.workflow_version && (
+            {run?.workflow_version_id && (
               <Link
-                to={`/workflow?version=${encodeURIComponent(run.workflow_version)}`}
+                to={`/workflow?workflow_id=${encodeURIComponent(run.workflow_id)}&version_id=${encodeURIComponent(run.workflow_version_id)}`}
                 className={`text-xs shrink-0 ${TABLE_LINK_CLASS}`}
               >
-                Workflow version: {run.workflow_version}
+                Workflow version: {run.workflow_version_id}
               </Link>
             )}
             <div className="flex items-center gap-2 ml-auto shrink-0">

@@ -20,7 +20,7 @@ describe("run start and event append", () => {
     const runRecord = {
       run_id: runId,
       workflow_id: "wf_default",
-      workflow_version: "v1",
+      workflow_version_id: "v1",
       status: "running",
       input: { topic: "test" },
       created_at: now,
@@ -55,7 +55,7 @@ describe("run start and event append", () => {
       {
         run_id: runId,
         workflow_id: "wf_default",
-        workflow_version: "v1",
+        workflow_version_id: "v1",
         status: "running",
         input: {},
         created_at: now,

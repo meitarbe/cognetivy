@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api, type RunRecord } from "@/api";
+import { useWorkflowSelection } from "@/contexts/WorkflowSelectionContext";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -28,22 +29,28 @@ const ALL_STATUSES = "";
 
 export function RunsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const { selectedWorkflowId, selectedWorkflow } = useWorkflowSelection();
   const versionFilter = searchParams.get("version") ?? ALL_VERSIONS;
   const statusFilter = searchParams.get("status") ?? ALL_STATUSES;
   const [runs, setRuns] = useState<RunRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
 
+  const workflowRuns = useMemo(() => {
+    if (!selectedWorkflowId) return runs;
+    return runs.filter((r) => r.workflow_id === selectedWorkflowId);
+  }, [runs, selectedWorkflowId]);
+
   const filteredRuns = useMemo(() => {
-    return runs.filter((r) => {
-      if (versionFilter && r.workflow_version !== versionFilter) return false;
+    return workflowRuns.filter((r) => {
+      if (versionFilter && r.workflow_version_id !== versionFilter) return false;
       if (statusFilter && r.status !== statusFilter) return false;
       return true;
     });
-  }, [runs, versionFilter, statusFilter]);
+  }, [workflowRuns, versionFilter, statusFilter]);
 
   const uniqueVersions = useMemo(
-    () => Array.from(new Set(runs.map((r) => r.workflow_version))).sort(),
-    [runs]
+    () => Array.from(new Set(workflowRuns.map((r) => r.workflow_version_id))).sort(),
+    [workflowRuns]
   );
   const uniqueStatuses = useMemo(
     () => Array.from(new Set(runs.map((r) => r.status))).sort(),
@@ -100,13 +107,14 @@ export function RunsPage() {
   }
 
   function handleDownloadCsv() {
-    const columnKeys: string[] = ["name", "run_id", "workflow_version", "status", "created_at"];
-    const headers = ["Name", "ID", "Version", "Status", "Created"];
+    const columnKeys: string[] = ["name", "run_id", "workflow_id", "workflow_version_id", "status", "created_at"];
+    const headers = ["Name", "ID", "Workflow", "Version", "Status", "Created"];
     downloadTableCsv(
       filteredRuns.map((r) => ({
         name: r.name ?? "",
         run_id: r.run_id,
-        workflow_version: r.workflow_version,
+        workflow_id: r.workflow_id,
+        workflow_version_id: r.workflow_version_id,
         status: r.status,
         created_at: r.created_at,
       })),
@@ -123,6 +131,11 @@ export function RunsPage() {
       <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5 py-0.5">
         <div className="flex items-center gap-2 flex-wrap">
           <Breadcrumbs items={[{ label: "Runs" }]} />
+          {selectedWorkflow?.name && (
+            <span className="text-xs text-muted-foreground">
+              Workflow: <span className="font-medium text-foreground/80">{selectedWorkflow.name}</span>
+            </span>
+          )}
           {runningCount > 0 && (
             <span className="text-xs font-medium text-amber-600 dark:text-amber-400 flex items-center gap-1">
               <span className="size-1.5 rounded-full bg-amber-500 animate-pulse" aria-hidden />
@@ -218,10 +231,10 @@ export function RunsPage() {
                   </TableCell>
                   <TableCell>
                     <Link
-                      to={`/runs?version=${encodeURIComponent(run.workflow_version)}${statusFilter ? `&status=${encodeURIComponent(statusFilter)}` : ""}`}
+                      to={`/runs?version=${encodeURIComponent(run.workflow_version_id)}${statusFilter ? `&status=${encodeURIComponent(statusFilter)}` : ""}`}
                       className={TABLE_LINK_CLASS}
                     >
-                      {run.workflow_version}
+                      {run.workflow_version_id}
                     </Link>
                   </TableCell>
                   <TableCell>

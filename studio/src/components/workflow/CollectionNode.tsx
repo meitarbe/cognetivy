@@ -1,27 +1,36 @@
 import { memo } from "react";
-import { Handle, type NodeProps, Position } from "@xyflow/react";
+import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { Database } from "lucide-react";
+import { cn, getCollectionColor } from "@/lib/utils";
 
 export interface CollectionNodeData extends Record<string, unknown> {
   kind: string;
-  /** "input" | "output" for styling */
-  role: "input" | "output";
+  label: string;
 }
 
 function CollectionNodeComponent(props: NodeProps) {
-  const { data } = props;
-  const d = data as CollectionNodeData;
-  const label = d.kind.replace(/_/g, " ");
+  const d = props.data as CollectionNodeData;
+  const color = getCollectionColor(d.kind);
   return (
-    <div className="rounded-md border-2 border-dashed border-muted-foreground/50 bg-muted/40 px-2.5 py-1.5 shadow-sm min-w-[80px] max-w-[140px] cursor-default">
-      <Handle type="target" position={Position.Top} className="!w-2 !h-2" />
-      <div className="flex items-center gap-1.5">
-        <Database className="size-3.5 text-muted-foreground shrink-0" aria-hidden />
-        <span className="text-[11px] font-medium text-foreground truncate" title={d.kind}>
-          {label}
+    <div
+      className={cn(
+        "relative px-2 py-2 w-[140px] rounded-lg bg-card border shadow-sm text-xs cursor-pointer",
+        "border-border"
+      )}
+      style={{ borderColor: color }}
+    >
+      <Handle type="target" position={Position.Left} />
+      <Handle type="source" position={Position.Right} />
+
+      <div className="absolute left-2 right-2 -top-2 h-4 rounded-full border bg-background" style={{ borderColor: color }} />
+      <div className="absolute left-2 right-2 -bottom-2 h-4 rounded-full border bg-background" style={{ borderColor: color }} />
+
+      <div className="flex items-center gap-1.5 justify-center">
+        <Database className="size-3 text-muted-foreground" aria-hidden />
+        <span className="font-semibold truncate" title={d.kind}>
+          {d.label}
         </span>
       </div>
-      <Handle type="source" position={Position.Bottom} className="!w-2 !h-2" />
     </div>
   );
 }

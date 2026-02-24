@@ -6,13 +6,16 @@ import fs from "node:fs/promises";
 import {
   ensureWorkspace,
   requireWorkspace,
-  readWorkflowPointer,
-  readWorkflowVersion,
-  writeWorkflowPointer,
-  writeWorkflowVersion,
-  listWorkflowVersionFiles,
-  versionFromFileName,
+  readWorkflowIndex,
+  writeWorkflowIndex,
+  listWorkflows,
+  readWorkflowRecord,
+  writeWorkflowRecord,
+  listWorkflowVersionIds,
+  readWorkflowVersionRecord,
+  writeWorkflowVersionRecord,
   writeRunFile,
+  readRunFile,
   updateRunFile,
   appendEventLine,
   runExists,
@@ -22,11 +25,15 @@ import {
   readCollections,
   writeCollections,
   appendCollection,
+  listNodeResults,
+  readNodeResult,
+  writeNodeResult,
 } from "./workspace.js";
 import { getMergedConfig } from "./config.js";
-import { validateWorkflow } from "./validate.js";
+import { validateWorkflowVersion } from "./validate.js";
 import { mergeKindTemplate } from "./kind-templates.js";
-import type { RunRecord, EventPayload, CollectionSchemaConfig, CollectionItem } from "./models.js";
+import type { RunRecord, EventPayload, CollectionSchemaConfig } from "./models.js";
+import { NodeResultStatus, type NodeResultRecord, type WorkflowRecord } from "./models.js";
 import { runMcpServer } from "./mcp.js";
 import { startStudioServer, STUDIO_DEFAULT_PORT } from "./studio-server.js";
 import open from "open";
@@ -83,43 +90,145 @@ program
 
 const workflowCmd = program
   .command("workflow")
-  .description("Workflow version operations");
+  .description("Workflow operations (multiple workflows + versions)");
+
 workflowCmd
-  .command("get")
-  .description("Print current workflow version JSON to stdout")
+  .command("list")
+  .description("List workflows")
   .action(async () => {
     const cwd = process.cwd();
     await requireWorkspace(cwd);
-    const pointer = await readWorkflowPointer(cwd);
-    const workflow = await readWorkflowVersion(pointer.current_version, cwd);
-    console.log(JSON.stringify(workflow, null, 2));
+    const index = await readWorkflowIndex(cwd);
+    const workflows = await listWorkflows(cwd);
+    const out = workflows.map((w) => ({ ...w, current: w.workflow_id === index.current_workflow_id }));
+    console.log(JSON.stringify(out, null, 2));
   });
+
+workflowCmd
+  .command("create")
+  .description("Create a new workflow (creates workflow record + v1 version + empty schema)")
+  .requiredOption("--name <string>", "Workflow name")
+  .option("--id <string>", "Workflow id (default: generated)")
+  .option("--description <string>", "Workflow description")
+  .action(async (opts: { id?: string; name: string; description?: string }) => {
+    const cwd = process.cwd();
+    await requireWorkspace(cwd);
+    const id = opts.id ?? generateId("wf");
+    const now = new Date().toISOString();
+
+    const wf: WorkflowRecord = {
+      workflow_id: id,
+      name: opts.name,
+      description: opts.description,
+      current_version_id: "v1",
+      created_at: now,
+    };
+
+    await writeWorkflowRecord(wf, cwd);
+    await writeWorkflowVersionRecord(
+      {
+        workflow_id: id,
+        version_id: "v1",
+        name: "v1",
+        created_at: now,
+        nodes: [],
+      },
+      cwd
+    );
+
+    const { createDefaultCollectionSchema } = await import("./default-collection-schema.js");
+    await writeCollectionSchema(id, createDefaultCollectionSchema(id), cwd);
+
+    const index = await readWorkflowIndex(cwd);
+    const next = {
+      ...index,
+      workflows: [...(index.workflows ?? []), { workflow_id: id, name: wf.name, description: wf.description, current_version_id: wf.current_version_id }],
+    };
+    await writeWorkflowIndex(next, cwd);
+    console.log(id);
+  });
+
+workflowCmd
+  .command("select")
+  .description("Select current workflow (updates workflows/index.json)")
+  .requiredOption("--workflow <workflow_id>", "Workflow ID")
+  .action(async (opts: { workflow: string }) => {
+    const cwd = process.cwd();
+    await requireWorkspace(cwd);
+    const index = await readWorkflowIndex(cwd);
+    if (!(index.workflows ?? []).some((w) => w.workflow_id === opts.workflow)) {
+      console.error(`Error: workflow "${opts.workflow}" not found.`);
+      process.exit(1);
+    }
+    await writeWorkflowIndex({ ...index, current_workflow_id: opts.workflow }, cwd);
+    console.log(opts.workflow);
+  });
+
+workflowCmd
+  .command("get")
+  .description("Print a workflow version JSON to stdout")
+  .option("--workflow <workflow_id>", "Workflow ID (default: current from workflows/index.json)")
+  .option("--version <version_id>", "Version ID (default: workflow.current_version_id)")
+  .action(async (opts: { workflow?: string; version?: string }) => {
+    const cwd = process.cwd();
+    await requireWorkspace(cwd);
+    const index = await readWorkflowIndex(cwd);
+    const workflowId = opts.workflow ?? index.current_workflow_id;
+    const wf = await readWorkflowRecord(workflowId, cwd);
+    const versionId = opts.version ?? wf.current_version_id;
+    const version = await readWorkflowVersionRecord(workflowId, versionId, cwd);
+    console.log(JSON.stringify(version, null, 2));
+  });
+
+workflowCmd
+  .command("versions")
+  .description("List versions for a workflow")
+  .option("--workflow <workflow_id>", "Workflow ID (default: current from workflows/index.json)")
+  .action(async (opts: { workflow?: string }) => {
+    const cwd = process.cwd();
+    await requireWorkspace(cwd);
+    const index = await readWorkflowIndex(cwd);
+    const workflowId = opts.workflow ?? index.current_workflow_id;
+    const ids = await listWorkflowVersionIds(workflowId, cwd);
+    console.log(JSON.stringify(ids, null, 2));
+  });
+
 workflowCmd
   .command("set")
-  .description("Set workflow from file (creates new version wf_vN.json and updates pointer)")
+  .description("Set workflow version from file (creates new version and sets it current)")
   .requiredOption("--file <path>", "Path to workflow JSON file")
-  .action(async (opts: { file: string }) => {
+  .option("--workflow <workflow_id>", "Workflow ID (default: current from workflows/index.json)")
+  .option("--name <string>", "Optional version name")
+  .action(async (opts: { file: string; workflow?: string; name?: string }) => {
     const cwd = process.cwd();
     await requireWorkspace(cwd);
     const raw = await fs.readFile(path.resolve(cwd, opts.file), "utf-8");
     const data = JSON.parse(raw) as unknown;
-    validateWorkflow(data);
-    const pointer = await readWorkflowPointer(cwd);
-    const files = await listWorkflowVersionFiles(cwd);
-    const versions = files.map(versionFromFileName);
-    const maxNum = Math.max(0, ...versions.map((v) => parseInt(v.replace(/^v/, ""), 10) || 0));
-    const newVersion = `v${maxNum + 1}`;
-    const workflow = {
-      ...data,
-      workflow_id: pointer.workflow_id,
-      version: newVersion,
+    const index = await readWorkflowIndex(cwd);
+    const workflowId = opts.workflow ?? index.current_workflow_id;
+    const wf = await readWorkflowRecord(workflowId, cwd);
+    const existing = await listWorkflowVersionIds(workflowId, cwd);
+    const nums = existing.map((v) => parseInt(v.replace(/^v/, ""), 10)).filter((n) => !Number.isNaN(n));
+    const nextNum = Math.max(0, ...nums) + 1;
+    const newVersionId = `v${nextNum}`;
+
+    const version = {
+      ...(data as Record<string, unknown>),
+      workflow_id: workflowId,
+      version_id: newVersionId,
+      name: opts.name,
+      created_at: new Date().toISOString(),
     };
-    await writeWorkflowVersion(workflow, cwd);
-    await writeWorkflowPointer(
-      { workflow_id: pointer.workflow_id, current_version: newVersion },
-      cwd
+    validateWorkflowVersion(version);
+
+    await writeWorkflowVersionRecord(version, cwd);
+    await writeWorkflowRecord({ ...wf, current_version_id: newVersionId }, cwd);
+
+    const workflows = (index.workflows ?? []).map((w) =>
+      w.workflow_id === workflowId ? { ...w, current_version_id: newVersionId } : w
     );
-    console.log(newVersion);
+    await writeWorkflowIndex({ ...index, workflows }, cwd);
+    console.log(newVersionId);
   });
 
 const runCmd = program
@@ -131,10 +240,15 @@ runCmd
   .requiredOption("--input <path>", "Path to JSON file with run input")
   .option("--name <string>", "Human-readable name for the run (e.g. 'Q1 ideas exploration')")
   .option("--by <string>", "Actor (e.g. agent:cursor); defaults to config or 'cli'")
-  .action(async (opts: { input: string; name?: string; by?: string }) => {
+  .option("--workflow <workflow_id>", "Workflow ID (default: current from workflows/index.json)")
+  .option("--version <version_id>", "Workflow version ID (default: workflow.current_version_id)")
+  .action(async (opts: { input: string; name?: string; by?: string; workflow?: string; version?: string }) => {
     const cwd = process.cwd();
     await requireWorkspace(cwd);
-    const pointer = await readWorkflowPointer(cwd);
+    const index = await readWorkflowIndex(cwd);
+    const workflowId = opts.workflow ?? index.current_workflow_id;
+    const wf = await readWorkflowRecord(workflowId, cwd);
+    const versionId = opts.version ?? wf.current_version_id;
     const inputPath = path.resolve(cwd, opts.input);
     let inputRaw: string;
     try {
@@ -155,8 +269,8 @@ runCmd
     const runRecord: RunRecord = {
       run_id: runId,
       ...(opts.name && { name: opts.name }),
-      workflow_id: pointer.workflow_id,
-      workflow_version: pointer.current_version,
+      workflow_id: workflowId,
+      workflow_version_id: versionId,
       status: "running",
       input,
       created_at: now,
@@ -166,9 +280,33 @@ runCmd
       ts: now,
       type: "run_started",
       by,
-      data: { workflow_version: pointer.current_version, input },
+      data: { workflow_id: workflowId, workflow_version_id: versionId, input },
     };
     await appendEventLine(runId, event, cwd);
+
+    // Seed run_input collection item for collection→node flow.
+    const systemNodeId = "__system__";
+    const systemNodeResultId = generateId("node_result");
+    const nodeResult: NodeResultRecord = {
+      node_result_id: systemNodeResultId,
+      run_id: runId,
+      workflow_id: workflowId,
+      workflow_version_id: versionId,
+      node_id: systemNodeId,
+      status: NodeResultStatus.Completed,
+      started_at: now,
+      completed_at: now,
+      output: JSON.stringify(input, null, 2),
+      writes: [{ kind: "run_input", item_ids: ["run_input"] }],
+    };
+    await writeNodeResult(runId, systemNodeId, nodeResult, cwd);
+    await appendCollection(
+      runId,
+      "run_input",
+      input,
+      { id: "run_input", created_by_node_id: systemNodeId, created_by_node_result_id: systemNodeResultId },
+      cwd
+    );
     console.log(runId);
   });
 runCmd
@@ -236,33 +374,40 @@ eventCmd
 
 const collectionSchemaCmd = program
   .command("collection-schema")
-  .description("Collection schema (defines kinds and required fields for structured collections)");
+  .description("Collection schema (workflow-scoped; strict JSON Schema per kind)");
 collectionSchemaCmd
   .command("get")
   .description("Print current collection schema JSON to stdout")
-  .action(async () => {
+  .option("--workflow <workflow_id>", "Workflow ID (default: current from workflows/index.json)")
+  .action(async (opts: { workflow?: string }) => {
     const cwd = process.cwd();
-    const schema = await readCollectionSchema(cwd);
+    await requireWorkspace(cwd);
+    const index = await readWorkflowIndex(cwd);
+    const workflowId = opts.workflow ?? index.current_workflow_id;
+    const schema = await readCollectionSchema(workflowId, cwd);
     console.log(JSON.stringify(schema, null, 2));
   });
 collectionSchemaCmd
   .command("set")
   .description("Set collection schema from JSON file")
   .requiredOption("--file <path>", "Path to collection-schema JSON file")
-  .action(async (opts: { file: string }) => {
+  .option("--workflow <workflow_id>", "Workflow ID (default: current from workflows/index.json)")
+  .action(async (opts: { file: string; workflow?: string }) => {
     const cwd = process.cwd();
     await requireWorkspace(cwd);
+    const index = await readWorkflowIndex(cwd);
+    const workflowId = opts.workflow ?? index.current_workflow_id;
     const raw = await fs.readFile(path.resolve(cwd, opts.file), "utf-8");
     const schema = JSON.parse(raw) as CollectionSchemaConfig;
     if (!schema.kinds || typeof schema.kinds !== "object") {
       console.error("Error: schema must have a 'kinds' object.");
       process.exit(1);
     }
-    const merged: CollectionSchemaConfig = { kinds: {} };
+    const merged: CollectionSchemaConfig = { workflow_id: workflowId, kinds: {} };
     for (const [k, v] of Object.entries(schema.kinds)) {
       merged.kinds[k] = mergeKindTemplate(k, v);
     }
-    await writeCollectionSchema(merged, cwd);
+    await writeCollectionSchema(workflowId, merged, cwd);
     console.log("Collection schema updated.");
   });
 
@@ -294,16 +439,24 @@ collectionCmd
   .requiredOption("--run <run_id>", "Run ID")
   .requiredOption("--kind <kind>", "Collection kind")
   .requiredOption("--file <path>", "Path to JSON file (array of collection items)")
-  .action(async (opts: { run: string; kind: string; file: string }) => {
+  .requiredOption("--node <node_id>", "Node id that created these items")
+  .requiredOption("--node-result <node_result_id>", "Node result id that created these items")
+  .action(async (opts: { run: string; kind: string; file: string; node: string; nodeResult: string }) => {
     const cwd = process.cwd();
     const raw = await fs.readFile(path.resolve(cwd, opts.file), "utf-8");
-    const items = JSON.parse(raw) as CollectionItem[];
-    if (!Array.isArray(items)) {
+    const payloads = JSON.parse(raw) as Array<Record<string, unknown>>;
+    if (!Array.isArray(payloads)) {
       console.error("Error: file must contain a JSON array of collection items.");
       process.exit(1);
     }
-    await writeCollections(opts.run, opts.kind, items, cwd);
-    console.log(`Set ${items.length} collection(s) for kind "${opts.kind}".`);
+    await writeCollections(
+      opts.run,
+      opts.kind,
+      payloads,
+      { created_by_node_id: opts.node, created_by_node_result_id: opts.nodeResult },
+      cwd
+    );
+    console.log(`Set ${payloads.length} collection(s) for kind "${opts.kind}".`);
   });
 collectionCmd
   .command("append")
@@ -311,14 +464,96 @@ collectionCmd
   .requiredOption("--run <run_id>", "Run ID")
   .requiredOption("--kind <kind>", "Collection kind")
   .requiredOption("--file <path>", "Path to JSON file (single collection payload)")
+  .requiredOption("--node <node_id>", "Node id that created this item")
+  .requiredOption("--node-result <node_result_id>", "Node result id that created this item")
   .option("--id <string>", "Optional collection id")
-  .action(async (opts: { run: string; kind: string; file: string; id?: string }) => {
+  .action(async (opts: { run: string; kind: string; file: string; id?: string; node: string; nodeResult: string }) => {
     const cwd = process.cwd();
     const raw = await fs.readFile(path.resolve(cwd, opts.file), "utf-8");
     const payload = JSON.parse(raw) as Record<string, unknown>;
-    const item = await appendCollection(opts.run, opts.kind, payload, { id: opts.id }, cwd);
+    const item = await appendCollection(
+      opts.run,
+      opts.kind,
+      payload,
+      { id: opts.id, created_by_node_id: opts.node, created_by_node_result_id: opts.nodeResult },
+      cwd
+    );
     console.log(JSON.stringify(item, null, 2));
   });
+
+const nodeResultCmd = program
+  .command("node-result")
+  .description("Node results per run (stored snapshots of node outputs and writes)");
+
+nodeResultCmd
+  .command("list")
+  .description("List node results for a run")
+  .requiredOption("--run <run_id>", "Run ID")
+  .action(async (opts: { run: string }) => {
+    const cwd = process.cwd();
+    const results = await listNodeResults(opts.run, cwd);
+    console.log(JSON.stringify(results, null, 2));
+  });
+
+nodeResultCmd
+  .command("get")
+  .description("Get node result for a node in a run")
+  .requiredOption("--run <run_id>", "Run ID")
+  .requiredOption("--node <node_id>", "Node ID")
+  .action(async (opts: { run: string; node: string }) => {
+    const cwd = process.cwd();
+    const result = await readNodeResult(opts.run, opts.node, cwd);
+    if (!result) {
+      console.error("Not found.");
+      process.exit(1);
+    }
+    console.log(JSON.stringify(result, null, 2));
+  });
+
+nodeResultCmd
+  .command("set")
+  .description("Create or replace a node result for a node in a run")
+  .requiredOption("--run <run_id>", "Run ID")
+  .requiredOption("--node <node_id>", "Node ID")
+  .requiredOption("--status <status>", "Status: started|completed|failed|needs_human")
+  .option("--id <node_result_id>", "Node result id (default: generated)")
+  .option("--output-file <path>", "Path to a text/markdown file for output")
+  .option("--output <string>", "Inline output text")
+  .action(
+    async (opts: { run: string; node: string; status: string; id?: string; outputFile?: string; output?: string }) => {
+      const cwd = process.cwd();
+      const run = await readRunFile(opts.run, cwd);
+      const now = new Date().toISOString();
+      const status = opts.status as NodeResultRecord["status"];
+      const validStatuses = Object.values(NodeResultStatus) as string[];
+      if (!validStatuses.includes(status)) {
+        console.error(`Error: status must be one of: ${validStatuses.join(", ")}`);
+        process.exit(1);
+      }
+      let output: string | undefined = opts.output;
+      if (opts.outputFile) {
+        output = await fs.readFile(path.resolve(cwd, opts.outputFile), "utf-8");
+      }
+      const id = opts.id ?? generateId("node_result");
+      const completed_at =
+        status === NodeResultStatus.Completed || status === NodeResultStatus.Failed || status === NodeResultStatus.NeedsHuman
+          ? now
+          : undefined;
+      const result: NodeResultRecord = {
+        node_result_id: id,
+        run_id: opts.run,
+        workflow_id: run.workflow_id,
+        workflow_version_id: run.workflow_version_id,
+        node_id: opts.node,
+        status,
+        started_at: now,
+        completed_at,
+        ...(output ? { output } : {}),
+      };
+      await writeNodeResult(opts.run, opts.node, result, cwd);
+      console.log(JSON.stringify(result, null, 2));
+    }
+  );
 
 program
   .command("install [target]")
