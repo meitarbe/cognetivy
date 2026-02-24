@@ -5,7 +5,7 @@ import { useWorkflowSelection } from "@/contexts/WorkflowSelectionContext";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatTimestamp } from "@/lib/utils";
-import { RichText, isRichTextField, type SourceRef } from "@/components/display/RichText";
+import { RichText, shouldRenderRichText, type SourceRef } from "@/components/display/RichText";
 import { CopyableId } from "@/components/ui/CopyableId";
 import { getCreatedByNodeId } from "@/components/display/CollectionTable";
 import { downloadCollectionItemAsPdf } from "@/lib/collectionItemToPdf";
@@ -173,7 +173,7 @@ export function CollectionItemPage() {
             .map(([key, value]) => {
               if (value === undefined || value === null) return null;
               const label = key.replace(/_/g, " ");
-              const isRich = isRichTextField(key) && typeof value === "string";
+              const isRich = shouldRenderRichText(key, value);
               const ref = references[key];
               return (
                 <section key={key}>

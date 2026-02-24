@@ -165,7 +165,7 @@ export function AppLayout() {
         <div className="p-2.5 border-b border-border flex items-center gap-2 min-w-0">
           {sidebarOpen ? (
             <>
-              <img src="/favicon.png" alt="" className="h-8 w-8 rounded object-contain shrink-0" aria-hidden />
+              <img src="/favicon.png" alt="" className="h-10 w-10 rounded object-contain shrink-0" aria-hidden />
               <div className="min-w-0 flex-1">
                 <h1 className="font-semibold text-sm truncate">Cognetivy Studio</h1>
                 <p className="text-[10px] text-muted-foreground">Read-only</p>
@@ -194,7 +194,7 @@ export function AppLayout() {
           <div className="px-2.5 py-2 border-b border-border">
             <div className="text-[10px] text-muted-foreground mb-1">Workflow</div>
             <Select value={selectedWorkflowId ?? ""} onValueChange={handleWorkflowChange}>
-              <SelectTrigger className="h-8 text-xs">
+              <SelectTrigger className="h-8 w-full text-xs">
                 <SelectValue placeholder="Select workflow" />
               </SelectTrigger>
               <SelectContent>

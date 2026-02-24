@@ -4,7 +4,7 @@ import { api, type CollectionSchemaConfig, type CollectionItem, type RunRecord }
 import { useWorkflowSelection } from "@/contexts/WorkflowSelectionContext";
 import { formatTimestamp } from "@/lib/utils";
 import { downloadCollectionItemAsPdf } from "@/lib/collectionItemToPdf";
-import { RichText, isRichTextField } from "@/components/display/RichText";
+import { RichText, shouldRenderRichText } from "@/components/display/RichText";
 import { FileDown } from "lucide-react";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -213,7 +213,7 @@ export function EntityPage() {
                       </TableCell>
                       {displayColumns.map((col) => {
                         const value = item[col];
-                        const isRich = isRichTextField(col) && typeof value === "string";
+                        const isRich = shouldRenderRichText(col, value);
                         const ref = references[col];
                         return (
                           <TableCell key={col} className="text-sm min-w-[120px] max-w-[500px] whitespace-normal break-words align-top">
@@ -255,7 +255,7 @@ export function EntityPage() {
                                 {formatCellValue(value)}
                               </a>
                             ) : isRich ? (
-                              <RichText content={value as string} className="line-clamp-3 text-xs" />
+                              <RichText content={value} className="line-clamp-3 text-xs" />
                             ) : (
                               formatCellValue(value)
                             )}

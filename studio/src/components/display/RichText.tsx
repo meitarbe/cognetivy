@@ -18,6 +18,41 @@ export function isRichTextField(key: string): boolean {
   return RICH_TEXT_KEYS.has(key) || key.endsWith("_reason") || key.endsWith("_summary");
 }
 
+export function looksLikeMarkdown(content: string): boolean {
+  if (!content || typeof content !== "string") return false;
+  const s0 = content.trim();
+  const s = s0.includes("\\n") && !s0.includes("\n") ? s0.replace(/\\n/g, "\n") : s0;
+  if (!s) return false;
+
+  if (s.includes("```")) return true;
+
+  // Common single-line markdown
+  if (/^#{1,6}\s+/.test(s)) return true; // heading
+  if (/^\s*>\s+/.test(s)) return true; // blockquote
+  if (/^\s*[-*+]\s+/.test(s)) return true; // list item
+  if (/^\s*\d+\.\s+/.test(s)) return true; // ordered list item
+
+  // Multi-line markdown
+  const markdownLinePatterns = [
+    /^#{1,6}\s+/m,
+    /^\s*[-*+]\s+/m,
+    /^\s*\d+\.\s+/m,
+    /^\s*>\s+/m,
+  ];
+  if (s.includes("\n") && markdownLinePatterns.some((re) => re.test(s))) return true;
+
+  // Inline patterns
+  if (/\[[^\]]+\]\([^)]+\)/.test(s)) return true; // links
+  if (/\*\*[^*]+\*\*/.test(s)) return true; // bold
+  if (/_([^_]+)_/.test(s)) return true; // italic (conservative)
+
+  return false;
+}
+
+export function shouldRenderRichText(key: string, value: unknown): value is string {
+  return typeof value === "string" && (isRichTextField(key) || looksLikeMarkdown(value));
+}
+
 export interface SourceRef {
   id: string;
   url?: string;
@@ -46,7 +81,9 @@ function applySourceRefs(content: string, sourceRefs: SourceRef[]): string {
 export function RichText({ content, className, sourceRefs = [] }: RichTextProps) {
   if (!content || typeof content !== "string") return null;
 
-  const processedContent = sourceRefs.length > 0 ? applySourceRefs(content, sourceRefs) : content;
+  const normalizedContent =
+    content.includes("\\n") && !content.includes("\n") ? content.replace(/\\n/g, "\n") : content;
+  const processedContent = sourceRefs.length > 0 ? applySourceRefs(normalizedContent, sourceRefs) : normalizedContent;
 
   return (
     <div className={cn("rich-text text-sm space-y-2", className)}>

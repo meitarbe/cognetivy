@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/table";
 import type { CollectionItem, WorkflowVersion } from "@/api";
 import { formatTimestamp, TABLE_LINK_CLASS } from "@/lib/utils";
-import { RichText, isRichTextField } from "./RichText";
+import { RichText, shouldRenderRichText } from "./RichText";
 import { collectionItemToMarkdown } from "@/lib/collectionItemToMarkdown";
 import { downloadCollectionItemAsPdf } from "@/lib/collectionItemToPdf";
 import { Copy, FileDown, ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
@@ -164,7 +164,7 @@ export function CollectionTable({ kind, items, workflow, runId, stepFilter, sear
               )}
               {columns.map((col) => {
                 const value = item[col];
-                const isRich = isRichTextField(col) && typeof value === "string";
+                const isRich = shouldRenderRichText(col, value);
                 const showClamp = !isExpanded;
                 return (
                   <TableCell
