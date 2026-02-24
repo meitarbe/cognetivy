@@ -5,8 +5,8 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-/** Shared link styling for table cells: primary color, underline on hover only. */
-export const TABLE_LINK_CLASS = "text-primary/90 hover:text-primary hover:underline";
+/** Shared link styling: primary color, no underline. */
+export const TABLE_LINK_CLASS = "text-primary/90 hover:text-primary";
 
 /** Escape a value for CSV (quotes and double-quotes). */
 function escapeCsvValue(value: string): string {

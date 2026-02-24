@@ -20,7 +20,7 @@ import { RichText } from "@/components/display/RichText";
 import { WorkflowCanvas } from "@/components/workflow/WorkflowCanvas";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { ResizablePanel } from "@/components/ui/ResizablePanel";
-import { downloadTableCsv, getStepIdFromEventData, TABLE_LINK_CLASS } from "@/lib/utils";
+import { downloadTableCsv, formatTimestamp, getStepIdFromEventData, TABLE_LINK_CLASS } from "@/lib/utils";
 import { CopyableId } from "@/components/ui/CopyableId";
 import { cn } from "@/lib/utils";
 import { ListChecks } from "lucide-react";
@@ -68,7 +68,6 @@ export function RunDetailPage() {
   const [showWorkflowHint, setShowWorkflowHint] = useState(false);
   const [selectedCollectionTab, setSelectedCollectionTab] = useState<string | null>(null);
   const [collectionStepFilter, setCollectionStepFilter] = useState<string | null>(null);
-  const [collectionSearchQuery, setCollectionSearchQuery] = useState("");
   const [eventsDrawerOpen, setEventsDrawerOpen] = useState(false);
   const eventsScrollRef = useRef<HTMLDivElement>(null);
 
@@ -210,18 +209,7 @@ export function RunDetailPage() {
             <Breadcrumbs
               items={[
                 { label: "Runs", to: "/runs" },
-                {
-                  label: run?.name ? (
-                    <>
-                      <span className="font-medium">{run.name}</span>
-                      <span className="ml-1.5 text-xs">
-                        <CopyableId value={runId} truncateLength={20} />
-                      </span>
-                    </>
-                  ) : (
-                    <CopyableId value={runId} truncateLength={24} />
-                  ),
-                },
+                { label: run?.name ?? runId ?? "Run", to: undefined },
               ]}
             />
             <Badge
@@ -240,29 +228,35 @@ export function RunDetailPage() {
                 to={`/workflow?version=${encodeURIComponent(run.workflow_version)}`}
                 className={`text-xs shrink-0 ${TABLE_LINK_CLASS}`}
               >
-                {run.workflow_version}
+                Workflow version: {run.workflow_version}
               </Link>
             )}
-            <button
-              type="button"
-              onClick={() => setEventsDrawerOpen(true)}
-              className={cn(
-                "flex items-center gap-1.5 text-xs px-2 py-1 rounded-md border border-border bg-muted/50 hover:bg-muted ml-auto",
-                eventsDrawerOpen && "ring-2 ring-ring/50"
-              )}
-              aria-label="Open events"
-            >
-              <ListChecks className="size-3.5" />
-              Events ({events.length})
-            </button>
+            <div className="flex items-center gap-2 ml-auto shrink-0">
+              <CopyableId
+                value={runId}
+                truncateLength={20}
+                className="text-[11px] text-muted-foreground font-normal"
+              />
+              <button
+                type="button"
+                onClick={() => setEventsDrawerOpen(true)}
+                className={cn(
+                  "flex items-center gap-1.5 text-xs px-2 py-1 rounded-md border border-border bg-muted/50 hover:bg-muted",
+                  eventsDrawerOpen && "ring-2 ring-ring/50"
+                )}
+                aria-label="Open events"
+              >
+                <ListChecks className="size-3.5" />
+                Events ({events.length})
+              </button>
+            </div>
           </header>
 
           <section className="shrink-0 border-l-2 border-l-primary/40 pl-2 py-1">
-            <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide mb-0.5">Goal & input</p>
             <dl className="text-sm space-y-0.5">
               <div className="flex gap-2">
                 <dt className="text-muted-foreground shrink-0 w-16">Created</dt>
-                <dd>{run?.created_at ?? "—"}</dd>
+                <dd>{formatTimestamp(run?.created_at)}</dd>
               </div>
               {run?.input && Object.keys(run.input).length > 0 && (
                 Object.entries(run.input)
@@ -296,7 +290,7 @@ export function RunDetailPage() {
           )}
 
           <Sheet open={eventsDrawerOpen} onOpenChange={setEventsDrawerOpen}>
-            <SheetContent side="right" className="w-full max-w-xl">
+            <SheetContent side="right" className="w-full max-w-2xl">
               <SheetHeader>
                 <SheetTitle>Events ({events.length})</SheetTitle>
               </SheetHeader>
@@ -319,7 +313,7 @@ export function RunDetailPage() {
                           <TableHead className="h-7 px-1.5 text-xs min-w-[100px]">Time</TableHead>
                           <TableHead className="h-7 px-1.5 text-xs min-w-[120px]">Type</TableHead>
                           <TableHead className="h-7 px-1.5 text-xs min-w-[80px]">By</TableHead>
-                          <TableHead className="h-7 px-1.5 text-xs min-w-[200px]">Data</TableHead>
+                          <TableHead className="h-7 px-1.5 text-xs min-w-[280px]">Data</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -335,7 +329,7 @@ export function RunDetailPage() {
                               </Badge>
                             </TableCell>
                             <TableCell className="text-sm py-1">{ev.by ?? "—"}</TableCell>
-                            <TableCell className="max-w-[320px] whitespace-normal break-words align-top py-1 text-xs">
+                            <TableCell className="min-w-[280px] max-w-none whitespace-normal break-words align-top py-1.5 text-xs overflow-visible">
                               <EventDataSummary type={ev.type} data={ev.data} />
                             </TableCell>
                           </TableRow>
@@ -352,44 +346,32 @@ export function RunDetailPage() {
             <section className="flex-1 min-h-0 flex flex-col border-l-2 border-l-emerald-500/40 pl-2">
               <Card className="flex-1 min-h-0 flex flex-col gap-0 py-1">
                 <CardHeader className="py-1 px-2 shrink-0 flex flex-row items-center justify-between gap-2 flex-wrap">
-                  <div>
-                    <CardTitle className="text-sm">Collections</CardTitle>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">
-                      Data collected by workflow steps. Each item is traceable to its source step.
-                    </p>
-                  </div>
-                  {(collections[effectiveCollectionTab]?.items?.length ?? 0) > 0 && (
-                    <button
-                      type="button"
-                      onClick={handleDownloadCollectionCsv}
-                      className="text-xs px-2 py-1.5 rounded-md border border-border bg-background hover:bg-muted"
+                  <CardTitle className="text-sm">Data collected</CardTitle>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={collectionStepFilter ?? ""}
+                      onChange={(e) => setCollectionStepFilter(e.target.value === "" ? null : e.target.value)}
+                      className="text-xs px-2 py-1.5 rounded-md border border-border bg-background hover:bg-muted min-w-[140px]"
+                      aria-label="Filter by step"
                     >
-                      Download CSV
-                    </button>
-                  )}
+                      <option value="">All steps</option>
+                      {workflow?.nodes.map((n) => (
+                        <option key={n.id} value={n.id}>
+                          {n.id.replace(/_/g, " ")}
+                        </option>
+                      ))}
+                    </select>
+                    {(collections[effectiveCollectionTab]?.items?.length ?? 0) > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleDownloadCollectionCsv}
+                        className="text-xs px-2 py-1.5 rounded-md border border-border bg-background hover:bg-muted"
+                      >
+                        Download CSV
+                      </button>
+                    )}
+                  </div>
                 </CardHeader>
-                <div className="shrink-0 px-2 pb-1 flex flex-wrap items-center gap-2">
-                  <label className="text-[11px] text-muted-foreground font-medium">Filter by step</label>
-                  <select
-                    value={collectionStepFilter ?? ""}
-                    onChange={(e) => setCollectionStepFilter(e.target.value === "" ? null : e.target.value)}
-                    className="text-xs px-2 py-1.5 rounded-md border border-border bg-background hover:bg-muted min-w-[140px]"
-                  >
-                    <option value="">All steps</option>
-                    {workflow?.nodes.map((n) => (
-                      <option key={n.id} value={n.id}>
-                        {n.id.replace(/_/g, " ")}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    type="search"
-                    placeholder="Search in collection..."
-                    value={collectionSearchQuery}
-                    onChange={(e) => setCollectionSearchQuery(e.target.value)}
-                    className="text-xs px-2 py-1.5 rounded-md border border-border bg-background hover:bg-muted min-w-[160px]"
-                  />
-                </div>
                 <CardContent className="flex-1 min-h-0 overflow-hidden px-2 pb-1 pt-0 flex flex-col">
                   <Tabs
                     value={effectiveCollectionTab}
@@ -413,7 +395,7 @@ export function RunDetailPage() {
                               workflow={workflow}
                               runId={runId ?? null}
                               stepFilter={collectionStepFilter}
-                              searchQuery={collectionSearchQuery}
+                              searchQuery=""
                             />
                           </div>
                         </ScrollArea>
