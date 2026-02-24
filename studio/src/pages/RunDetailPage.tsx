@@ -22,6 +22,7 @@ import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { ResizablePanel } from "@/components/ui/ResizablePanel";
 import { downloadTableCsv, formatTimestamp, getStepIdFromEventData, TABLE_LINK_CLASS } from "@/lib/utils";
 import { CopyableId } from "@/components/ui/CopyableId";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { ListChecks } from "lucide-react";
 
@@ -163,6 +164,39 @@ export function RunDetailPage() {
             </Link>
           </CardContent>
         </Card>
+      </div>
+    );
+  }
+
+  const isLoading = run === null;
+
+  if (isLoading) {
+    return (
+      <div className="h-full flex">
+        <aside className="w-1/2 border-r border-border flex flex-col bg-muted/20 shrink-0">
+          <div className="p-2 border-b border-border">
+            <Skeleton className="h-4 w-24" />
+          </div>
+          <div className="flex-1 p-4">
+            <Skeleton className="h-full w-full rounded-lg" />
+          </div>
+        </aside>
+        <main className="flex-1 flex flex-col min-w-0 p-2 gap-2">
+          <div className="flex items-center gap-2 py-1.5 border-b border-border">
+            <Skeleton className="h-4 w-32" />
+            <Skeleton className="h-5 w-16 rounded-full" />
+            <Skeleton className="h-4 w-40 ml-auto" />
+          </div>
+          <div className="space-y-2 pl-2 border-l-2 border-border">
+            <Skeleton className="h-4 w-full max-w-[200px]" />
+            <Skeleton className="h-4 w-full max-w-[280px]" />
+          </div>
+          <div className="flex-1 flex flex-col border-l-2 border-border pl-2 gap-2">
+            <Skeleton className="h-6 w-28" />
+            <Skeleton className="h-8 w-full rounded" />
+            <Skeleton className="flex-1 min-h-[120px] w-full rounded" />
+          </div>
+        </main>
       </div>
     );
   }
