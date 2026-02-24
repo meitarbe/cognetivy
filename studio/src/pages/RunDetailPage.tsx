@@ -16,8 +16,9 @@ import {
 import { EventDataSummary } from "@/components/display/EventDataSummary";
 import { CollectionTable } from "@/components/display/CollectionTable";
 import { WorkflowCanvas } from "@/components/workflow/WorkflowCanvas";
+import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { ResizablePanel } from "@/components/ui/ResizablePanel";
-import { getStepIdFromEventData } from "@/lib/utils";
+import { downloadTableCsv, getStepIdFromEventData, TABLE_LINK_CLASS } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 
 const POLL_MS = 3000;
@@ -48,7 +49,37 @@ export function RunDetailPage() {
   const [workflow, setWorkflow] = useState<WorkflowVersion | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showWorkflowHint, setShowWorkflowHint] = useState(false);
+  const [selectedCollectionTab, setSelectedCollectionTab] = useState<string | null>(null);
   const eventsScrollRef = useRef<HTMLDivElement>(null);
+
+  const effectiveCollectionTab =
+    selectedCollectionTab ?? (tabParam && kinds.includes(tabParam) ? tabParam : kinds[0]) ?? "";
+
+  function handleDownloadEventsCsv() {
+    const rows = events.map((ev) => ({
+      ts: ev.ts,
+      type: ev.type,
+      by: ev.by ?? "",
+      data: JSON.stringify(ev.data),
+    }));
+    downloadTableCsv(rows, ["ts", "type", "by", "data"], ["Time", "Type", "By", "Data"], "events.csv");
+  }
+
+  function handleDownloadCollectionCsv() {
+    const kind = effectiveCollectionTab;
+    const store = kind ? collections[kind] : null;
+    const items = store?.items ?? [];
+    if (items.length === 0) return;
+    const exclude = new Set(["id", "created_at"]);
+    const columnKeys = Array.from(
+      items.reduce<Set<string>>((acc, item) => {
+        Object.keys(item).filter((k) => !exclude.has(k)).forEach((k) => acc.add(k));
+        return acc;
+      }, new Set())
+    );
+    const headers = columnKeys.map((k) => k.replace(/_/g, " "));
+    downloadTableCsv(items, columnKeys, headers, `${kind}.csv`);
+  }
 
   function handleStepClick(stepId: string) {
     const idx = events.findIndex((ev) => getStepIdFromEventData(ev.data) === stepId);
@@ -105,7 +136,7 @@ export function RunDetailPage() {
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground">{error ?? "Missing run ID"}</p>
-            <Link to="/runs" className="text-primary text-sm mt-2 inline-block hover:underline">
+            <Link to="/runs" className={`text-sm mt-2 inline-block ${TABLE_LINK_CLASS}`}>
               Back to runs
             </Link>
           </CardContent>
@@ -151,25 +182,26 @@ export function RunDetailPage() {
 
   const contentPanel = (
     <main className="h-full flex flex-col overflow-hidden">
-        <div className="flex flex-col flex-1 min-h-0 p-2 gap-2">
-          <header className="shrink-0 bg-background pb-1.5 border-b border-border">
-            <div className="flex items-center gap-2 text-xs mb-1">
-              <Link to="/runs" className="text-muted-foreground hover:text-foreground">
-                Runs
-              </Link>
-              <span className="text-muted-foreground">/</span>
-              <span className="truncate max-w-md">
-                {run?.name ? (
-                  <>
-                    <span className="font-medium">{run.name}</span>
-                    <span className="ml-1.5 font-mono text-muted-foreground">{runId}</span>
-                  </>
-                ) : (
-                  <span className="font-mono">{runId}</span>
-                )}
-              </span>
+        <div className="flex flex-col flex-1 min-h-0 p-2 gap-1.5">
+          <header className="shrink-0 bg-background py-1.5 border-b border-border">
+            <div className="mb-0.5">
+              <Breadcrumbs
+                items={[
+                  { label: "Runs", to: "/runs" },
+                  {
+                    label: run?.name ? (
+                      <>
+                        <span className="font-medium">{run.name}</span>
+                        <span className="ml-1.5 font-mono text-muted-foreground text-xs">{runId}</span>
+                      </>
+                    ) : (
+                      <span className="font-mono">{runId}</span>
+                    ),
+                  },
+                ]}
+              />
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-1.5 text-xs">
               <Badge
                 variant="outline"
                 className={cn(
@@ -184,7 +216,7 @@ export function RunDetailPage() {
               {run?.workflow_version && (
                 <Link
                   to={`/workflow?version=${encodeURIComponent(run.workflow_version)}`}
-                  className="text-xs text-primary hover:underline"
+                  className={`text-xs ${TABLE_LINK_CLASS}`}
                 >
                   {run.workflow_version}
                 </Link>
@@ -192,8 +224,8 @@ export function RunDetailPage() {
             </div>
           </header>
 
-          <section className="shrink-0 border-l-4 border-l-primary/50 pl-2">
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs py-0.5">
+          <section className="shrink-0 border-l-2 border-l-primary/40 pl-2 py-0.5">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]">
               <span className="text-muted-foreground font-medium">Metadata</span>
               <span><span className="text-muted-foreground">Created:</span> {run?.created_at}</span>
               {run?.input && Object.keys(run.input).length > 0 && (
@@ -212,20 +244,29 @@ export function RunDetailPage() {
             </div>
           </section>
 
-          <section className="flex-1 min-h-0 flex flex-col border-l-4 border-l-blue-500/50 pl-2">
+          <section className="flex-1 min-h-0 flex flex-col border-l-2 border-l-blue-500/40 pl-2">
             <Card className="flex-1 min-h-0 flex flex-col gap-0 py-1">
-              <CardHeader className="py-1 px-2 shrink-0">
+              <CardHeader className="py-1 px-2 shrink-0 flex flex-row items-center justify-between gap-2">
                 <CardTitle className="text-sm">Events</CardTitle>
+                {events.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleDownloadEventsCsv}
+                    className="text-xs px-2 py-1.5 rounded-md border border-border bg-background hover:bg-muted"
+                  >
+                    Download CSV
+                  </button>
+                )}
               </CardHeader>
               <CardContent className="px-2 pb-1 pt-0 flex-1 min-h-0 overflow-hidden" ref={eventsScrollRef}>
                 <ScrollArea className="h-full">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="h-7 px-1.5 text-xs">Time</TableHead>
-                        <TableHead className="h-7 px-1.5 text-xs">Type</TableHead>
-                        <TableHead className="h-7 px-1.5 text-xs">By</TableHead>
-                        <TableHead className="h-7 px-1.5 text-xs">Data</TableHead>
+                        <TableHead className="h-7 px-1.5 text-xs min-w-[100px]">Time</TableHead>
+                        <TableHead className="h-7 px-1.5 text-xs min-w-[120px]">Type</TableHead>
+                        <TableHead className="h-7 px-1.5 text-xs min-w-[80px]">By</TableHead>
+                        <TableHead className="h-7 px-1.5 text-xs min-w-[200px]">Data</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -251,16 +292,31 @@ export function RunDetailPage() {
           </section>
 
           {kinds.length > 0 && (
-            <section className="flex-1 min-h-0 flex flex-col border-l-4 border-l-emerald-500/50 pl-2">
+            <section className="flex-1 min-h-0 flex flex-col border-l-2 border-l-emerald-500/40 pl-2">
               <Card className="flex-1 min-h-0 flex flex-col gap-0 py-1">
-                <CardHeader className="py-1 px-2 shrink-0">
-                  <CardTitle className="text-sm">Collections</CardTitle>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">
-                    Data collected by workflow steps. Each item is traceable to its source step.
-                  </p>
+                <CardHeader className="py-1 px-2 shrink-0 flex flex-row items-center justify-between gap-2 flex-wrap">
+                  <div>
+                    <CardTitle className="text-sm">Collections</CardTitle>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      Data collected by workflow steps. Each item is traceable to its source step.
+                    </p>
+                  </div>
+                  {(collections[effectiveCollectionTab]?.items?.length ?? 0) > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleDownloadCollectionCsv}
+                      className="text-xs px-2 py-1.5 rounded-md border border-border bg-background hover:bg-muted"
+                    >
+                      Download CSV
+                    </button>
+                  )}
                 </CardHeader>
                 <CardContent className="flex-1 min-h-0 overflow-hidden px-2 pb-1 pt-0">
-                  <Tabs defaultValue={tabParam && kinds.includes(tabParam) ? tabParam : kinds[0]} className="flex flex-col h-full">
+                  <Tabs
+                    value={effectiveCollectionTab}
+                    onValueChange={setSelectedCollectionTab}
+                    className="flex flex-col h-full"
+                  >
                     <TabsList className="shrink-0">
                       {kinds.map((k) => (
                         <TabsTrigger key={k} value={k}>

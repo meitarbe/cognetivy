@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { PencilIcon } from "lucide-react";
 import { api, type RunRecord } from "@/api";
+import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -12,6 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { cn, downloadTableCsv, TABLE_LINK_CLASS } from "@/lib/utils";
 
 const POLL_MS = 3000;
 
@@ -21,8 +22,6 @@ export function RunsPage() {
   const statusFilter = searchParams.get("status");
   const [runs, setRuns] = useState<RunRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [editingRunId, setEditingRunId] = useState<string | null>(null);
-  const [editName, setEditName] = useState("");
 
   const filteredRuns = useMemo(() => {
     return runs.filter((r) => {
@@ -48,32 +47,6 @@ export function RunsPage() {
     return () => clearInterval(t);
   }, [load]);
 
-  function handleStartEdit(run: RunRecord) {
-    setEditingRunId(run.run_id);
-    setEditName(run.name ?? "");
-  }
-
-  async function handleSaveName(runId: string) {
-    const trimmed = editName.trim();
-    setEditingRunId(null);
-    if (trimmed === "") return; // Don't save empty name
-    try {
-      const updated = await api.updateRunName(runId, trimmed);
-      setRuns((prev) => prev.map((r) => (r.run_id === runId ? updated : r)));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent, runId: string) {
-    if (e.key === "Enter") {
-      handleSaveName(runId);
-    }
-    if (e.key === "Escape") {
-      setEditingRunId(null);
-    }
-  }
-
   if (error) {
     return (
       <div className="p-3">
@@ -89,30 +62,68 @@ export function RunsPage() {
     );
   }
 
+  function handleDownloadCsv() {
+    const columnKeys: string[] = ["name", "run_id", "workflow_version", "status", "created_at"];
+    const headers = ["Name", "ID", "Version", "Status", "Created"];
+    downloadTableCsv(
+      filteredRuns.map((r) => ({
+        name: r.name ?? "",
+        run_id: r.run_id,
+        workflow_version: r.workflow_version,
+        status: r.status,
+        created_at: r.created_at,
+      })),
+      columnKeys,
+      headers,
+      "runs.csv"
+    );
+  }
+
+  const runningCount = runs.filter((r) => r.status === "running").length;
+
   return (
     <div className="p-3">
-      <div className="flex items-center justify-between mb-2">
-        <h2 className="text-base font-semibold">Runs</h2>
-        {(versionFilter || statusFilter) && (
-          <span className="text-xs text-muted-foreground">
-            {versionFilter && `Version: ${versionFilter}`}
-            {versionFilter && statusFilter && " · "}
-            {statusFilter && `Status: ${statusFilter}`}
-            <Link to="/runs" className="ml-2 text-primary hover:underline">Clear</Link>
-          </span>
-        )}
+      <div className="flex items-center justify-between mb-1.5 py-0.5">
+        <div className="flex items-center gap-2">
+          <Breadcrumbs items={[{ label: "Runs" }]} />
+          {runningCount > 0 && (
+            <span className="text-xs font-medium text-amber-600 dark:text-amber-400 flex items-center gap-1">
+              <span className="size-1.5 rounded-full bg-amber-500 animate-pulse" aria-hidden />
+              {runningCount} running
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {filteredRuns.length > 0 && (
+            <button
+              type="button"
+              onClick={handleDownloadCsv}
+              className="text-xs px-2 py-1.5 rounded-md border border-border bg-background hover:bg-muted"
+            >
+              Download CSV
+            </button>
+          )}
+          {(versionFilter || statusFilter) && (
+            <span className="text-xs text-muted-foreground">
+              {versionFilter && `Version: ${versionFilter}`}
+              {versionFilter && statusFilter && " · "}
+              {statusFilter && `Status: ${statusFilter}`}
+              <Link to="/runs" className={cn("ml-2", TABLE_LINK_CLASS)}>Clear</Link>
+            </span>
+          )}
+        </div>
       </div>
       <Card>
         <CardContent className="p-0 text-sm">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-8 text-center">#</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>ID</TableHead>
-                <TableHead>Version</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Created</TableHead>
+                <TableHead className="w-8 min-w-8 text-center">#</TableHead>
+                <TableHead className="min-w-[120px]">Name</TableHead>
+                <TableHead className="min-w-[180px]">ID</TableHead>
+                <TableHead className="min-w-[80px]">Version</TableHead>
+                <TableHead className="min-w-[80px]">Status</TableHead>
+                <TableHead className="min-w-[140px] whitespace-nowrap">Created</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -124,53 +135,34 @@ export function RunsPage() {
                 </TableRow>
               )}
               {filteredRuns.map((run, i) => (
-                <TableRow key={run.run_id}>
-                  <TableCell className="text-xs text-muted-foreground text-center align-top w-8">
+                <TableRow
+                  key={run.run_id}
+                  className={run.status === "running" ? "bg-amber-500/5 dark:bg-amber-500/10" : undefined}
+                >
+                  <TableCell className="text-xs text-muted-foreground text-center align-top w-8 min-w-8">
                     {i + 1}
-                  </TableCell>
-                  <TableCell>
-                    {editingRunId === run.run_id ? (
-                      <input
-                        type="text"
-                        value={editName}
-                        onChange={(e) => setEditName(e.target.value)}
-                        onBlur={() => handleSaveName(run.run_id)}
-                        onKeyDown={(e) => handleKeyDown(e, run.run_id)}
-                        className="w-full max-w-[200px] px-2 py-0.5 text-sm rounded border border-input bg-background"
-                        autoFocus
-                      />
-                    ) : (
-                      <div className="flex items-center gap-1.5">
-                        <Link
-                          to={`/runs/${encodeURIComponent(run.run_id)}`}
-                          className="text-primary hover:underline"
-                        >
-                          {run.name ?? "—"}
-                        </Link>
-                        <button
-                          type="button"
-                          onClick={() => handleStartEdit(run)}
-                          className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
-                          aria-label="Edit run name"
-                        >
-                          <PencilIcon className="size-3.5" />
-                        </button>
-                      </div>
-                    )}
                   </TableCell>
                   <TableCell>
                     <Link
                       to={`/runs/${encodeURIComponent(run.run_id)}`}
-                      className="text-primary hover:underline truncate max-w-[200px] block"
+                      className={TABLE_LINK_CLASS}
+                    >
+                      {run.name ?? "—"}
+                    </Link>
+                  </TableCell>
+                  <TableCell>
+                    <Link
+                      to={`/runs/${encodeURIComponent(run.run_id)}`}
+                      className={cn(TABLE_LINK_CLASS, "truncate max-w-[200px] block")}
                       title={run.run_id}
                     >
-                      {run.name ?? run.run_id}
+                      {run.run_id}
                     </Link>
                   </TableCell>
                   <TableCell>
                     <Link
                       to={`/runs?version=${encodeURIComponent(run.workflow_version)}${statusFilter ? `&status=${encodeURIComponent(statusFilter)}` : ""}`}
-                      className="text-primary hover:underline"
+                      className={TABLE_LINK_CLASS}
                     >
                       {run.workflow_version}
                     </Link>
@@ -185,7 +177,7 @@ export function RunsPage() {
                       </Badge>
                     </Link>
                   </TableCell>
-                  <TableCell className="text-muted-foreground text-sm">
+                  <TableCell className="text-muted-foreground text-sm whitespace-nowrap">
                     {run.created_at}
                   </TableCell>
                 </TableRow>

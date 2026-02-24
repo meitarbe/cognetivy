@@ -8,8 +8,9 @@ import {
 } from "@/components/ui/table";
 import { useState } from "react";
 import type { CollectionItem, WorkflowVersion } from "@/api";
-import { formatTimestamp } from "@/lib/utils";
+import { formatTimestamp, TABLE_LINK_CLASS } from "@/lib/utils";
 import { CollectionItemDetail } from "./CollectionItemDetail";
+import { RichText, isRichTextField } from "./RichText";
 
 const CATEGORY_TO_STEP: Record<string, string> = {
   tech: "tech_breakthroughs",
@@ -70,13 +71,13 @@ export function CollectionTable({ kind, items, workflow }: CollectionTableProps)
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead className="w-8 text-center">#</TableHead>
-          <TableHead className="w-[140px]">Added</TableHead>
+          <TableHead className="w-8 min-w-8 text-center">#</TableHead>
+          <TableHead className="min-w-[120px]">Added</TableHead>
           {showTraceability && (
-            <TableHead className="w-[140px]">Collected by</TableHead>
+            <TableHead className="min-w-[120px]">Collected by</TableHead>
           )}
           {columns.map((col) => (
-            <TableHead key={col} className="capitalize">
+            <TableHead key={col} className="capitalize min-w-[120px]">
               {col.replace(/_/g, " ")}
             </TableHead>
           ))}
@@ -108,23 +109,29 @@ export function CollectionTable({ kind, items, workflow }: CollectionTableProps)
                   )}
                 </TableCell>
               )}
-              {columns.map((col) => (
-                <TableCell key={col} className="text-sm max-w-[500px] whitespace-normal break-words align-top py-1.5">
-                  {col === "url" ? (
-                    <a
-                      href={item[col] as string}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-primary hover:underline break-all"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {formatCellValue(item[col])}
-                    </a>
-                  ) : (
-                    formatCellValue(item[col])
-                  )}
-                </TableCell>
-              ))}
+              {columns.map((col) => {
+                const value = item[col];
+                const isRich = isRichTextField(col) && typeof value === "string";
+                return (
+                  <TableCell key={col} className="text-sm min-w-[120px] max-w-[500px] whitespace-normal break-words align-top py-1.5">
+                    {col === "url" ? (
+                      <a
+                        href={value as string}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`${TABLE_LINK_CLASS} break-all`}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {formatCellValue(value)}
+                      </a>
+                    ) : isRich ? (
+                      <RichText content={value} className="line-clamp-3 text-xs" />
+                    ) : (
+                      formatCellValue(value)
+                    )}
+                  </TableCell>
+                );
+              })}
             </TableRow>
           );
         })}

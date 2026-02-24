@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import type { Node, Edge } from "@xyflow/react";
 import { api, type WorkflowVersion } from "@/api";
+import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import {
   Select,
@@ -12,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { TABLE_LINK_CLASS } from "@/lib/utils";
 import { getWorkflowLayout } from "@/lib/workflowLayout";
 import { workflowToNodesEdges } from "@/lib/workflowCanvas";
 import { WorkflowCanvas } from "@/components/workflow/WorkflowCanvas";
@@ -172,28 +173,23 @@ function WorkflowPageInner() {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="px-3 py-2 border-b border-border flex flex-wrap items-center gap-3">
-        <h2 className="text-base font-semibold">Workflow</h2>
-        {currentVersion && (
-          <Badge variant="secondary" className="text-xs">Current: {currentVersion}</Badge>
-        )}
-        {nodes.length > 0 && (
-          <span className="text-xs text-muted-foreground" aria-live="polite">
-            {nodes.length} nodes, {edges.length} edges
-          </span>
-        )}
+      <div className="px-3 py-1.5 border-b border-border flex flex-wrap items-center gap-2 text-sm">
+        <Breadcrumbs items={[{ label: "Workflow" }]} />
         {versions.length > 0 && (
           <Select
             value={selectedVersion ?? currentVersion ?? ""}
             onValueChange={(v) => setSelectedVersion(v)}
           >
-            <SelectTrigger className="w-[120px] h-8 text-xs">
+            <SelectTrigger className="w-[140px] h-8 text-xs rounded-md border bg-background">
               <SelectValue placeholder="Version" />
             </SelectTrigger>
             <SelectContent>
               {versions.map((v) => (
                 <SelectItem key={v.version} value={v.version}>
                   {v.version}
+                  {v.version === currentVersion && (
+                    <span className="ml-1.5 text-muted-foreground font-normal">(current)</span>
+                  )}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -202,13 +198,13 @@ function WorkflowPageInner() {
         {selectedVersion && (
           <Link
             to={`/runs?version=${encodeURIComponent(selectedVersion)}`}
-            className="text-xs text-primary hover:underline font-medium"
+            className={`text-xs font-medium ${TABLE_LINK_CLASS}`}
           >
             Runs ({selectedVersion})
           </Link>
         )}
         {diffState && (
-          <div className="flex items-center gap-2 ml-auto">
+          <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground">Show changes</span>
             <Switch checked={showChanges} onCheckedChange={setShowChanges} />
           </div>
@@ -220,6 +216,7 @@ function WorkflowPageInner() {
             workflow={currentWorkflow}
             nodesOverride={nodes}
             edgesOverride={edges}
+            runsVersionForLink={selectedVersion ?? undefined}
             readOnly
             showControls
             showBackground

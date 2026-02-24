@@ -16,6 +16,7 @@ import type { WorkflowVersion, EventPayload } from "@/api";
 import { WorkflowNode } from "@/components/workflow/WorkflowNode";
 import { type WorkflowNodeData, nodeIdToDisplayName } from "@/components/workflow/WorkflowNode";
 import { workflowToNodesEdges, getStepStatuses } from "@/lib/workflowCanvas";
+import { Link } from "react-router-dom";
 import {
   Dialog,
   DialogContent,
@@ -23,6 +24,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { TABLE_LINK_CLASS } from "@/lib/utils";
 
 const nodeTypes = { workflow: WorkflowNode };
 
@@ -40,6 +42,8 @@ export interface WorkflowCanvasProps {
   nodesOverride?: Node[];
   /** Override computed edges (e.g. for diff view) */
   edgesOverride?: Edge[];
+  /** When set, show a "View runs" link in the node detail modal (workflow page only). */
+  runsVersionForLink?: string;
 }
 
 function WorkflowCanvasInner({
@@ -53,6 +57,7 @@ function WorkflowCanvasInner({
   className = "",
   nodesOverride,
   edgesOverride,
+  runsVersionForLink,
 }: WorkflowCanvasProps) {
   const computed = useMemo(() => {
     const stepStatuses = events ? getStepStatuses(events) : undefined;
@@ -96,7 +101,7 @@ function WorkflowCanvasInner({
       }}
       nodeOrigin={[0.5, 0.5]}
       fitView
-      fitViewOptions={{ padding: 0.2, duration: 200 }}
+      fitViewOptions={{ padding: 0.2, duration: 0 }}
       proOptions={{ hideAttribution: true }}
       className={className || "bg-muted/20"}
     >
@@ -137,6 +142,16 @@ function WorkflowCanvasInner({
                 <div>
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Status</p>
                   <p className="mt-0.5">{selectedNode.data.stepStatus}</p>
+                </div>
+              )}
+              {runsVersionForLink && (
+                <div className="pt-2 border-t border-border">
+                  <Link
+                    to={`/runs?version=${encodeURIComponent(runsVersionForLink)}`}
+                    className={`text-sm font-medium ${TABLE_LINK_CLASS}`}
+                  >
+                    View runs ({runsVersionForLink})
+                  </Link>
                 </div>
               )}
             </div>

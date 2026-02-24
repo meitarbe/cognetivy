@@ -3,6 +3,8 @@ import { useParams, Link } from "react-router-dom";
 import { api, type CollectionSchemaConfig, type CollectionItem } from "@/api";
 import { formatTimestamp } from "@/lib/utils";
 import { CollectionItemDetail } from "@/components/display/CollectionItemDetail";
+import { RichText, isRichTextField } from "@/components/display/RichText";
+import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -13,6 +15,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { cn, downloadTableCsv, TABLE_LINK_CLASS } from "@/lib/utils";
 
 const POLL_MS = 5000;
 
@@ -77,9 +80,7 @@ export function EntityPage() {
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground">{error ?? "Missing entity kind"}</p>
-            <Link to="/collection-schema" className="text-primary text-sm mt-2 inline-block hover:underline">
-              Define entities in Collection schema
-            </Link>
+            <p className="text-xs text-muted-foreground mt-2">Use the Collection section in the sidebar to open a collection.</p>
           </CardContent>
         </Card>
       </div>
@@ -97,34 +98,43 @@ export function EntityPage() {
 
   const displayColumns = ["run_id", ...columns].filter((c, i, a) => a.indexOf(c) === i);
 
+  const displayKind = kind.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
+  function handleDownloadCsv() {
+    const csvColumns = ["created_at", ...displayColumns];
+    const headers = ["Added", ...displayColumns.map((c) => (c === "run_id" ? "Run" : c.replace(/_/g, " ")))];
+    downloadTableCsv(items, csvColumns, headers, `${kind}.csv`);
+  }
+
   return (
     <div className="p-3 space-y-3">
-      <div className="flex items-center gap-2 text-xs">
-        <Link to="/collection-schema" className="text-muted-foreground hover:text-foreground">
-          Collection schema
-        </Link>
-        <span className="text-muted-foreground">/</span>
-        <span className="font-medium">{kind}</span>
-      </div>
+      <Breadcrumbs items={[{ label: "Data" }, { label: kind }]} />
+      <h1 className="text-2xl font-semibold tracking-tight">{displayKind}</h1>
 
       {kindSchema && (
-        <Card>
-          <CardHeader className="py-2 px-3">
-            <CardTitle className="text-sm">Schema</CardTitle>
-            <p className="text-xs text-muted-foreground">{kindSchema.description}</p>
-            <div className="flex gap-2 mt-1">
-              {kindSchema.global && <Badge variant="secondary">Cross-run</Badge>}
-              <span className="text-xs text-muted-foreground">
-                Required: {kindSchema.required?.join(", ") || "—"}
-              </span>
-            </div>
-          </CardHeader>
-        </Card>
+        <div className="text-xs text-muted-foreground py-1.5 px-2 rounded-md bg-muted/40 border border-border/50">
+          <span className="font-medium text-foreground/80">Schema:</span> {kindSchema.description}
+          {kindSchema.required && kindSchema.required.length > 0 && (
+            <span className="ml-2">Required: {kindSchema.required.join(", ")}</span>
+          )}
+          {kindSchema.global && (
+            <Badge variant="secondary" className="ml-2 text-[10px]">Cross-run</Badge>
+          )}
+        </div>
       )}
 
       <Card>
-        <CardHeader className="py-2 px-3">
+        <CardHeader className="py-2 px-3 flex flex-row items-center justify-between gap-2">
           <CardTitle className="text-sm">Data ({items.length} items)</CardTitle>
+          {items.length > 0 && (
+            <button
+              type="button"
+              onClick={handleDownloadCsv}
+              className="text-xs px-2 py-1.5 rounded-md border border-border bg-background hover:bg-muted"
+            >
+              Download CSV
+            </button>
+          )}
         </CardHeader>
         <CardContent className="p-0">
           {items.length === 0 ? (
@@ -136,10 +146,10 @@ export function EntityPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-8 text-center">#</TableHead>
-                  <TableHead className="w-[140px]">Added</TableHead>
+                  <TableHead className="w-8 min-w-8 text-center">#</TableHead>
+                  <TableHead className="min-w-[120px]">Added</TableHead>
                   {displayColumns.map((col) => (
-                    <TableHead key={col} className="capitalize">
+                    <TableHead key={col} className="capitalize min-w-[120px]">
                       {col === "run_id" ? "Run" : col.replace(/_/g, " ")}
                     </TableHead>
                   ))}
@@ -152,37 +162,43 @@ export function EntityPage() {
                     className="cursor-pointer hover:bg-muted/50"
                     onClick={() => setSelectedItem(item)}
                   >
-                    <TableCell className="text-xs text-muted-foreground text-center align-top w-8">
+                    <TableCell className="text-xs text-muted-foreground text-center align-top w-8 min-w-8">
                       {i + 1}
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap align-top">
+                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap align-top min-w-[120px]">
                       {formatTimestamp(item.created_at as string | undefined)}
                     </TableCell>
-                    {displayColumns.map((col) => (
-                      <TableCell key={col} className="text-sm max-w-[500px] whitespace-normal break-words align-top">
-                        {col === "run_id" && item.run_id ? (
-                          <Link
-                            to={`/runs/${encodeURIComponent(String(item.run_id))}`}
-                            className="text-primary hover:underline font-medium"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            {runNames[String(item.run_id)] ?? String(item.run_id)}
-                          </Link>
-                        ) : col === "url" && item[col] ? (
-                          <a
-                            href={item[col] as string}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-primary hover:underline break-all"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            {formatCellValue(item[col])}
-                          </a>
-                        ) : (
-                          formatCellValue(item[col])
-                        )}
-                      </TableCell>
-                    ))}
+                    {displayColumns.map((col) => {
+                      const value = item[col];
+                      const isRich = isRichTextField(col) && typeof value === "string";
+                      return (
+                        <TableCell key={col} className="text-sm min-w-[120px] max-w-[500px] whitespace-normal break-words align-top">
+                          {col === "run_id" && item.run_id ? (
+                            <Link
+                              to={`/runs/${encodeURIComponent(String(item.run_id))}`}
+                              className={cn(TABLE_LINK_CLASS, "font-medium")}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {runNames[String(item.run_id)] ?? String(item.run_id)}
+                            </Link>
+                          ) : col === "url" && value ? (
+                            <a
+                              href={value as string}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className={cn(TABLE_LINK_CLASS, "break-all")}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {formatCellValue(value)}
+                            </a>
+                          ) : isRich ? (
+                            <RichText content={value as string} className="line-clamp-3 text-xs" />
+                          ) : (
+                            formatCellValue(value)
+                          )}
+                        </TableCell>
+                      );
+                    })}
                   </TableRow>
                 ))}
               </TableBody>

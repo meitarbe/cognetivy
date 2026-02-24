@@ -1,7 +1,16 @@
 import { memo } from "react";
 import { Handle, type NodeProps, Position } from "@xyflow/react";
+import { ArrowDownToLine, ArrowUpFromLine } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+
+const MAX_IO_ITEMS = 3;
+
+function formatIoList(list: string[]): string {
+  if (list.length === 0) return "—";
+  if (list.length <= MAX_IO_ITEMS) return list.join(", ");
+  return `${list.slice(0, MAX_IO_ITEMS).join(", ")} +${list.length - MAX_IO_ITEMS}`;
+}
 
 export type NodeChangeStatus = "added" | "changed" | "removed" | undefined;
 
@@ -51,14 +60,24 @@ function WorkflowNodeComponent(props: NodeProps) {
       <Badge variant="secondary" className="mt-0.5 text-[10px]">
         {d.type}
       </Badge>
-      <div className="mt-1 text-[11px] text-muted-foreground space-y-0.5">
-        <div>
-          <span className="text-muted-foreground/80">In: </span>
-          <span className="font-medium">{(d.input ?? []).join(", ") || "—"}</span>
+      <div className="mt-1.5 rounded border border-border/60 bg-muted/30 px-2 py-1.5 space-y-1.5">
+        <div className="flex items-start gap-1.5">
+          <ArrowDownToLine className="size-3 shrink-0 mt-0.5 text-muted-foreground" aria-hidden />
+          <div className="min-w-0">
+            <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">Input</div>
+            <div className="text-[11px] font-medium text-foreground truncate" title={(d.input ?? []).join(", ")}>
+              {formatIoList(d.input ?? [])}
+            </div>
+          </div>
         </div>
-        <div>
-          <span className="text-muted-foreground/80">Out: </span>
-          <span className="font-medium">{(d.output ?? []).join(", ") || "—"}</span>
+        <div className="flex items-start gap-1.5">
+          <ArrowUpFromLine className="size-3 shrink-0 mt-0.5 text-muted-foreground" aria-hidden />
+          <div className="min-w-0">
+            <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">Output</div>
+            <div className="text-[11px] font-medium text-foreground truncate" title={(d.output ?? []).join(", ")}>
+              {formatIoList(d.output ?? [])}
+            </div>
+          </div>
         </div>
       </div>
       {stepStatus && (

@@ -9,19 +9,6 @@ async function get<T>(path: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-async function patch<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error((err as { error?: string }).error ?? res.statusText);
-  }
-  return res.json() as Promise<T>;
-}
-
 export interface WorkspaceInfo {
   path: string;
   exists: boolean;
@@ -104,8 +91,6 @@ export const api = {
   getWorkflowVersion: (version: string) => get<WorkflowVersion>(`/workflow/versions/${encodeURIComponent(version)}`),
   getRuns: () => get<RunRecord[]>("/runs"),
   getRun: (id: string) => get<RunRecord>(`/runs/${encodeURIComponent(id)}`),
-  updateRunName: (id: string, name: string) =>
-    patch<RunRecord>(`/runs/${encodeURIComponent(id)}`, { name }),
   getRunEvents: (id: string) => get<EventPayload[]>(`/runs/${encodeURIComponent(id)}/events`),
   getCollectionSchema: () => get<CollectionSchemaConfig>("/collections/schema"),
   getCollectionKinds: (runId: string) => get<string[]>(`/collections/${encodeURIComponent(runId)}`),
