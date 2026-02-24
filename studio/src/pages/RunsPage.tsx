@@ -4,6 +4,13 @@ import { api, type RunRecord } from "@/api";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Table,
   TableBody,
   TableCell,
@@ -13,14 +20,16 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { CopyableId } from "@/components/ui/CopyableId";
-import { cn, downloadTableCsv, TABLE_LINK_CLASS } from "@/lib/utils";
+import { downloadTableCsv, TABLE_LINK_CLASS } from "@/lib/utils";
 
 const POLL_MS = 3000;
+const ALL_VERSIONS = "";
+const ALL_STATUSES = "";
 
 export function RunsPage() {
-  const [searchParams] = useSearchParams();
-  const versionFilter = searchParams.get("version");
-  const statusFilter = searchParams.get("status");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const versionFilter = searchParams.get("version") ?? ALL_VERSIONS;
+  const statusFilter = searchParams.get("status") ?? ALL_STATUSES;
   const [runs, setRuns] = useState<RunRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,6 +40,33 @@ export function RunsPage() {
       return true;
     });
   }, [runs, versionFilter, statusFilter]);
+
+  const uniqueVersions = useMemo(
+    () => Array.from(new Set(runs.map((r) => r.workflow_version))).sort(),
+    [runs]
+  );
+  const uniqueStatuses = useMemo(
+    () => Array.from(new Set(runs.map((r) => r.status))).sort(),
+    [runs]
+  );
+
+  function handleVersionChange(value: string) {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (value === ALL_VERSIONS) next.delete("version");
+      else next.set("version", value);
+      return next;
+    });
+  }
+
+  function handleStatusChange(value: string) {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (value === ALL_STATUSES) next.delete("status");
+      else next.set("status", value);
+      return next;
+    });
+  }
 
   const load = useCallback(async () => {
     try {
@@ -84,8 +120,8 @@ export function RunsPage() {
 
   return (
     <div className="p-3">
-      <div className="flex items-center justify-between mb-1.5 py-0.5">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5 py-0.5">
+        <div className="flex items-center gap-2 flex-wrap">
           <Breadcrumbs items={[{ label: "Runs" }]} />
           {runningCount > 0 && (
             <span className="text-xs font-medium text-amber-600 dark:text-amber-400 flex items-center gap-1">
@@ -93,6 +129,40 @@ export function RunsPage() {
               {runningCount} running
             </span>
           )}
+          <div className="flex items-center gap-2">
+            <Select
+              value={versionFilter || "all"}
+              onValueChange={(v) => handleVersionChange(v === "all" ? ALL_VERSIONS : v)}
+            >
+              <SelectTrigger size="sm" className="w-[180px]">
+                <SelectValue placeholder="Workflow version" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All versions</SelectItem>
+                {uniqueVersions.map((v) => (
+                  <SelectItem key={v} value={v}>
+                    {v}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
+              value={statusFilter || "all"}
+              onValueChange={(v) => handleStatusChange(v === "all" ? ALL_STATUSES : v)}
+            >
+              <SelectTrigger size="sm" className="w-[140px]">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                {uniqueStatuses.map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {s}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           {filteredRuns.length > 0 && (
@@ -103,14 +173,6 @@ export function RunsPage() {
             >
               Download CSV
             </button>
-          )}
-          {(versionFilter || statusFilter) && (
-            <span className="text-xs text-muted-foreground">
-              {versionFilter && `Version: ${versionFilter}`}
-              {versionFilter && statusFilter && " · "}
-              {statusFilter && `Status: ${statusFilter}`}
-              <Link to="/runs" className={cn("ml-2", TABLE_LINK_CLASS)}>Clear</Link>
-            </span>
           )}
         </div>
       </div>
