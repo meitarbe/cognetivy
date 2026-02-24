@@ -65,14 +65,20 @@ program
 
 program
   .command("init")
-  .description("Create .cognetivy workspace (and optional .gitignore snippet)")
+  .description("Initialize workspace and install skills (interactive, same as `cognetivy install`)")
   .option("--no-gitignore", "Do not add .gitignore snippet for runs/events/collections")
   .option("--force", "Re-init: overwrite workflow pointer and default version if present")
-  .action(async (opts: { gitignore?: boolean; force?: boolean }) => {
+  .option("--workspace-only", "Only create .cognetivy workspace; do not prompt for skill installation")
+  .action(async (opts: { gitignore?: boolean; force?: boolean; workspaceOnly?: boolean }) => {
     const cwd = process.cwd();
     const noGitignore = opts.gitignore === false;
-    await ensureWorkspace(cwd, { force: opts.force, noGitignore });
-    console.log("Initialized cognetivy workspace at .cognetivy/");
+    if (opts.workspaceOnly) {
+      await ensureWorkspace(cwd, { force: opts.force, noGitignore });
+      console.log("Initialized cognetivy workspace at .cognetivy/");
+      return;
+    }
+    const { runInstallTUI } = await import("./install-tui.js");
+    await runInstallTUI({ cwd, force: opts.force, init: true, noGitignore });
   });
 
 const workflowCmd = program

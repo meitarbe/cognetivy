@@ -115,12 +115,13 @@ async function tryPrintFaviconBanner(cwd: string): Promise<void> {
     path.resolve(moduleDir, "../../studio/public/icon-pixelized.png"),
     path.resolve(moduleDir, "../../studio/public/favicon.png"),
   ];
-  const faviconPath = await (async function resolveFavicon(): Promise<string | null> {
-    for (const c of candidates) {
-      if (await fileExists(c)) return c;
+  async function resolveFirstExistingPath(paths: string[]): Promise<string | null> {
+    for (const candidatePath of paths) {
+      if (await fileExists(candidatePath)) return candidatePath;
     }
     return null;
-  })();
+  }
+  const faviconPath = await resolveFirstExistingPath(candidates);
 
   if (!faviconPath) {
     return;
@@ -138,10 +139,11 @@ export interface InstallTUIOptions {
   cwd: string;
   force?: boolean;
   init?: boolean;
+  noGitignore?: boolean;
 }
 
 export async function runInstallTUI(options: InstallTUIOptions): Promise<void> {
-  const { cwd, force = false, init = true } = options;
+  const { cwd, force = false, init = true, noGitignore = false } = options;
 
   await tryPrintFaviconBanner(cwd);
   p.intro("cognetivy install");
@@ -167,7 +169,7 @@ export async function runInstallTUI(options: InstallTUIOptions): Promise<void> {
   if (init) {
     const initSpinner = ora("Initializing workspace...").start();
     try {
-      await ensureWorkspace(cwd);
+      await ensureWorkspace(cwd, { force, noGitignore });
       initSpinner.succeed("Workspace ready");
     } catch (err) {
       initSpinner.fail("Workspace init failed");

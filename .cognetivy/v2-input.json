@@ -1,0 +1,13 @@
+{
+  "project": "cognetivy",
+  "goal": "Design Cognetivy next version (v2) using Cognetivy itself",
+  "pain_points": [
+    "step reasoning articles per node",
+    "workflow name/description + version name",
+    "collections & nodes need ids + human names",
+    "enforce Added/Collected by fields",
+    "strict schemas + refs",
+    "human in the loop between steps",
+    "multi research runs sharing same databases"
+  ]
+}

@@ -1,0 +1,1 @@
+{"title":"Traceability fields enforced","criteria":"Every collected item must include created_at (Added) and collected_by_step_id (Collected by) and pass schema validation.","status":"draft"}

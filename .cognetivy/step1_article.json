@@ -1,0 +1,8 @@
+{
+  "run_id": "run_2026-02-24T19-46-17-128Z_p3l4cs",
+  "workflow_version": "v2",
+  "step_id": "set_scope_and_success_criteria",
+  "title": "Scope & success criteria for Cognetivy v2",
+  "status": "draft",
+  "article_markdown": "## Goal\nDesign the next version of Cognetivy by using Cognetivy itself as the execution log.\n\n## What we will enforce\n- A **step article** for every workflow node (separate from any produced collections).\n- **Strict collection kinds** with required fields.\n- **Human in the loop**: steps advance only when a human appends step events and approves decision items.\n\n## Immediate acceptance criteria (draft)\n- Traceability fields are present for every collected entity.\n- Workflow versions have a human name + description in stored specs.\n\n## Notes\nThis is intentionally stored as `step_articles` to keep reasoning separate from data collections.\n"
+}
