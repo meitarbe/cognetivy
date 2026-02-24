@@ -13,6 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { EventDataSummary } from "@/components/display/EventDataSummary";
 import { CollectionTable } from "@/components/display/CollectionTable";
 import { RichText } from "@/components/display/RichText";
@@ -22,8 +23,22 @@ import { ResizablePanel } from "@/components/ui/ResizablePanel";
 import { downloadTableCsv, getStepIdFromEventData, TABLE_LINK_CLASS } from "@/lib/utils";
 import { CopyableId } from "@/components/ui/CopyableId";
 import { cn } from "@/lib/utils";
+import { ListChecks } from "lucide-react";
 
 const POLL_MS = 3000;
+
+/** Format seconds as "+Xs" or "—" for first event. */
+function formatEventDelta(ts: string, prevTs: string | null): string {
+  if (!prevTs) return "—";
+  const a = Date.parse(ts);
+  const b = Date.parse(prevTs);
+  if (Number.isNaN(a) || Number.isNaN(b)) return "—";
+  const sec = (a - b) / 1000;
+  if (sec < 60) return `+${sec.toFixed(1)}s`;
+  const min = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `+${min}m ${s}s`;
+}
 
 function getEventTypeBadgeVariant(type: string): string {
   switch (type) {
@@ -54,6 +69,7 @@ export function RunDetailPage() {
   const [selectedCollectionTab, setSelectedCollectionTab] = useState<string | null>(null);
   const [collectionStepFilter, setCollectionStepFilter] = useState<string | null>(null);
   const [collectionSearchQuery, setCollectionSearchQuery] = useState("");
+  const [eventsDrawerOpen, setEventsDrawerOpen] = useState(false);
   const eventsScrollRef = useRef<HTMLDivElement>(null);
 
   const effectiveCollectionTab =
@@ -88,8 +104,11 @@ export function RunDetailPage() {
   function handleStepClick(stepId: string) {
     const idx = events.findIndex((ev) => getStepIdFromEventData(ev.data) === stepId);
     if (idx >= 0) {
-      const rowEl = eventsScrollRef.current?.querySelector(`[data-event-index="${idx}"]`);
-      rowEl?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      setEventsDrawerOpen(true);
+      setTimeout(() => {
+        const rowEl = eventsScrollRef.current?.querySelector(`[data-event-index="${idx}"]`);
+        rowEl?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }, 300);
     }
   }
 
@@ -187,67 +206,84 @@ export function RunDetailPage() {
   const contentPanel = (
     <main className="h-full flex flex-col overflow-hidden">
         <div className="flex flex-col flex-1 min-h-0 p-2 gap-1.5">
-          <header className="shrink-0 bg-background py-1.5 border-b border-border">
-            <div className="mb-0.5">
-              <Breadcrumbs
-                items={[
-                  { label: "Runs", to: "/runs" },
-                  {
-                    label: run?.name ? (
-                      <>
-                        <span className="font-medium">{run.name}</span>
-                        <span className="ml-1.5 text-xs">
-                          <CopyableId value={runId} truncateLength={20} />
-                        </span>
-                      </>
-                    ) : (
-                      <CopyableId value={runId} truncateLength={24} />
-                    ),
-                  },
-                ]}
-              />
-            </div>
-            <div className="flex flex-wrap items-center gap-1.5 text-xs">
-              <Badge
-                variant="outline"
-                className={cn(
-                  "text-xs",
-                  run?.status === "completed" && "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/40",
-                  run?.status === "running" && "bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/40 animate-pulse",
-                  run?.status !== "completed" && run?.status !== "running" && "bg-muted text-muted-foreground"
-                )}
-              >
-                {run?.status}
-              </Badge>
-              {run?.workflow_version && (
-                <Link
-                  to={`/workflow?version=${encodeURIComponent(run.workflow_version)}`}
-                  className={`text-xs ${TABLE_LINK_CLASS}`}
-                >
-                  {run.workflow_version}
-                </Link>
+          <header className="shrink-0 bg-background py-1.5 border-b border-border flex flex-wrap items-center gap-x-3 gap-y-1">
+            <Breadcrumbs
+              items={[
+                { label: "Runs", to: "/runs" },
+                {
+                  label: run?.name ? (
+                    <>
+                      <span className="font-medium">{run.name}</span>
+                      <span className="ml-1.5 text-xs">
+                        <CopyableId value={runId} truncateLength={20} />
+                      </span>
+                    </>
+                  ) : (
+                    <CopyableId value={runId} truncateLength={24} />
+                  ),
+                },
+              ]}
+            />
+            <Badge
+              variant="outline"
+              className={cn(
+                "text-xs shrink-0",
+                run?.status === "completed" && "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/40",
+                run?.status === "running" && "bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/40 animate-pulse",
+                run?.status !== "completed" && run?.status !== "running" && "bg-muted text-muted-foreground"
               )}
-            </div>
+            >
+              {run?.status}
+            </Badge>
+            {run?.workflow_version && (
+              <Link
+                to={`/workflow?version=${encodeURIComponent(run.workflow_version)}`}
+                className={`text-xs shrink-0 ${TABLE_LINK_CLASS}`}
+              >
+                {run.workflow_version}
+              </Link>
+            )}
+            <button
+              type="button"
+              onClick={() => setEventsDrawerOpen(true)}
+              className={cn(
+                "flex items-center gap-1.5 text-xs px-2 py-1 rounded-md border border-border bg-muted/50 hover:bg-muted ml-auto",
+                eventsDrawerOpen && "ring-2 ring-ring/50"
+              )}
+              aria-label="Open events"
+            >
+              <ListChecks className="size-3.5" />
+              Events ({events.length})
+            </button>
           </header>
 
-          <section className="shrink-0 border-l-2 border-l-primary/40 pl-2 py-0.5">
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]">
-              <span className="text-muted-foreground font-medium">Metadata</span>
-              <span><span className="text-muted-foreground">Created:</span> {run?.created_at}</span>
+          <section className="shrink-0 border-l-2 border-l-primary/40 pl-2 py-1">
+            <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide mb-0.5">Goal & input</p>
+            <dl className="text-sm space-y-0.5">
+              <div className="flex gap-2">
+                <dt className="text-muted-foreground shrink-0 w-16">Created</dt>
+                <dd>{run?.created_at ?? "—"}</dd>
+              </div>
               {run?.input && Object.keys(run.input).length > 0 && (
-                <span>
-                  <span className="text-muted-foreground">Input:</span>{" "}
-                  {Object.entries(run.input)
-                    .filter(([, v]) => v !== undefined && v !== null && v !== "")
-                    .map(([k, v]) => (
-                      <span key={k} className="ml-1">
-                        <span className="font-medium">{k}:</span>{" "}
-                        <span className="rounded bg-muted/70 px-1.5 py-0.5">{String(v)}</span>
-                      </span>
-                    ))}
-                </span>
+                Object.entries(run.input)
+                  .filter(([, v]) => v !== undefined && v !== null && v !== "")
+                  .map(([k, v]) => (
+                    <div key={k} className="flex gap-2">
+                      <dt className="text-muted-foreground shrink-0 w-16 capitalize">{k.replace(/_/g, " ")}</dt>
+                      <dd className="min-w-0 break-words">
+                        {typeof v === "string" && v.length > 200 ? (
+                          <span className="block rounded bg-muted/50 p-2 text-xs whitespace-pre-wrap">{v}</span>
+                        ) : (
+                          <span className="rounded bg-muted/50 px-1.5 py-0.5">{String(v)}</span>
+                        )}
+                      </dd>
+                    </div>
+                  ))
               )}
-            </div>
+              {(!run?.input || Object.keys(run.input).length === 0) && (
+                <div className="text-muted-foreground text-xs">No input</div>
+              )}
+            </dl>
           </section>
 
           {run?.final_answer != null && run.final_answer !== "" && (
@@ -259,52 +295,58 @@ export function RunDetailPage() {
             </section>
           )}
 
-          <section className="flex-1 min-h-0 flex flex-col border-l-2 border-l-blue-500/40 pl-2">
-            <Card className="flex-1 min-h-0 flex flex-col gap-0 py-1">
-              <CardHeader className="py-1 px-2 shrink-0 flex flex-row items-center justify-between gap-2">
-                <CardTitle className="text-sm">Events</CardTitle>
+          <Sheet open={eventsDrawerOpen} onOpenChange={setEventsDrawerOpen}>
+            <SheetContent side="right" className="w-full max-w-xl">
+              <SheetHeader>
+                <SheetTitle>Events ({events.length})</SheetTitle>
+              </SheetHeader>
+              <div className="flex flex-col gap-2 mt-2">
                 {events.length > 0 && (
                   <button
                     type="button"
                     onClick={handleDownloadEventsCsv}
-                    className="text-xs px-2 py-1.5 rounded-md border border-border bg-background hover:bg-muted"
+                    className="text-xs px-2 py-1.5 rounded-md border border-border bg-background hover:bg-muted w-fit"
                   >
                     Download CSV
                   </button>
                 )}
-              </CardHeader>
-              <CardContent className="px-2 pb-1 pt-0 flex-1 min-h-0 overflow-hidden" ref={eventsScrollRef}>
-                <ScrollArea className="h-full">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="h-7 px-1.5 text-xs min-w-[100px]">Time</TableHead>
-                        <TableHead className="h-7 px-1.5 text-xs min-w-[120px]">Type</TableHead>
-                        <TableHead className="h-7 px-1.5 text-xs min-w-[80px]">By</TableHead>
-                        <TableHead className="h-7 px-1.5 text-xs min-w-[200px]">Data</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {events.map((ev, i) => (
-                        <TableRow key={i} data-event-index={i} className="cursor-default">
-                          <TableCell className="text-[11px] text-muted-foreground py-1">{ev.ts}</TableCell>
-                          <TableCell className="py-1">
-                            <Badge variant="outline" className={cn("text-[10px]", getEventTypeBadgeVariant(ev.type))}>
-                              {ev.type}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-sm py-1">{ev.by ?? "—"}</TableCell>
-                          <TableCell className="max-w-[480px] whitespace-normal break-words align-top py-1 text-xs">
-                            <EventDataSummary type={ev.type} data={ev.data} />
-                          </TableCell>
+                <ScrollArea className="flex-1 -mx-2">
+                  <div className="pr-2" ref={eventsScrollRef}>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="h-7 px-1.5 text-xs min-w-[70px]">Delta</TableHead>
+                          <TableHead className="h-7 px-1.5 text-xs min-w-[100px]">Time</TableHead>
+                          <TableHead className="h-7 px-1.5 text-xs min-w-[120px]">Type</TableHead>
+                          <TableHead className="h-7 px-1.5 text-xs min-w-[80px]">By</TableHead>
+                          <TableHead className="h-7 px-1.5 text-xs min-w-[200px]">Data</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {events.map((ev, i) => (
+                          <TableRow key={i} data-event-index={i} className="cursor-default">
+                            <TableCell className="text-[11px] text-muted-foreground py-1 font-mono">
+                              {formatEventDelta(ev.ts, i > 0 ? events[i - 1].ts : null)}
+                            </TableCell>
+                            <TableCell className="text-[11px] text-muted-foreground py-1">{ev.ts ?? "—"}</TableCell>
+                            <TableCell className="py-1">
+                              <Badge variant="outline" className={cn("text-[10px]", getEventTypeBadgeVariant(ev.type))}>
+                                {ev.type}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-sm py-1">{ev.by ?? "—"}</TableCell>
+                            <TableCell className="max-w-[320px] whitespace-normal break-words align-top py-1 text-xs">
+                              <EventDataSummary type={ev.type} data={ev.data} />
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </ScrollArea>
-              </CardContent>
-            </Card>
-          </section>
+              </div>
+            </SheetContent>
+          </Sheet>
 
           {kinds.length > 0 && (
             <section className="flex-1 min-h-0 flex flex-col border-l-2 border-l-emerald-500/40 pl-2">
@@ -348,11 +390,11 @@ export function RunDetailPage() {
                     className="text-xs px-2 py-1.5 rounded-md border border-border bg-background hover:bg-muted min-w-[160px]"
                   />
                 </div>
-                <CardContent className="flex-1 min-h-0 overflow-hidden px-2 pb-1 pt-0">
+                <CardContent className="flex-1 min-h-0 overflow-hidden px-2 pb-1 pt-0 flex flex-col">
                   <Tabs
                     value={effectiveCollectionTab}
                     onValueChange={setSelectedCollectionTab}
-                    className="flex flex-col h-full"
+                    className="flex flex-col flex-1 min-h-0"
                   >
                     <TabsList className="shrink-0">
                       {kinds.map((k) => (
@@ -362,9 +404,9 @@ export function RunDetailPage() {
                       ))}
                     </TabsList>
                     {kinds.map((kind) => (
-                      <TabsContent key={kind} value={kind} className="flex-1 min-h-0 mt-1 data-[state=inactive]:hidden">
-                        <ScrollArea className="h-full">
-                          <div className="p-1">
+                      <TabsContent key={kind} value={kind} className="flex-1 min-h-0 mt-1 data-[state=inactive]:hidden flex flex-col overflow-hidden">
+                        <ScrollArea className="flex-1 min-h-0">
+                          <div className="p-1 min-w-0">
                             <CollectionTable
                               kind={kind}
                               items={(collections[kind] ?? { items: [] }).items}

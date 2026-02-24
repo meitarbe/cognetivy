@@ -29,15 +29,18 @@ function SheetContent({
   children,
   showCloseButton = true,
   side = "right",
+  onOpenAutoFocus,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean;
   side?: "right" | "left";
 }) {
+  const handleOpenAutoFocus = onOpenAutoFocus ?? ((e: Event) => e.preventDefault());
   return (
     <SheetPortal>
       <SheetOverlay />
       <DialogPrimitive.Content
+        onOpenAutoFocus={handleOpenAutoFocus}
         className={cn(
           "fixed z-50 flex h-full flex-col gap-4 border bg-background shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out",
           side === "right" &&
