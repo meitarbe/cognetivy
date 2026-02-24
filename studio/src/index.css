@@ -130,3 +130,16 @@ body {
     @apply bg-background text-foreground;
   }
 }
+
+/* React Flow controls (fit, zoom) visible in dark mode */
+.dark .react-flow__controls {
+  --xy-controls-button-background-color: var(--card);
+  --xy-controls-button-background-color-hover: var(--accent);
+  --xy-controls-button-color: var(--card-foreground);
+  --xy-controls-button-color-hover: var(--accent-foreground);
+  --xy-controls-button-border-color: var(--border);
+  --xy-controls-box-shadow: 0 0 0 1px var(--border);
+}
+.dark .react-flow__controls-button svg {
+  fill: currentColor;
+}
