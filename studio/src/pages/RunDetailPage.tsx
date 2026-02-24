@@ -15,10 +15,12 @@ import {
 } from "@/components/ui/table";
 import { EventDataSummary } from "@/components/display/EventDataSummary";
 import { CollectionTable } from "@/components/display/CollectionTable";
+import { RichText } from "@/components/display/RichText";
 import { WorkflowCanvas } from "@/components/workflow/WorkflowCanvas";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { ResizablePanel } from "@/components/ui/ResizablePanel";
 import { downloadTableCsv, getStepIdFromEventData, TABLE_LINK_CLASS } from "@/lib/utils";
+import { CopyableId } from "@/components/ui/CopyableId";
 import { cn } from "@/lib/utils";
 
 const POLL_MS = 3000;
@@ -50,6 +52,8 @@ export function RunDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [showWorkflowHint, setShowWorkflowHint] = useState(false);
   const [selectedCollectionTab, setSelectedCollectionTab] = useState<string | null>(null);
+  const [collectionStepFilter, setCollectionStepFilter] = useState<string | null>(null);
+  const [collectionSearchQuery, setCollectionSearchQuery] = useState("");
   const eventsScrollRef = useRef<HTMLDivElement>(null);
 
   const effectiveCollectionTab =
@@ -192,10 +196,12 @@ export function RunDetailPage() {
                     label: run?.name ? (
                       <>
                         <span className="font-medium">{run.name}</span>
-                        <span className="ml-1.5 font-mono text-muted-foreground text-xs">{runId}</span>
+                        <span className="ml-1.5 text-xs">
+                          <CopyableId value={runId} truncateLength={20} />
+                        </span>
                       </>
                     ) : (
-                      <span className="font-mono">{runId}</span>
+                      <CopyableId value={runId} truncateLength={24} />
                     ),
                   },
                 ]}
@@ -243,6 +249,15 @@ export function RunDetailPage() {
               )}
             </div>
           </section>
+
+          {run?.final_answer != null && run.final_answer !== "" && (
+            <section className="shrink-0 border-l-2 border-l-emerald-500/40 pl-2 py-1.5">
+              <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1">Final answer</p>
+              <div className="text-sm prose prose-sm dark:prose-invert max-w-none">
+                <RichText content={run.final_answer} />
+              </div>
+            </section>
+          )}
 
           <section className="flex-1 min-h-0 flex flex-col border-l-2 border-l-blue-500/40 pl-2">
             <Card className="flex-1 min-h-0 flex flex-col gap-0 py-1">
@@ -311,6 +326,28 @@ export function RunDetailPage() {
                     </button>
                   )}
                 </CardHeader>
+                <div className="shrink-0 px-2 pb-1 flex flex-wrap items-center gap-2">
+                  <label className="text-[11px] text-muted-foreground font-medium">Filter by step</label>
+                  <select
+                    value={collectionStepFilter ?? ""}
+                    onChange={(e) => setCollectionStepFilter(e.target.value === "" ? null : e.target.value)}
+                    className="text-xs px-2 py-1.5 rounded-md border border-border bg-background hover:bg-muted min-w-[140px]"
+                  >
+                    <option value="">All steps</option>
+                    {workflow?.nodes.map((n) => (
+                      <option key={n.id} value={n.id}>
+                        {n.id.replace(/_/g, " ")}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="search"
+                    placeholder="Search in collection..."
+                    value={collectionSearchQuery}
+                    onChange={(e) => setCollectionSearchQuery(e.target.value)}
+                    className="text-xs px-2 py-1.5 rounded-md border border-border bg-background hover:bg-muted min-w-[160px]"
+                  />
+                </div>
                 <CardContent className="flex-1 min-h-0 overflow-hidden px-2 pb-1 pt-0">
                   <Tabs
                     value={effectiveCollectionTab}
@@ -332,6 +369,9 @@ export function RunDetailPage() {
                               kind={kind}
                               items={(collections[kind] ?? { items: [] }).items}
                               workflow={workflow}
+                              runId={runId ?? null}
+                              stepFilter={collectionStepFilter}
+                              searchQuery={collectionSearchQuery}
                             />
                           </div>
                         </ScrollArea>

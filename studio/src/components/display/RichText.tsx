@@ -18,13 +18,35 @@ export function isRichTextField(key: string): boolean {
   return RICH_TEXT_KEYS.has(key) || key.endsWith("_reason") || key.endsWith("_summary");
 }
 
+export interface SourceRef {
+  id: string;
+  url?: string;
+  label?: string;
+}
+
 interface RichTextProps {
   content: string;
   className?: string;
+  /** Optional source references; [1], [2] in content become clickable links to these refs (1-based index). */
+  sourceRefs?: SourceRef[];
 }
 
-export function RichText({ content, className }: RichTextProps) {
+function applySourceRefs(content: string, sourceRefs: SourceRef[]): string {
+  if (sourceRefs.length === 0) return content;
+  return content.replace(/\[(\d+)\]/g, (_, numStr) => {
+    const index = parseInt(numStr, 10);
+    const ref = sourceRefs[index - 1];
+    if (!ref) return `[${numStr}]`;
+    const href = ref.url ?? `#source-${ref.id}`;
+    const title = ref.label ? ` "${ref.label.replace(/"/g, "\\\"")}"` : "";
+    return `[${numStr}](${href}${title})`;
+  });
+}
+
+export function RichText({ content, className, sourceRefs = [] }: RichTextProps) {
   if (!content || typeof content !== "string") return null;
+
+  const processedContent = sourceRefs.length > 0 ? applySourceRefs(content, sourceRefs) : content;
 
   return (
     <div className={cn("rich-text text-sm space-y-2", className)}>
@@ -43,13 +65,18 @@ export function RichText({ content, className }: RichTextProps) {
           pre: ({ children }) => <pre className="bg-muted p-2 rounded overflow-x-auto text-xs my-2">{children}</pre>,
           blockquote: ({ children }) => <blockquote className="border-l-2 border-muted-foreground/30 pl-3 my-2 text-muted-foreground">{children}</blockquote>,
           a: ({ href, children }) => (
-            <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+            <a
+              href={href}
+              target={href?.startsWith("#") ? undefined : "_blank"}
+              rel={href?.startsWith("#") ? undefined : "noopener noreferrer"}
+              className="text-primary hover:underline source-ref"
+            >
               {children}
             </a>
           ),
         }}
       >
-        {content}
+        {processedContent}
       </ReactMarkdown>
     </div>
   );

@@ -60,7 +60,11 @@ export function getWorkflowLayout(wf: WorkflowVersion): {
   const rows: string[][] = Object.keys(rowToList)
     .map(Number)
     .sort((a, b) => a - b)
-    .map((r) => rowToList[r]);
+    .map((r) => {
+      const list = rowToList[r];
+      list.sort((a, b) => a.localeCompare(b, "en", { sensitivity: "base" }));
+      return list;
+    });
 
   const maxCols = Math.max(...rows.map((r) => r.length), 1);
   const maxRowWidth = maxCols * NODE_WIDTH + (maxCols - 1) * HORIZONTAL_GAP;
@@ -89,4 +93,7 @@ export function getLayoutDimensions(wf: WorkflowVersion): { width: number; heigh
   return { width, height };
 }
 
-export { NODE_WIDTH, NODE_HEIGHT, HORIZONTAL_GAP, VERTICAL_GAP };
+const COLLECTION_NODE_WIDTH = 100;
+const COLLECTION_NODE_HEIGHT = 44;
+
+export { NODE_WIDTH, NODE_HEIGHT, HORIZONTAL_GAP, VERTICAL_GAP, COLLECTION_NODE_WIDTH, COLLECTION_NODE_HEIGHT };

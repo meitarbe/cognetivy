@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import type { CollectionItem } from "@/api";
+import { CopyableId } from "@/components/ui/CopyableId";
 import {
   Dialog,
   DialogContent,
@@ -7,9 +8,15 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { formatTimestamp } from "@/lib/utils";
-import { RichText, isRichTextField } from "./RichText";
+import { RichText, isRichTextField, type SourceRef } from "./RichText";
 
-const EXCLUDE_KEYS = new Set(["id"]);
+const EXCLUDE_KEYS = new Set(["id", "source_refs"]);
+
+function getSourceRefs(item: CollectionItem): SourceRef[] {
+  const refs = item.source_refs;
+  if (!Array.isArray(refs)) return [];
+  return refs.filter((r): r is SourceRef => r != null && typeof r === "object" && typeof (r as SourceRef).id === "string");
+}
 
 interface CollectionItemDetailProps {
   item: CollectionItem | null;
@@ -30,6 +37,7 @@ function formatValue(value: unknown): string {
 export function CollectionItemDetail({ item, kind, open, onOpenChange }: CollectionItemDetailProps) {
   if (!item) return null;
 
+  const sourceRefs = getSourceRefs(item);
   const entries = Object.entries(item).filter(([k]) => !EXCLUDE_KEYS.has(k));
 
   return (
@@ -65,14 +73,17 @@ export function CollectionItemDetail({ item, kind, open, onOpenChange }: Collect
                     {value}
                   </a>
                 ) : key === "run_id" && typeof value === "string" ? (
-                  <Link
-                    to={`/runs/${encodeURIComponent(value)}`}
-                    className="text-primary hover:underline"
-                  >
-                    {value}
-                  </Link>
+                  <span className="inline-flex items-center gap-2">
+                    <CopyableId value={value} />
+                    <Link
+                      to={`/runs/${encodeURIComponent(value)}`}
+                      className="text-primary hover:underline text-sm"
+                    >
+                      View run
+                    </Link>
+                  </span>
                 ) : isRich ? (
-                  <RichText content={value} />
+                  <RichText content={value} sourceRefs={sourceRefs} />
                 ) : (
                   <p className="text-sm whitespace-pre-wrap break-words">
                     {formatValue(value)}
@@ -81,6 +92,31 @@ export function CollectionItemDetail({ item, kind, open, onOpenChange }: Collect
               </section>
             );
           })}
+          {sourceRefs.length > 0 && (
+            <section>
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
+                Sources
+              </h3>
+              <ul className="list-disc list-inside space-y-1 text-sm">
+                {sourceRefs.map((ref, i) => (
+                  <li key={ref.id}>
+                    {ref.url ? (
+                      <a
+                        href={ref.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline"
+                      >
+                        {ref.label ?? ref.id ?? `[${i + 1}]`}
+                      </a>
+                    ) : (
+                      <span>{ref.label ?? ref.id ?? `[${i + 1}]`}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
         </div>
       </DialogContent>
     </Dialog>

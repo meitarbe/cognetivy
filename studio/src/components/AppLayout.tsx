@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
 import { useTheme } from "@/contexts/ThemeContext";
-import { api, type CollectionSchemaConfig, type RunRecord } from "@/api";
+import { api, type CollectionSchemaConfig, type RunRecord, type WorkspaceInfo } from "@/api";
 import {
   ChevronDown,
   ChevronLeft,
@@ -44,10 +44,15 @@ export function AppLayout() {
   const { theme, setTheme } = useTheme();
   const [schema, setSchema] = useState<CollectionSchemaConfig | null>(null);
   const [runs, setRuns] = useState<RunRecord[]>([]);
+  const [workspace, setWorkspace] = useState<WorkspaceInfo | null>(null);
   const [collectionExpanded, setCollectionExpanded] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(readSidebarOpen);
 
   const runningCount = runs.filter((r) => r.status === "running").length;
+
+  useEffect(() => {
+    api.getWorkspace().then(setWorkspace).catch(() => setWorkspace(null));
+  }, []);
 
   useEffect(() => {
     api.getCollectionSchema().then(setSchema).catch(() => setSchema({ kinds: {} }));
@@ -87,6 +92,11 @@ export function AppLayout() {
               <div className="min-w-0 flex-1">
                 <h1 className="font-semibold text-sm truncate">Cognetivy Studio</h1>
                 <p className="text-[10px] text-muted-foreground">Read-only</p>
+                {workspace?.path && (
+                  <p className="text-[10px] text-muted-foreground truncate mt-0.5" title={workspace.path}>
+                    {workspace.path.split("/").slice(-2).join("/") || workspace.path}
+                  </p>
+                )}
               </div>
             </>
           ) : (
@@ -140,22 +150,41 @@ export function AppLayout() {
               <div className={cn("pt-1", !sidebarOpen && "w-full flex flex-col items-center")}>
                 {sidebarOpen ? (
                   <>
-                    <button
-                      type="button"
-                      onClick={() => setCollectionExpanded((e) => !e)}
-                      className={cn(
-                        "flex items-center gap-2 w-full px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors",
-                        location.pathname.startsWith("/data/")
-                          ? "bg-accent text-accent-foreground"
-                          : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
-                      )}
-                    >
-                      {collectionExpanded ? <ChevronDown className="size-3 shrink-0" /> : <ChevronRight className="size-3 shrink-0" />}
-                      <Database className="size-3.5 shrink-0" />
-                      Collections
-                    </button>
+                    <div className="flex items-center gap-0.5 w-full">
+                      <button
+                        type="button"
+                        onClick={() => setCollectionExpanded((e) => !e)}
+                        className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted"
+                        aria-label={collectionExpanded ? "Collapse collections" : "Expand collections"}
+                      >
+                        {collectionExpanded ? <ChevronDown className="size-3 shrink-0" /> : <ChevronRight className="size-3 shrink-0" />}
+                      </button>
+                      <Link
+                        to="/collections"
+                        className={cn(
+                          "flex items-center gap-2 flex-1 px-2 py-1.5 rounded-md text-xs font-medium transition-colors",
+                          (location.pathname === "/collections" || location.pathname.startsWith("/data/"))
+                            ? "bg-accent text-accent-foreground"
+                            : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+                        )}
+                      >
+                        <Database className="size-3.5 shrink-0" />
+                        Collections
+                      </Link>
+                    </div>
                     {collectionExpanded && (
                       <div className="ml-3 mt-0.5 space-y-0.5 border-l border-border pl-2">
+                        <Link
+                          to="/collections"
+                          className={cn(
+                            "block px-2 py-1 rounded-md text-xs font-medium transition-colors",
+                            location.pathname === "/collections"
+                              ? "bg-accent text-accent-foreground"
+                              : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+                          )}
+                        >
+                          All collections
+                        </Link>
                         {entityKinds.map((kind) => (
                           <Link
                             key={kind}

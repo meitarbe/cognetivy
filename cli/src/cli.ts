@@ -317,16 +317,23 @@ collectionCmd
 program
   .command("install [target]")
   .description(
-    "Set up cognetivy in this project (if needed) and install skills. Target: claude | openclaw | workspace | all (default: all)."
+    "Set up cognetivy in this project (if needed) and install skills. Target: claude | openclaw | workspace | all (default: all). Use with no target or --interactive for TUI."
   )
   .option("--force", "Overwrite if skill already exists")
   .option("--no-init", "Skip cognetivy workspace init; only install skills")
-  .action(async (target: string | undefined, opts: { force?: boolean; init?: boolean }) => {
+  .option("--interactive", "Show interactive prompt to choose target (Cursor/Claude/OpenClaw)")
+  .action(async (target: string | undefined, opts: { force?: boolean; init?: boolean; interactive?: boolean }) => {
     const cwd = process.cwd();
+    const useTUI = opts.interactive === true || target === undefined;
+    if (useTUI) {
+      const { runInstallTUI } = await import("./install-tui.js");
+      await runInstallTUI({ cwd, force: opts.force, init: opts.init !== false });
+      return;
+    }
     if (opts.init !== false) {
       await ensureWorkspace(cwd);
     }
-    const normalized = (target ?? "all").toLowerCase();
+    const normalized = target.toLowerCase();
     const targetMap: Record<string, SkillInstallTarget | "all"> = {
       claude: "agent",
       openclaw: "openclaw",

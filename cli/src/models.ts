@@ -44,6 +44,8 @@ export interface RunRecord {
   status: RunStatus;
   input: Record<string, unknown>;
   created_at: string;
+  /** Final answer or summary for the run (e.g. markdown). */
+  final_answer?: string;
 }
 
 export type EventType =

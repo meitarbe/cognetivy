@@ -6,11 +6,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import type { CollectionItem, WorkflowVersion } from "@/api";
 import { formatTimestamp, TABLE_LINK_CLASS } from "@/lib/utils";
-import { CollectionItemDetail } from "./CollectionItemDetail";
 import { RichText, isRichTextField } from "./RichText";
+import { collectionItemToMarkdown } from "@/lib/collectionItemToMarkdown";
+import { downloadCollectionItemAsPdf } from "@/lib/collectionItemToPdf";
+import { Copy, FileDown } from "lucide-react";
 
 const CATEGORY_TO_STEP: Record<string, string> = {
   tech: "tech_breakthroughs",
@@ -25,9 +27,15 @@ interface CollectionTableProps {
   kind: string;
   items: CollectionItem[];
   workflow?: WorkflowVersion | null;
+  /** When set, row click and links use run-scoped item URL. */
+  runId?: string | null;
+  /** Filter by step that collected the item (Collected by). */
+  stepFilter?: string | null;
+  /** Filter items by text search in any field. */
+  searchQuery?: string;
 }
 
-function inferSourceStep(kind: string, item: CollectionItem): string | null {
+export function inferSourceStep(kind: string, item: CollectionItem): string | null {
   if (kind === "ideas") return "synthesize_why_now";
   if (kind === "sources") {
     const cat = item.category as string | undefined;
@@ -56,18 +64,66 @@ function formatCellValue(value: unknown): string {
   return String(value);
 }
 
-export function CollectionTable({ kind, items, workflow }: CollectionTableProps) {
-  const [selectedItem, setSelectedItem] = useState<CollectionItem | null>(null);
+function itemMatchesSearch(item: CollectionItem, query: string): boolean {
+  if (!query.trim()) return true;
+  const q = query.trim().toLowerCase();
+  for (const value of Object.values(item)) {
+    if (value == null) continue;
+    const s = typeof value === "string" ? value : JSON.stringify(value);
+    if (s.toLowerCase().includes(q)) return true;
+  }
+  return false;
+}
+
+function getItemPagePath(
+  kind: string,
+  item: CollectionItem,
+  index: number,
+  runId: string | null | undefined
+): string {
+  const id = (item.id as string) ?? String(index);
+  if (runId) {
+    return `/runs/${encodeURIComponent(runId)}/collections/${encodeURIComponent(kind)}/items/${encodeURIComponent(id)}`;
+  }
+  const runIdQuery = item.run_id ? `?run_id=${encodeURIComponent(String(item.run_id))}` : "";
+  return `/data/${encodeURIComponent(kind)}/items/${encodeURIComponent(id)}${runIdQuery}`;
+}
+
+export function CollectionTable({ kind, items, workflow, runId, stepFilter, searchQuery }: CollectionTableProps) {
+  const navigate = useNavigate();
+
+  const filteredItems = items.filter((item) => {
+    if (stepFilter != null && stepFilter !== "") {
+      const step = inferSourceStep(kind, item);
+      if (step !== stepFilter) return false;
+    }
+    if (searchQuery != null && !itemMatchesSearch(item, searchQuery)) return false;
+    return true;
+  });
 
   if (items.length === 0) {
     return <p className="text-sm text-muted-foreground">No {kind} yet.</p>;
   }
 
-  const columns = getDisplayKeys(items);
+  const columns = getDisplayKeys(filteredItems);
   const showTraceability = Boolean(workflow);
 
+  function handleCopyMarkdown(item: CollectionItem, e: React.MouseEvent) {
+    e.stopPropagation();
+    const md = collectionItemToMarkdown(item, kind);
+    navigator.clipboard.writeText(md).catch(() => {});
+  }
+
+  async function handleDownloadPdf(item: CollectionItem, e: React.MouseEvent) {
+    e.stopPropagation();
+    try {
+      await downloadCollectionItemAsPdf(item, kind);
+    } catch {
+      // ignore
+    }
+  }
+
   return (
-    <>
     <Table>
       <TableHeader>
         <TableRow>
@@ -81,16 +137,18 @@ export function CollectionTable({ kind, items, workflow }: CollectionTableProps)
               {col.replace(/_/g, " ")}
             </TableHead>
           ))}
+          <TableHead className="w-24 text-right">Actions</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
-        {items.map((item, i) => {
+        {filteredItems.map((item, i) => {
           const step = showTraceability ? inferSourceStep(kind, item) : null;
+          const itemPath = getItemPagePath(kind, item, i, runId);
           return (
             <TableRow
               key={(item.id as string) ?? i}
               className="cursor-pointer hover:bg-muted/50"
-              onClick={() => setSelectedItem(item)}
+              onClick={() => navigate(itemPath)}
             >
               <TableCell className="text-xs text-muted-foreground text-center align-top py-1.5 w-8">
                 {i + 1}
@@ -132,17 +190,32 @@ export function CollectionTable({ kind, items, workflow }: CollectionTableProps)
                   </TableCell>
                 );
               })}
+              <TableCell className="text-right align-top py-1.5" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-end gap-0.5">
+                  <button
+                    type="button"
+                    onClick={(e) => handleCopyMarkdown(item, e)}
+                    className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted"
+                    title="Copy as Markdown"
+                    aria-label="Copy as Markdown"
+                  >
+                    <Copy className="size-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => handleDownloadPdf(item, e)}
+                    className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted"
+                    title="Download as PDF"
+                    aria-label="Download as PDF"
+                  >
+                    <FileDown className="size-3.5" />
+                  </button>
+                </div>
+              </TableCell>
             </TableRow>
           );
         })}
       </TableBody>
     </Table>
-    <CollectionItemDetail
-      item={selectedItem}
-      kind={kind}
-      open={!!selectedItem}
-      onOpenChange={(open) => !open && setSelectedItem(null)}
-    />
-    </>
   );
 }

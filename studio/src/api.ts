@@ -51,6 +51,7 @@ export interface RunRecord {
   status: string;
   input: Record<string, unknown>;
   created_at: string;
+  final_answer?: string;
 }
 
 export interface EventPayload {

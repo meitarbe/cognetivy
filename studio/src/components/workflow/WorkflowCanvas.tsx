@@ -15,6 +15,7 @@ import "@xyflow/react/dist/style.css";
 import type { WorkflowVersion, EventPayload } from "@/api";
 import { WorkflowNode } from "@/components/workflow/WorkflowNode";
 import { type WorkflowNodeData, nodeIdToDisplayName } from "@/components/workflow/WorkflowNode";
+import { CollectionNode } from "@/components/workflow/CollectionNode";
 import { workflowToNodesEdges, getStepStatuses } from "@/lib/workflowCanvas";
 import { Link } from "react-router-dom";
 import {
@@ -25,8 +26,9 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { TABLE_LINK_CLASS } from "@/lib/utils";
+import { CopyableId } from "@/components/ui/CopyableId";
 
-const nodeTypes = { workflow: WorkflowNode };
+const nodeTypes = { workflow: WorkflowNode, collection: CollectionNode };
 
 export interface WorkflowCanvasProps {
   workflow: WorkflowVersion;
@@ -118,6 +120,9 @@ function WorkflowCanvasInner({
               <DialogDescription className="sr-only">
                 Workflow step details: {selectedNode.data.nodeId}
               </DialogDescription>
+              <div className="text-xs text-muted-foreground mt-1">
+                <CopyableId value={selectedNode.data.nodeId} />
+              </div>
             </DialogHeader>
             <div className="space-y-3 pt-2">
               {selectedNode.data.description && (

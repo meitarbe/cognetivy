@@ -140,18 +140,23 @@ async function handleApi(
         sendJson(res, 404, { error: `Run "${runId}" not found` });
         return true;
       }
-      let payload: { name?: string };
+      let payload: { name?: string; final_answer?: string };
       try {
-        payload = body ? (JSON.parse(body) as { name?: string }) : {};
+        payload = body ? (JSON.parse(body) as { name?: string; final_answer?: string }) : {};
       } catch {
         sendJson(res, 400, { error: "Invalid JSON body" });
         return true;
       }
-      if (typeof payload.name !== "string") {
-        sendJson(res, 400, { error: "Body must have { name: string }" });
+      const updates: { name?: string; final_answer?: string } = {};
+      if (typeof payload.name === "string") updates.name = payload.name;
+      if (typeof payload.final_answer === "string" || payload.final_answer === null) {
+        updates.final_answer = payload.final_answer ?? undefined;
+      }
+      if (Object.keys(updates).length === 0) {
+        sendJson(res, 400, { error: "Body must have { name?: string, final_answer?: string | null }" });
         return true;
       }
-      await updateRunFile(runId, { name: payload.name }, cwd);
+      await updateRunFile(runId, updates, cwd);
       const updated = await readRunFile(runId, cwd);
       sendJson(res, 200, updated);
       return true;

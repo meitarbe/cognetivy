@@ -12,6 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { CopyableId } from "@/components/ui/CopyableId";
 import { cn, downloadTableCsv, TABLE_LINK_CLASS } from "@/lib/utils";
 
 const POLL_MS = 3000;
@@ -150,14 +151,8 @@ export function RunsPage() {
                       {run.name ?? "—"}
                     </Link>
                   </TableCell>
-                  <TableCell>
-                    <Link
-                      to={`/runs/${encodeURIComponent(run.run_id)}`}
-                      className={cn(TABLE_LINK_CLASS, "truncate max-w-[200px] block")}
-                      title={run.run_id}
-                    >
-                      {run.run_id}
-                    </Link>
+                  <TableCell className="max-w-[200px]">
+                    <CopyableId value={run.run_id} truncateLength={24} />
                   </TableCell>
                   <TableCell>
                     <Link
