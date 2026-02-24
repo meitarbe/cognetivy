@@ -109,7 +109,104 @@ export function getLayoutDimensions(input: { vertices: DataflowVertex[]; edges: 
   return { width, height };
 }
 
+/**
+ * Compute layer index for each workflow node from dataflow (collection ↔ node edges).
+ * Node B is predecessor of node A when some collection C has B→C and C→A.
+ */
+export function getNodeRowsFromDataflow(input: {
+  nodeIds: Set<string>;
+  edges: DataflowEdge[];
+}): Record<string, number> {
+  const { nodeIds, edges } = input;
+  const inEdges: Record<string, string[]> = {};
+  nodeIds.forEach((id) => (inEdges[id] = []));
+  const collectionToNodes: Record<string, string[]> = {};
+  const nodeToCollections: Record<string, string[]> = {};
+  edges.forEach((e) => {
+    if (e.from.startsWith("node:") && nodeIds.has(e.from)) {
+      if (!nodeToCollections[e.from]) nodeToCollections[e.from] = [];
+      nodeToCollections[e.from].push(e.to);
+    }
+    if (e.to.startsWith("node:") && nodeIds.has(e.to)) {
+      if (!collectionToNodes[e.from]) collectionToNodes[e.from] = [];
+      collectionToNodes[e.from].push(e.to);
+    }
+  });
+  Object.keys(collectionToNodes).forEach((collId) => {
+    const consumers = collectionToNodes[collId];
+    const producers = Object.entries(nodeToCollections)
+      .filter(([, cols]) => cols.includes(collId))
+      .map(([n]) => n);
+    producers.forEach((from) => {
+      consumers.forEach((to) => {
+        if (from !== to) inEdges[to].push(from);
+      });
+    });
+  });
+  const rowByNode: Record<string, number> = {};
+  [...nodeIds].forEach((id) => (rowByNode[id] = 0));
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const id of nodeIds) {
+      const preds = inEdges[id] ?? [];
+      const predRows = preds.map((from) => rowByNode[from] ?? 0);
+      const newRow = preds.length === 0 ? 0 : Math.max(...predRows) + 1;
+      if (rowByNode[id] !== newRow) {
+        rowByNode[id] = newRow;
+        changed = true;
+      }
+    }
+  }
+  return rowByNode;
+}
+
+/**
+ * Assign x,y when each vertex has a pre-assigned row (e.g. layer-based layout).
+ * Collection-only rows use a smaller horizontal gap so collections sit closer left-to-right.
+ */
+export function getLayoutWithPreassignedRows(input: {
+  vertices: DataflowVertex[];
+  rowByVertex: Record<string, number>;
+}): { positions: Map<string, NodePosition>; rows: string[][] } {
+  const { vertices, rowByVertex } = input;
+  const vertexById = new Map(vertices.map((v) => [v.id, v]));
+  const rowToList: Record<number, string[]> = {};
+  vertices.forEach((v) => {
+    const r = rowByVertex[v.id] ?? 0;
+    if (!rowToList[r]) rowToList[r] = [];
+    rowToList[r].push(v.id);
+  });
+  const rows: string[][] = Object.keys(rowToList)
+    .map(Number)
+    .sort((a, b) => a - b)
+    .map((r) => {
+      const list = rowToList[r];
+      list.sort((a, b) => a.localeCompare(b, "en", { sensitivity: "base" }));
+      return list;
+    });
+  const maxCols = Math.max(...rows.map((r) => r.length), 1);
+  const maxRowWidth = maxCols * NODE_WIDTH + (maxCols - 1) * HORIZONTAL_GAP;
+  const rowCenterX = maxRowWidth / 2;
+  const positions = new Map<string, NodePosition>();
+  rows.forEach((rowNodes, rowIndex) => {
+    const isCollectionRow = rowNodes.every((id) => vertexById.get(id)?.type === "collection");
+    const slotWidth = isCollectionRow
+      ? COLLECTION_NODE_WIDTH + COLLECTION_HORIZONTAL_GAP
+      : NODE_WIDTH + HORIZONTAL_GAP;
+    const rowSpan = (rowNodes.length - 1) * slotWidth;
+    const firstCenterX = rowCenterX - rowSpan / 2;
+    const centerY = rowIndex * (NODE_HEIGHT + VERTICAL_GAP) + NODE_HEIGHT / 2;
+    rowNodes.forEach((id, colInRow) => {
+      const x = firstCenterX + colInRow * slotWidth;
+      positions.set(id, { id, x, y: centerY, row: rowIndex, colInRow });
+    });
+  });
+  return { positions, rows };
+}
+
 const COLLECTION_NODE_WIDTH = 100;
 const COLLECTION_NODE_HEIGHT = 44;
+const COLLECTION_HORIZONTAL_GAP = 44;
 
-export { NODE_WIDTH, NODE_HEIGHT, HORIZONTAL_GAP, VERTICAL_GAP, COLLECTION_NODE_WIDTH, COLLECTION_NODE_HEIGHT };
+export { NODE_WIDTH, NODE_HEIGHT, HORIZONTAL_GAP, VERTICAL_GAP, COLLECTION_NODE_WIDTH, COLLECTION_NODE_HEIGHT, COLLECTION_HORIZONTAL_GAP };
