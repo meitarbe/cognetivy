@@ -16,7 +16,7 @@ function parseFrontMatter(content: string): FrontMatterResult {
   return fn(content);
 }
 
-export type SkillInstallTarget = "agent" | "openclaw" | "workspace";
+export type SkillInstallTarget = "agent" | "cursor" | "openclaw" | "workspace";
 export type SkillSource = "agent" | "openclaw" | "workspace";
 
 export interface SkillMetadata {
@@ -305,6 +305,8 @@ export async function getInstallPath(
   switch (target) {
     case "agent":
       return path.resolve(cwd, ".claude", "skills", skillName);
+    case "cursor":
+      return path.resolve(cwd, ".cursor", "skills", skillName);
     case "openclaw":
       return path.resolve(cwd, "skills", skillName);
     case "workspace":

@@ -2,11 +2,12 @@ import path from "node:path";
 import fs from "node:fs/promises";
 
 export type SkillSourceConfig = "agent" | "openclaw" | "workspace";
+export type SkillInstallTargetConfig = "agent" | "cursor" | "openclaw" | "workspace";
 
 export interface SkillsConfigBlock {
   sources?: SkillSourceConfig[];
   extraDirs?: string[];
-  default_install_target?: SkillSourceConfig;
+  default_install_target?: SkillInstallTargetConfig;
 }
 
 export interface CognetivyConfig {

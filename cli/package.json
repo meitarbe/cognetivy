@@ -8,7 +8,7 @@
     "cognetivy": "dist/cli.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node ./scripts/copy-installer-assets.mjs",
     "prepare": "npm run build",
     "test": "npm run build && node --test test/*.test.mjs",
     "build:studio": "cd ../studio && npm run build && node -e \"require('fs').cpSync(require('path').join(process.cwd(),'dist'), require('path').join(process.cwd(),'../cli/dist/studio'), {recursive:true})\"",
@@ -31,10 +31,12 @@
     "fast-json-patch": "^3.1.1",
     "front-matter": "^4.0.2",
     "open": "^11.0.0",
-    "ora": "^9.3.0"
+    "ora": "^9.3.0",
+    "pngjs": "^7.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "@types/pngjs": "^6.0.5",
     "typescript": "^5.7.0"
   },
   "files": [
