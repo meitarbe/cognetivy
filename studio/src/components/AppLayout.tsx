@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
-import { cn } from "@/lib/utils";
+import { cn, getCollectionColor } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -179,11 +179,12 @@ export function AppLayout() {
                             key={kind}
                             to={`/data/${encodeURIComponent(kind)}`}
                             className={cn(
-                              "block px-2 py-1 rounded-md text-xs font-medium transition-colors",
+                              "block px-2 py-1 rounded-md text-xs font-medium transition-colors border-l-4",
                               location.pathname === `/data/${kind}`
                                 ? "bg-accent text-accent-foreground"
                                 : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
                             )}
+                            style={{ borderLeftColor: getCollectionColor(kind) }}
                           >
                             {kind}
                           </Link>

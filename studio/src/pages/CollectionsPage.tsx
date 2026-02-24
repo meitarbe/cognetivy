@@ -4,6 +4,7 @@ import { api, type CollectionSchemaConfig } from "@/api";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Database } from "lucide-react";
+import { getCollectionColor } from "@/lib/utils";
 
 export function CollectionsPage() {
   const [schema, setSchema] = useState<CollectionSchemaConfig | null>(null);
@@ -64,7 +65,7 @@ export function CollectionsPage() {
             >
               <Card className="h-full transition-colors hover:bg-muted/50">
                 <CardHeader className="pb-2">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 border-l-4 pl-2" style={{ borderLeftColor: getCollectionColor(kind) }}>
                     <Database className="size-4 text-muted-foreground shrink-0" aria-hidden />
                     <CardTitle className="text-base">{kind}</CardTitle>
                   </div>

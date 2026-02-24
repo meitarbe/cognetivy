@@ -20,7 +20,7 @@ import { RichText } from "@/components/display/RichText";
 import { WorkflowCanvas } from "@/components/workflow/WorkflowCanvas";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { ResizablePanel } from "@/components/ui/ResizablePanel";
-import { downloadTableCsv, formatTimestamp, getStepIdFromEventData, TABLE_LINK_CLASS } from "@/lib/utils";
+import { downloadTableCsv, formatTimestamp, getStepIdFromEventData, getCollectionColor, TABLE_LINK_CLASS } from "@/lib/utils";
 import { CopyableId } from "@/components/ui/CopyableId";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -412,17 +412,27 @@ export function RunDetailPage() {
                     onValueChange={setSelectedCollectionTab}
                     className="flex flex-col flex-1 min-h-0"
                   >
-                    <div className="shrink-0 min-w-0 overflow-x-auto">
+                    <div className="shrink-0 min-w-0 overflow-x-auto overflow-y-hidden">
                       <TabsList className="inline-flex w-max">
                         {kinds.map((k) => (
-                          <TabsTrigger key={k} value={k} className="shrink-0">
+                          <TabsTrigger
+                            key={k}
+                            value={k}
+                            className="shrink-0 border-l-4 pl-2"
+                            style={{ borderLeftColor: getCollectionColor(k) }}
+                          >
                             {k}
                           </TabsTrigger>
                         ))}
                       </TabsList>
                     </div>
                     {kinds.map((kind) => (
-                      <TabsContent key={kind} value={kind} className="flex-1 min-h-0 mt-1 data-[state=inactive]:hidden flex flex-col overflow-hidden">
+                      <TabsContent
+                        key={kind}
+                        value={kind}
+                        className="flex-1 min-h-0 mt-1 data-[state=inactive]:hidden flex flex-col overflow-hidden border-l-4 pl-2"
+                        style={{ borderLeftColor: getCollectionColor(kind) }}
+                      >
                         <div className="flex-1 min-h-0 overflow-y-auto overflow-x-auto p-1">
                           <CollectionTable
                               kind={kind}

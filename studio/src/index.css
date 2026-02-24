@@ -131,6 +131,37 @@ body {
   }
 }
 
+/* Scrollbar – primary-tinted, matches app theme */
+:root {
+  --scrollbar-track: var(--muted);
+  --scrollbar-thumb: color-mix(in oklch, var(--primary) 30%, var(--border));
+  --scrollbar-thumb-hover: var(--primary);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+*::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+  border-radius: 3px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 3px;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+  background-clip: padding-box;
+}
+
 /* React Flow controls (fit, zoom) visible in dark mode */
 .dark .react-flow__controls {
   --xy-controls-button-background-color: var(--card);

@@ -8,6 +8,39 @@ export function cn(...inputs: ClassValue[]) {
 /** Shared link styling: primary color, no underline. */
 export const TABLE_LINK_CLASS = "text-primary/90 hover:text-primary";
 
+/** CSS color values for collection left-border. */
+const COLLECTION_COLORS: readonly string[] = [
+  "#3b82f6",   /* blue-500 */
+  "#10b981",   /* emerald-500 */
+  "#f59e0b",   /* amber-500 */
+  "#8b5cf6",   /* violet-500 */
+  "#f43f5e",   /* rose-500 */
+  "#06b6d4",   /* cyan-500 */
+  "#f97316",   /* orange-500 */
+  "#d946ef",   /* fuchsia-500 */
+  "#14b8a6",   /* teal-500 */
+  "#6366f1",   /* indigo-500 */
+  "#ec4899",   /* pink-500 */
+  "#84cc16",   /* lime-500 */
+  "#0ea5e9",   /* sky-500 */
+  "#a855f7",   /* purple-500 */
+  "#eab308",   /* yellow-500 */
+  "#22c55e",   /* green-500 */
+  "#ef4444",   /* red-500 */
+  "#64748b",   /* slate-500 */
+];
+
+/** Deterministically map a collection name to a color. Same name = same color everywhere. */
+export function getCollectionColor(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = (hash << 5) - hash + name.charCodeAt(i);
+    hash |= 0;
+  }
+  const idx = Math.abs(hash) % COLLECTION_COLORS.length;
+  return COLLECTION_COLORS[idx];
+}
+
 /** Escape a value for CSV (quotes and double-quotes). */
 function escapeCsvValue(value: string): string {
   if (/[",\n\r]/.test(value)) {

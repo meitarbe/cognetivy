@@ -16,7 +16,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { cn, downloadTableCsv, TABLE_LINK_CLASS } from "@/lib/utils";
+import { cn, downloadTableCsv, getCollectionColor, TABLE_LINK_CLASS } from "@/lib/utils";
 
 const POLL_MS = 5000;
 
@@ -127,7 +127,9 @@ export function EntityPage() {
   return (
     <div className="p-3 space-y-3">
       <Breadcrumbs items={[{ label: "Data" }, { label: kind }]} />
-      <h1 className="text-2xl font-semibold tracking-tight">{displayKind}</h1>
+      <h1 className="text-2xl font-semibold tracking-tight border-l-4 pl-3" style={{ borderLeftColor: getCollectionColor(kind) }}>
+        {displayKind}
+      </h1>
 
       {kindSchema && (
         <div className="text-xs text-muted-foreground py-1.5 px-2 rounded-md bg-muted/40 border border-border/50">
