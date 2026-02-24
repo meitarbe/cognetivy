@@ -3,4 +3,5 @@
 # cognetivy — ignore runtime data; commit workflow.versions/
 .cognetivy/runs/
 .cognetivy/events/
-.cognetivy/mutations/
+.cognetivy/collections/
+.cognetivy/data/

@@ -16,8 +16,8 @@ import {
 } from "lucide-react";
 
 const staticNavItems: Array<{ to: string; label: string; icon: LucideIcon }> = [
-  { to: "/runs", label: "Runs", icon: PlayCircle },
   { to: "/", label: "Workflow", icon: GitBranch },
+  { to: "/runs", label: "Runs", icon: PlayCircle },
   { to: "/collection-schema", label: "Collection schema", icon: FileCode },
 ];
 
