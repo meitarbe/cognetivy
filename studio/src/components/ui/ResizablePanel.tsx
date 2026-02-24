@@ -28,6 +28,8 @@ function saveStoredWidth(storageKey: string, width: number): void {
 
 interface ResizablePanelProps {
   defaultWidth?: number;
+  /** When set and no stored value, left panel starts at this fraction of container (e.g. 0.5 = 50%) */
+  defaultFraction?: number;
   minWidth?: number;
   maxWidth?: number;
   /** If provided, width is persisted to localStorage under this key */
@@ -37,8 +39,17 @@ interface ResizablePanelProps {
   className?: string;
 }
 
+function getFallbackWidth(defaultFraction: number | undefined, defaultWidth: number, minWidth: number, maxWidth: number): number {
+  if (defaultFraction != null && typeof window !== "undefined") {
+    const w = Math.floor(window.innerWidth * defaultFraction);
+    return Math.min(maxWidth, Math.max(minWidth, w));
+  }
+  return defaultWidth;
+}
+
 export function ResizablePanel({
   defaultWidth = DEFAULT_WIDTH,
+  defaultFraction,
   minWidth = MIN_WIDTH,
   maxWidth = MAX_WIDTH,
   storageKey,
@@ -46,9 +57,10 @@ export function ResizablePanel({
   right,
   className,
 }: ResizablePanelProps) {
+  const fallback = getFallbackWidth(defaultFraction, defaultWidth, minWidth, maxWidth);
   const initialWidth = storageKey
-    ? loadStoredWidth(storageKey, defaultWidth, minWidth, maxWidth)
-    : defaultWidth;
+    ? loadStoredWidth(storageKey, fallback, minWidth, maxWidth)
+    : fallback;
   const [width, setWidth] = useState(initialWidth);
   const [isDragging, setIsDragging] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);

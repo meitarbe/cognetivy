@@ -412,9 +412,10 @@ export function RunDetailPage() {
 
   return workflow ? (
     <ResizablePanel
-      defaultWidth={300}
+      defaultFraction={0.5}
+      defaultWidth={400}
       minWidth={200}
-      maxWidth={600}
+      maxWidth={800}
       storageKey="cognetivy-workflow-panel-width"
       left={
         <aside className="h-full flex flex-col border-r border-border bg-muted/20">
