@@ -55,7 +55,7 @@ function WorkflowNodeComponent(props: NodeProps) {
         !statusForStyle && "border-primary/30"
       )}
     >
-      <Handle type="target" position={Position.Left} />
+      <Handle type="target" position={Position.Top} />
       <div className="font-semibold text-xs text-primary hover:underline cursor-pointer">
         {nodeIdToDisplayName(d.nodeId)}
       </div>
@@ -96,7 +96,7 @@ function WorkflowNodeComponent(props: NodeProps) {
           </span>
         </div>
       )}
-      <Handle type="source" position={Position.Right} />
+      <Handle type="source" position={Position.Bottom} />
     </div>
   );
 }

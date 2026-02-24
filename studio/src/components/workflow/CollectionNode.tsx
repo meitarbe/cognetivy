@@ -19,8 +19,8 @@ function CollectionNodeComponent(props: NodeProps) {
       )}
       style={{ borderColor: color }}
     >
-      <Handle type="target" position={Position.Left} />
-      <Handle type="source" position={Position.Right} />
+      <Handle type="target" position={Position.Top} />
+      <Handle type="source" position={Position.Bottom} />
 
       <div className="absolute left-2 right-2 -top-2 h-4 rounded-full border bg-background" style={{ borderColor: color }} />
       <div className="absolute left-2 right-2 -bottom-2 h-4 rounded-full border bg-background" style={{ borderColor: color }} />
