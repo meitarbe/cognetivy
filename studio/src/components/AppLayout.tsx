@@ -174,17 +174,6 @@ export function AppLayout() {
                     </div>
                     {collectionExpanded && (
                       <div className="ml-3 mt-0.5 space-y-0.5 border-l border-border pl-2">
-                        <Link
-                          to="/collections"
-                          className={cn(
-                            "block px-2 py-1 rounded-md text-xs font-medium transition-colors",
-                            location.pathname === "/collections"
-                              ? "bg-accent text-accent-foreground"
-                              : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
-                          )}
-                        >
-                          All collections
-                        </Link>
                         {entityKinds.map((kind) => (
                           <Link
                             key={kind}
@@ -205,11 +194,11 @@ export function AppLayout() {
                 ) : (
                   entityKinds.length > 0 && (
                     <Link
-                      to={`/data/${encodeURIComponent(entityKinds[0])}`}
-                      title="Data"
+                      to="/collections"
+                      title="Collections"
                       className={cn(
                         "p-2 rounded-md flex justify-center text-muted-foreground hover:bg-accent/50 hover:text-foreground",
-                        location.pathname.startsWith("/data/") && "bg-accent text-accent-foreground"
+                        (location.pathname === "/collections" || location.pathname.startsWith("/data/")) && "bg-accent text-accent-foreground"
                       )}
                     >
                       <Database className="size-3.5" />
