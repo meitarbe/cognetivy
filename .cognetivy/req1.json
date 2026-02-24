@@ -1,1 +1,0 @@
-{"title":"Step articles per node","requirement":"Each workflow node must produce a standalone step article (Markdown) stored separately from collections produced by that step.","priority":"must","status":"proposed"}
