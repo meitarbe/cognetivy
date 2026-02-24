@@ -1,9 +1,19 @@
 import path from "node:path";
 import fs from "node:fs/promises";
 
+export type SkillSourceConfig = "agent" | "openclaw" | "workspace";
+
+export interface SkillsConfigBlock {
+  sources?: SkillSourceConfig[];
+  extraDirs?: string[];
+  default_install_target?: SkillSourceConfig;
+}
+
 export interface CognetivyConfig {
   /** Default "by" value for runs/events (e.g. "agent:cursor"). */
   default_by?: string;
+  /** Skill discovery and install target config. */
+  skills?: SkillsConfigBlock;
   [key: string]: unknown;
 }
 

@@ -57,9 +57,30 @@ By default, `cognetivy init` adds a `.gitignore` snippet so `runs/`, `events/`, 
 | `cognetivy artifact get --run <run_id> --kind <kind>` | Get all artifacts of a kind for a run |
 | `cognetivy artifact set --run <run_id> --kind <kind> --file <path>` | Replace artifacts of a kind (JSON array) |
 | `cognetivy artifact append --run <run_id> --kind <kind> --file <path> [--id <id>]` | Append one artifact item (validated) |
+| `cognetivy install claude \| openclaw \| workspace [--force]` | Install skills from current directory (SKILL.md or skills/*) into target |
+| `cognetivy skills list [--source <agent\|openclaw\|workspace>] [--eligible]` | List skills from configured sources |
+| `cognetivy skills info <name>` | Show one skill (path, frontmatter, body preview) |
+| `cognetivy skills check [path]` | Validate SKILL.md (path = skill dir; omit to check all) |
+| `cognetivy skills paths` | Print discovery and install target paths |
+| `cognetivy skills install [source] [--target agent\|openclaw\|workspace] [--force]` | Install from local path or git URL (omit source = current directory) |
+| `cognetivy skills update [name] [--target <target>] [--all] [--dry-run]` | Update skill(s) from recorded origin |
 | `cognetivy mcp [--workspace <path>]` | Start MCP server over stdio for Cursor/agents |
 | `cognetivy studio [--workspace <path>] [--port <port>]` | Start read-only Studio and open in browser |
 | `cognetivy studio --api-only [--workspace <path>] [--port <port>]` | Serve only the Studio API (for dev with Vite; see Studio dev mode below) |
+
+## Skills (Agent skills and OpenClaw skills)
+
+cognetivy supports the **SKILL.md** format (Agent skills / OpenClaw skills): a directory containing `SKILL.md` with YAML frontmatter (`name`, `description`, optional `license`, `compatibility`, `metadata`, `allowed-tools`) and markdown instructions. You can manage skills **without using MCP** — install, update, list, and validate from the CLI so that agents (e.g. OpenClaw, Cursor, and other compatible tools) load them from disk.
+
+- **Discovery sources**: `agent` (e.g. `~/.cursor/skills`, `.cursor/skills`), `openclaw` (`~/.openclaw/workspace/skills` and `skills.load.extraDirs` from `~/.openclaw/openclaw.json`), `workspace` (`.cognetivy/skills` and user config dir).
+- **Install (target-specific)**: From the current directory, run `cognetivy install claude`, `cognetivy install openclaw`, or `cognetivy install workspace`. Supports two folder layouts: a single skill with `SKILL.md` in the current directory, or a pack with `skills/<skill-name>/SKILL.md` for each skill. Installs into the standard dirs for that target (e.g. claude → `~/.claude/skills` and `.claude/skills`; openclaw → `~/.openclaw/workspace/skills`).
+- **Install (skills subcommand)**: `cognetivy skills install` (or with a path/git URL) installs from current directory or source; use `--target` or default `workspace`. Same folder layout (SKILL.md in cwd or `skills/*/SKILL.md`). Origin is recorded for `skills update`.
+- **Config** (in `~/.config/cognetivy/config.json` or `.cognetivy/config.json`):
+  - `skills.sources` — which sources to scan when listing (default: all).
+  - `skills.extraDirs` — extra directories to scan.
+  - `skills.default_install_target` — default for `install` / `update` when `--target` is omitted.
+
+When using the cognetivy MCP server (e.g. in Cursor), the tools **skills_list** and **skills_get** let the agent discover and load skill content on demand.
 
 ## MCP tools (1:1 with CLI)
 
@@ -75,6 +96,8 @@ By default, `cognetivy init` adds a `.gitignore` snippet so `runs/`, `events/`, 
 - `artifact_get(run_id, kind)` — get structured artifacts for a kind
 - `artifact_set(run_id, kind, items)` — replace all items for a kind (schema-validated)
 - `artifact_append(run_id, kind, payload, id?)` — append one item (schema-validated); returns item with `id`, `created_at`
+- `skills_list(sources?)` — list Agent/OpenClaw skills (name, description, path, source)
+- `skills_get(name)` — get full SKILL.md content for a skill by name
 
 If the workspace is missing, the MCP server exits with a message to run `cognetivy init`.
 

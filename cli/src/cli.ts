@@ -30,6 +30,20 @@ import type { RunRecord, EventPayload, CollectionSchemaConfig, CollectionItem } 
 import { runMcpServer } from "./mcp.js";
 import { startStudioServer, STUDIO_DEFAULT_PORT } from "./studio-server.js";
 import open from "open";
+import {
+  listSkills,
+  getSkillByName,
+  validateSkill,
+  getSkillDirectories,
+  getInstallPath,
+  installSkill,
+  installSkillsFromDirectory,
+  installCognetivySkill,
+  updateSkill,
+  updateAllSkills,
+  type SkillInstallTarget,
+  type SkillSource,
+} from "./skills.js";
 
 const DEFAULT_BY = "cli";
 
@@ -298,6 +312,253 @@ collectionCmd
     const payload = JSON.parse(raw) as Record<string, unknown>;
     const item = await appendCollection(opts.run, opts.kind, payload, { id: opts.id }, cwd);
     console.log(JSON.stringify(item, null, 2));
+  });
+
+program
+  .command("install [target]")
+  .description(
+    "Set up cognetivy in this project (if needed) and install skills. Target: claude | openclaw | workspace | all (default: all)."
+  )
+  .option("--force", "Overwrite if skill already exists")
+  .option("--no-init", "Skip cognetivy workspace init; only install skills")
+  .action(async (target: string | undefined, opts: { force?: boolean; init?: boolean }) => {
+    const cwd = process.cwd();
+    if (opts.init !== false) {
+      await ensureWorkspace(cwd);
+    }
+    const normalized = (target ?? "all").toLowerCase();
+    const targetMap: Record<string, SkillInstallTarget | "all"> = {
+      claude: "agent",
+      openclaw: "openclaw",
+      workspace: "workspace",
+      all: "all",
+    };
+    const resolved = targetMap[normalized];
+    if (!resolved) {
+      console.error("Target must be: claude, openclaw, workspace, or all.");
+      process.exit(1);
+    }
+    const config = await getMergedConfig(cwd);
+    const skillsConfig = getSkillsConfigFromMerged(config);
+    const targetsToInstall: SkillInstallTarget[] =
+      resolved === "all" ? (["agent", "openclaw", "workspace"] as SkillInstallTarget[]) : [resolved];
+    const optsCommon = { force: opts.force, cwd, config: skillsConfig };
+    try {
+      for (const internalTarget of targetsToInstall) {
+        const { results } = await installSkillsFromDirectory(cwd, internalTarget, optsCommon);
+        const label =
+          internalTarget === "agent"
+            ? "claude"
+            : internalTarget === "openclaw"
+              ? "openclaw"
+              : "workspace";
+        for (const r of results) {
+          console.log(`[${label}] Installed to ${r.path}`);
+        }
+      }
+      for (const internalTarget of targetsToInstall) {
+        const cognetivyPath = await installCognetivySkill(internalTarget, cwd, skillsConfig);
+        const label =
+          internalTarget === "agent"
+            ? "claude"
+            : internalTarget === "openclaw"
+              ? "openclaw"
+              : "workspace";
+        console.log(`[${label}] Cognetivy skill at ${cognetivyPath}`);
+      }
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+  });
+
+function getSkillsConfigFromMerged(
+  config: Awaited<ReturnType<typeof getMergedConfig>>
+): { sources?: SkillSource[]; extraDirs?: string[]; default_install_target?: SkillInstallTarget } {
+  const skills = config.skills as
+    | { sources?: SkillSource[]; extraDirs?: string[]; default_install_target?: SkillInstallTarget }
+    | undefined;
+  return skills ?? {};
+}
+
+const skillsCmd = program
+  .command("skills")
+  .description("Agent skills and OpenClaw skills (SKILL.md): list, install, update");
+skillsCmd
+  .command("list")
+  .description("List skills from configured sources")
+  .option("--source <source>", "Filter by source: agent, openclaw, workspace")
+  .option("--eligible", "Only list skills that pass validation")
+  .action(async (opts: { source?: string; eligible?: boolean }) => {
+    const cwd = process.cwd();
+    const config = await getMergedConfig(cwd);
+    const skillsConfig = getSkillsConfigFromMerged(config);
+    const sources = opts.source
+      ? ([opts.source] as SkillSource[])
+      : skillsConfig.sources ?? (["agent", "openclaw", "workspace"] as SkillSource[]);
+    let skills = await listSkills(cwd, { sources, extraDirs: skillsConfig.extraDirs }, skillsConfig);
+    if (opts.eligible) {
+      const valid: typeof skills = [];
+      for (const s of skills) {
+        const { valid: ok } = await validateSkill(s.path);
+        if (ok) valid.push(s);
+      }
+      skills = valid;
+    }
+    const out = skills.map((s) => ({
+      name: s.metadata.name,
+      description: s.metadata.description,
+      path: s.path,
+      source: s.source,
+    }));
+    console.log(JSON.stringify(out, null, 2));
+  });
+skillsCmd
+  .command("info <name>")
+  .description("Show one skill by name (path, frontmatter, body preview)")
+  .action(async (name: string) => {
+    const cwd = process.cwd();
+    const config = await getMergedConfig(cwd);
+    const skillsConfig = getSkillsConfigFromMerged(config);
+    const skill = await getSkillByName(name, cwd, undefined, skillsConfig);
+    if (!skill) {
+      console.error(`Skill "${name}" not found.`);
+      process.exit(1);
+    }
+    const preview = skill.body.slice(0, 400) + (skill.body.length > 400 ? "..." : "");
+    console.log(JSON.stringify(
+      {
+        path: skill.path,
+        source: skill.source,
+        metadata: skill.metadata,
+        bodyPreview: preview,
+      },
+      null,
+      2
+    ));
+  });
+skillsCmd
+  .command("check [path]")
+  .description("Validate SKILL.md (path = skill dir; omit to check all listed skills)")
+  .action(async (dirPath?: string) => {
+    const cwd = process.cwd();
+    if (dirPath) {
+      const resolved = path.resolve(cwd, dirPath);
+      const { valid, errors } = await validateSkill(resolved);
+      if (valid) {
+        console.log("Valid.");
+      } else {
+        console.error("Validation failed:");
+        errors.forEach((e) => console.error("  -", e));
+        process.exit(1);
+      }
+      return;
+    }
+    const config = await getMergedConfig(cwd);
+    const skillsConfig = getSkillsConfigFromMerged(config);
+    const skills = await listSkills(cwd, undefined, skillsConfig);
+    let hasInvalid = false;
+    for (const s of skills) {
+      const { valid, errors } = await validateSkill(s.path);
+      if (!valid) {
+        hasInvalid = true;
+        console.error(`${s.metadata.name}:`);
+        errors.forEach((e) => console.error("  -", e));
+      }
+    }
+    if (hasInvalid) process.exit(1);
+    console.log(`All ${skills.length} skill(s) valid.`);
+  });
+skillsCmd
+  .command("paths")
+  .description("Print discovery and install target paths")
+  .action(async () => {
+    const cwd = process.cwd();
+    const config = await getMergedConfig(cwd);
+    const skillsConfig = getSkillsConfigFromMerged(config);
+    const sources: SkillSource[] = skillsConfig.sources ?? ["agent", "openclaw", "workspace"];
+    const out: Record<string, string[]> = {};
+    for (const source of sources) {
+      out[source] = await getSkillDirectories(source, cwd, skillsConfig);
+    }
+    console.log(JSON.stringify(out, null, 2));
+  });
+skillsCmd
+  .command("install [source]")
+  .description("Install a skill from current directory (or path/URL) into project or target (default: workspace = .cognetivy/skills)")
+  .option("--target <target>", "Install target: agent, openclaw, workspace (default: workspace)")
+  .option("--force", "Overwrite if skill already exists")
+  .action(async (source: string | undefined, opts: { target?: string; force?: boolean }) => {
+    const cwd = process.cwd();
+    const config = await getMergedConfig(cwd);
+    const skillsConfig = getSkillsConfigFromMerged(config);
+    const target = (opts.target ?? skillsConfig.default_install_target ?? "workspace") as SkillInstallTarget;
+    if (!["agent", "openclaw", "workspace"].includes(target)) {
+      console.error("--target must be agent, openclaw, or workspace.");
+      process.exit(1);
+    }
+    const installSource = (source?.trim() || ".") as string;
+    try {
+      const isCurrentDir =
+        installSource === "." || path.resolve(cwd, installSource) === path.resolve(cwd);
+      if (isCurrentDir) {
+        const { results } = await installSkillsFromDirectory(cwd, target, {
+          force: opts.force,
+          cwd,
+          config: skillsConfig,
+        });
+        for (const r of results) {
+          console.log(`Installed to ${r.path}`);
+        }
+      } else {
+        const result = await installSkill(installSource, target, {
+          force: opts.force,
+          cwd,
+          config: skillsConfig,
+        });
+        console.log(`Installed to ${result.path}`);
+      }
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+  });
+skillsCmd
+  .command("update [name]")
+  .description("Update skill(s) from recorded origin; use --all to update all for target")
+  .option("--target <target>", "Target: agent, openclaw, workspace")
+  .option("--all", "Update all skills for the target")
+  .option("--dry-run", "Do not write changes")
+  .action(async (name: string | undefined, opts: { target?: string; all?: boolean; dryRun?: boolean }) => {
+    const cwd = process.cwd();
+    const config = await getMergedConfig(cwd);
+    const skillsConfig = getSkillsConfigFromMerged(config);
+    const target = (opts.target ?? skillsConfig.default_install_target) as SkillInstallTarget | undefined;
+    if (!target) {
+      console.error("Specify --target or set skills.default_install_target in config.");
+      process.exit(1);
+    }
+    if (opts.all) {
+      const { updated, skipped } = await updateAllSkills(target, {
+        cwd,
+        config: skillsConfig,
+        dryRun: opts.dryRun,
+      });
+      console.log(`Updated: ${updated.join(", ") || "none"}`);
+      if (skipped.length) console.log(`Skipped: ${skipped.join(", ")}`);
+      return;
+    }
+    if (!name) {
+      console.error("Provide skill name or use --all.");
+      process.exit(1);
+    }
+    try {
+      await updateSkill(name, target, { cwd, config: skillsConfig, dryRun: opts.dryRun });
+      console.log(`Updated ${name}.`);
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
   });
 
 program

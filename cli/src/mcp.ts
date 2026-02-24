@@ -35,8 +35,17 @@ import type {
 } from "./models.js";
 import { CollectionValidationError } from "./validate-collection.js";
 import { mergeKindTemplate } from "./kind-templates.js";
+import { listSkills, getSkillByName } from "./skills.js";
+import type { SkillSource } from "./skills.js";
 
 const DEFAULT_BY = "mcp";
+
+function getSkillsConfig(cwd: string): Promise<{ sources?: SkillSource[]; extraDirs?: string[] }> {
+  return getMergedConfig(cwd).then((config) => {
+    const skills = config.skills as { sources?: SkillSource[]; extraDirs?: string[] } | undefined;
+    return skills ?? {};
+  });
+}
 
 interface JsonRpcRequest {
   jsonrpc: "2.0";
@@ -207,6 +216,31 @@ const TOOLS: Array<{ name: string; description: string; inputSchema: { type: "ob
         id: { type: "string", description: "Optional id for the item" },
       },
       required: ["run_id", "kind", "payload"],
+    },
+  },
+  {
+    name: "skills_list",
+    description:
+      "List available Agent skills and OpenClaw skills (SKILL.md) from configured sources (agent, openclaw, workspace). Returns name, description, path, source for discovery.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        sources: {
+          type: "array",
+          items: { type: "string" },
+          description: "Optional: filter by source (agent, openclaw, workspace)",
+        },
+      },
+    },
+  },
+  {
+    name: "skills_get",
+    description:
+      "Get full SKILL.md content for a skill by name. Use after skills_list to load a skill when needed.",
+    inputSchema: {
+      type: "object",
+      properties: { name: { type: "string", description: "Skill name (from skills_list)" } },
+      required: ["name"],
     },
   },
 ];
@@ -436,6 +470,27 @@ async function handleToolsCall(
           }
           throw err;
         }
+      }
+      case "skills_list": {
+        const sourcesArg = args.sources as string[] | undefined;
+        const sources = sourcesArg?.length
+          ? (sourcesArg as SkillSource[])
+          : (["agent", "openclaw", "workspace"] as SkillSource[]);
+        const skillsConfig = await getSkillsConfig(cwd);
+        const skills = await listSkills(cwd, { sources, extraDirs: skillsConfig.extraDirs }, skillsConfig);
+        return JSON.stringify(
+          skills.map((s) => ({ name: s.metadata.name, description: s.metadata.description, path: s.path, source: s.source })),
+          null,
+          2
+        );
+      }
+      case "skills_get": {
+        const skillName = args.name as string;
+        if (!skillName) throw new Error("skills_get requires 'name'.");
+        const skillsConfig = await getSkillsConfig(cwd);
+        const skill = await getSkillByName(skillName, cwd, undefined, skillsConfig);
+        if (!skill) throw new Error(`Skill "${skillName}" not found.`);
+        return skill.fullContent;
       }
       default:
         throw new Error(`Unknown tool: ${name}`);

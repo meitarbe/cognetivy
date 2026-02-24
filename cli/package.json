@@ -28,7 +28,8 @@
     "commander": "^12.1.0",
     "env-paths": "^3.0.0",
     "fast-json-patch": "^3.1.1",
-    "open": "^11.0.0"
+    "open": "^11.0.0",
+    "front-matter": "^4.0.2"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
