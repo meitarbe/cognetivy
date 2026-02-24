@@ -1,3 +1,4 @@
+import { useState, useCallback } from "react";
 import {
   Table,
   TableBody,
@@ -12,7 +13,8 @@ import { formatTimestamp, TABLE_LINK_CLASS } from "@/lib/utils";
 import { RichText, isRichTextField } from "./RichText";
 import { collectionItemToMarkdown } from "@/lib/collectionItemToMarkdown";
 import { downloadCollectionItemAsPdf } from "@/lib/collectionItemToPdf";
-import { Copy, FileDown } from "lucide-react";
+import { Copy, FileDown, ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 const CATEGORY_TO_STEP: Record<string, string> = {
   tech: "tech_breakthroughs",
@@ -91,8 +93,14 @@ function getItemPagePath(
 
 export function CollectionTable({ kind, items, workflow, runId, stepFilter, searchQuery }: CollectionTableProps) {
   const navigate = useNavigate();
+  const [expandedRowKey, setExpandedRowKey] = useState<string | null>(null);
 
-  const filteredItems = items.filter((item) => {
+  const toggleRowExpanded = useCallback((rowKey: string) => {
+    setExpandedRowKey((prev) => (prev === rowKey ? null : rowKey));
+  }, []);
+
+  const safeItems = items ?? [];
+  const filteredItems = safeItems.filter((item) => {
     if (stepFilter != null && stepFilter !== "") {
       const step = inferSourceStep(kind, item);
       if (step !== stepFilter) return false;
@@ -101,7 +109,7 @@ export function CollectionTable({ kind, items, workflow, runId, stepFilter, sear
     return true;
   });
 
-  if (items.length === 0) {
+  if (safeItems.length === 0) {
     return <p className="text-sm text-muted-foreground">No {kind} yet.</p>;
   }
 
@@ -144,11 +152,13 @@ export function CollectionTable({ kind, items, workflow, runId, stepFilter, sear
         {filteredItems.map((item, i) => {
           const step = showTraceability ? inferSourceStep(kind, item) : null;
           const itemPath = getItemPagePath(kind, item, i, runId);
+          const rowKey = (item.id as string) ?? `row-${i}`;
+          const isExpanded = expandedRowKey === rowKey;
           return (
             <TableRow
-              key={(item.id as string) ?? i}
-              className="cursor-pointer hover:bg-muted/50"
-              onClick={() => navigate(itemPath)}
+              key={rowKey}
+              className={cn("cursor-pointer hover:bg-muted/50", isExpanded && "bg-muted/30")}
+              onClick={() => toggleRowExpanded(rowKey)}
             >
               <TableCell className="text-xs text-muted-foreground text-center align-top py-1.5 w-8">
                 {i + 1}
@@ -170,28 +180,64 @@ export function CollectionTable({ kind, items, workflow, runId, stepFilter, sear
               {columns.map((col) => {
                 const value = item[col];
                 const isRich = isRichTextField(col) && typeof value === "string";
+                const showClamp = !isExpanded;
                 return (
-                  <TableCell key={col} className="text-sm min-w-[120px] max-w-[500px] whitespace-normal break-words align-top py-1.5">
-                    {col === "url" ? (
-                      <a
-                        href={value as string}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className={`${TABLE_LINK_CLASS} break-all`}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {formatCellValue(value)}
-                      </a>
-                    ) : isRich ? (
-                      <RichText content={value} className="line-clamp-3 text-xs" />
-                    ) : (
-                      formatCellValue(value)
-                    )}
+                  <TableCell
+                    key={col}
+                    className="text-sm min-w-[120px] max-w-[500px] align-top py-1.5"
+                  >
+                    <div
+                      className={cn(
+                        "whitespace-normal break-words",
+                        showClamp && "line-clamp-2 overflow-hidden"
+                      )}
+                    >
+                      {col === "url" ? (
+                        <a
+                          href={value as string}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={`${TABLE_LINK_CLASS} break-all`}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {formatCellValue(value)}
+                        </a>
+                      ) : isRich ? (
+                        <RichText
+                          content={value}
+                          className={cn("text-xs", showClamp && "line-clamp-2")}
+                        />
+                      ) : (
+                        formatCellValue(value)
+                      )}
+                    </div>
                   </TableCell>
                 );
               })}
-              <TableCell className="text-right align-top py-1.5" onClick={(e) => e.stopPropagation()}>
-                <div className="flex items-center justify-end gap-0.5">
+              <TableCell className="text-right align-top py-1.5 w-28" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-end gap-0.5 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => toggleRowExpanded(rowKey)}
+                    className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted"
+                    title={isExpanded ? "Collapse" : "Expand"}
+                    aria-label={isExpanded ? "Collapse" : "Expand"}
+                  >
+                    {isExpanded ? (
+                      <ChevronUp className="size-3.5" />
+                    ) : (
+                      <ChevronDown className="size-3.5" />
+                    )}
+                  </button>
+                  <a
+                    href={itemPath}
+                    onClick={(e) => e.stopPropagation()}
+                    className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted inline-flex"
+                    title="Open full page"
+                    aria-label="Open full page"
+                  >
+                    <ExternalLink className="size-3.5" />
+                  </a>
                   <button
                     type="button"
                     onClick={(e) => handleCopyMarkdown(item, e)}

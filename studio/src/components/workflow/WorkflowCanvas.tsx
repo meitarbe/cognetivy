@@ -105,7 +105,8 @@ function WorkflowCanvasInner({
       }}
       nodeOrigin={[0.5, 0.5]}
       fitView
-      fitViewOptions={{ padding: 0.2, duration: 0 }}
+      fitViewOptions={{ padding: 0.5, duration: 0, minZoom: 0.15 }}
+      minZoom={0.15}
       proOptions={{ hideAttribution: true }}
       className={cn(className || "bg-muted/20", theme === "dark" && "dark")}
     >

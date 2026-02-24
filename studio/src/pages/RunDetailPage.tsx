@@ -412,18 +412,19 @@ export function RunDetailPage() {
                     onValueChange={setSelectedCollectionTab}
                     className="flex flex-col flex-1 min-h-0"
                   >
-                    <TabsList className="shrink-0">
-                      {kinds.map((k) => (
-                        <TabsTrigger key={k} value={k}>
-                          {k}
-                        </TabsTrigger>
-                      ))}
-                    </TabsList>
+                    <div className="shrink-0 min-w-0 overflow-x-auto">
+                      <TabsList className="inline-flex w-max">
+                        {kinds.map((k) => (
+                          <TabsTrigger key={k} value={k} className="shrink-0">
+                            {k}
+                          </TabsTrigger>
+                        ))}
+                      </TabsList>
+                    </div>
                     {kinds.map((kind) => (
                       <TabsContent key={kind} value={kind} className="flex-1 min-h-0 mt-1 data-[state=inactive]:hidden flex flex-col overflow-hidden">
-                        <ScrollArea className="flex-1 min-h-0">
-                          <div className="p-1 min-w-0">
-                            <CollectionTable
+                        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-auto p-1">
+                          <CollectionTable
                               kind={kind}
                               items={(collections[kind] ?? { items: [] }).items}
                               workflow={workflow}
@@ -431,8 +432,7 @@ export function RunDetailPage() {
                               stepFilter={collectionStepFilter}
                               searchQuery=""
                             />
-                          </div>
-                        </ScrollArea>
+                        </div>
                       </TabsContent>
                     ))}
                   </Tabs>
