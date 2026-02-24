@@ -7,7 +7,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useNavigate } from "react-router-dom";
 import type { CollectionItem, WorkflowVersion } from "@/api";
 import { formatTimestamp, TABLE_LINK_CLASS } from "@/lib/utils";
 import { RichText, isRichTextField } from "./RichText";
@@ -92,7 +91,6 @@ function getItemPagePath(
 }
 
 export function CollectionTable({ kind, items, workflow, runId, stepFilter, searchQuery }: CollectionTableProps) {
-  const navigate = useNavigate();
   const [expandedRowKey, setExpandedRowKey] = useState<string | null>(null);
 
   const toggleRowExpanded = useCallback((rowKey: string) => {
