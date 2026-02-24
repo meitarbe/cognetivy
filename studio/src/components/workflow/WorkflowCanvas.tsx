@@ -16,7 +16,9 @@ import type { WorkflowVersion, EventPayload } from "@/api";
 import { WorkflowNode } from "@/components/workflow/WorkflowNode";
 import { type WorkflowNodeData, nodeIdToDisplayName } from "@/components/workflow/WorkflowNode";
 import { workflowToNodesEdges, getStepStatuses } from "@/lib/workflowCanvas";
+import { useTheme } from "@/contexts/ThemeContext";
 import { Link } from "react-router-dom";
+import { cn } from "@/lib/utils";
 import {
   Sheet,
   SheetContent,
@@ -78,6 +80,7 @@ function WorkflowCanvasInner({
 
   const canDrag = nodesDraggable || !readOnly;
   const [selectedNode, setSelectedNode] = useState<Node<WorkflowNodeData> | null>(null);
+  const { theme } = useTheme();
 
   function handleNodeClick(_: React.MouseEvent, node: Node) {
     setSelectedNode(node as Node<WorkflowNodeData>);
@@ -104,7 +107,7 @@ function WorkflowCanvasInner({
       fitView
       fitViewOptions={{ padding: 0.2, duration: 0 }}
       proOptions={{ hideAttribution: true }}
-      className={className || "bg-muted/20"}
+      className={cn(className || "bg-muted/20", theme === "dark" && "dark")}
     >
       {showBackground && <Background variant={BackgroundVariant.Dots} />}
       {showControls && <Controls showInteractive={false} />}
