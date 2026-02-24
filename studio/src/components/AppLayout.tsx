@@ -152,7 +152,7 @@ export function AppLayout() {
                     >
                       {collectionExpanded ? <ChevronDown className="size-3 shrink-0" /> : <ChevronRight className="size-3 shrink-0" />}
                       <Database className="size-3.5 shrink-0" />
-                      Collection
+                      Collections
                     </button>
                     {collectionExpanded && (
                       <div className="ml-3 mt-0.5 space-y-0.5 border-l border-border pl-2">
