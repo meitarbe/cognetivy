@@ -46,9 +46,11 @@ By default, `cognetivy init` adds a `.gitignore` snippet so `runs/`, `events/`, 
 | `cognetivy init` | Create `.cognetivy/` and default workflow. Options: `--no-gitignore`, `--force` |
 | `cognetivy workflow get` | Print current workflow version JSON to stdout |
 | `cognetivy workflow set --file <path>` | Set workflow from JSON file (creates new version, updates pointer) |
-| `cognetivy run start --input <path> [--name <string>] [--by <string>]` | Start a run; prints `run_id` |
+| `cognetivy run start --input <path> [--name <string>] [--by <string>]` | Start a run; prints `run_id` then `COGNETIVY_RUN_ID=...` (machine-readable) |
 | `cognetivy run set-name --run <run_id> --name <string>` | Set human-readable name for an existing run |
-| `cognetivy event append --run <run_id> --file <path> [--by <string>]` | Append one event (JSON) to run's NDJSON log |
+| `cognetivy event append --run <run_id> [--file <path>] [--by <string>]` | Append one event (JSON from file or stdin) to run's NDJSON log |
+| `cognetivy node start --run <run_id> --node <node_id>` | Append step_started, create started node result; prints `COGNETIVY_NODE_RESULT_ID=...` |
+| `cognetivy node complete` (run, node, status; optional output, collection-kind with file or stdin) | Create node result, optional collection write, append step_completed; prints `COGNETIVY_NODE_RESULT_ID=...` |
 | `cognetivy mutate propose --patch <path> --reason "<text>" [--by <string>]` | Propose a mutation (JSON Patch); prints `mutation_id` |
 | `cognetivy mutate apply <mutation_id> [--by <string>]` | Apply a proposed mutation (new version, update pointer) |
 | `cognetivy artifact-schema get` | Print artifact schema (kinds + required fields) to stdout |
@@ -88,6 +90,8 @@ When using the cognetivy MCP server (e.g. in Cursor), the tools **skills_list** 
 - `workflow_set(workflow_json)` — set workflow (new version)
 - `run_start(input_json, name?, by?)` — start run; returns `run_id`
 - `event_append(run_id, event_json, by?)` — append event to run
+- `node_start(run_id, node_id, by?)` — append step_started, create started node result; returns `{ node_result_id }`
+- `node_complete(run_id, node_id, status, output?, collection_kind?, collection_items?|collection_payload?, ...)` — create node result, optional collection, append step_completed; returns `{ node_result_id }`
 - `mutate_propose(patch_json, reason, by?)` — propose mutation; returns `mutation_id`
 - `mutate_apply(mutation_id, by?)` — apply mutation
 - `artifact_schema_get()` — get artifact schema (kinds and required fields)

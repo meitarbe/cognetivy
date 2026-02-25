@@ -248,6 +248,44 @@ const TOOLS: Array<{ name: string; description: string; inputSchema: { type: "ob
       required: ["name"],
     },
   },
+  {
+    name: "node_start",
+    description:
+      "Append step_started event and create a started node result. Returns { node_result_id } for use with node_complete or collection writes. Use before doing the node work.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        run_id: { type: "string", description: "Run ID" },
+        node_id: { type: "string", description: "Workflow node ID" },
+        by: { type: "string", description: "Actor (e.g. agent:cursor)" },
+      },
+      required: ["run_id", "node_id"],
+    },
+  },
+  {
+    name: "node_complete",
+    description:
+      "Single call to create node result, optionally write collection (set or append), and append step_completed. Cuts 3–4 calls down to one. Returns { node_result_id }.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        run_id: { type: "string" },
+        node_id: { type: "string", description: "Workflow node ID" },
+        status: { type: "string", description: "completed | failed | needs_human" },
+        output: { type: "string", description: "Optional node result output text" },
+        collection_kind: { type: "string", description: "Optional collection kind to write" },
+        collection_items: {
+          type: "array",
+          description: "Optional array (set) or pass single object for append",
+          items: { type: "object" },
+        },
+        collection_payload: { type: "object", description: "Optional single item for append (use when not using collection_items array)" },
+        collection_mode: { type: "string", description: "set | append (default: infer from payload)" },
+        by: { type: "string" },
+      },
+      required: ["run_id", "node_id", "status"],
+    },
+  },
 ];
 
 /** Extract suggested collection kinds from workflow node outputs. */
@@ -580,6 +618,115 @@ async function handleToolsCall(
         if (!skill) throw new Error(`Skill "${skillName}" not found.`);
         return skill.fullContent;
       }
+      case "node_start": {
+        const runIdStart = args.run_id as string;
+        const nodeIdStart = args.node_id as string;
+        if (!(await runExists(runIdStart, cwd))) {
+          throw new Error(`Run "${runIdStart}" not found.`);
+        }
+        const runStart = await readRunFile(runIdStart, cwd);
+        const byStart = (args.by as string) ?? (await resolveBy(cwd));
+        const nowStart = new Date().toISOString();
+        const nodeResultIdStart = generateId("node_result");
+        const eventStart: EventPayload = {
+          ts: nowStart,
+          type: "step_started",
+          by: byStart,
+          data: { step: nodeIdStart, step_id: nodeIdStart },
+        };
+        await appendEventLine(runIdStart, eventStart, cwd);
+        const resultStart: NodeResultRecord = {
+          node_result_id: nodeResultIdStart,
+          run_id: runIdStart,
+          workflow_id: runStart.workflow_id,
+          workflow_version_id: runStart.workflow_version_id,
+          node_id: nodeIdStart,
+          status: NodeResultStatus.Started,
+          started_at: nowStart,
+        };
+        await writeNodeResult(runIdStart, nodeIdStart, resultStart, cwd);
+        return JSON.stringify({ node_result_id: nodeResultIdStart });
+      }
+      case "node_complete": {
+        const runIdComplete = args.run_id as string;
+        const nodeIdComplete = args.node_id as string;
+        const statusComplete = args.status as string;
+        const validStatuses = ["completed", "failed", "needs_human"] as const;
+        if (!validStatuses.includes(statusComplete as (typeof validStatuses)[number])) {
+          throw new Error(`status must be one of: ${validStatuses.join(", ")}`);
+        }
+        if (!(await runExists(runIdComplete, cwd))) {
+          throw new Error(`Run "${runIdComplete}" not found.`);
+        }
+        const runComplete = await readRunFile(runIdComplete, cwd);
+        const byComplete = (args.by as string) ?? (await resolveBy(cwd));
+        const nowComplete = new Date().toISOString();
+        const nodeResultIdComplete = generateId("node_result");
+        const outputComplete = args.output as string | undefined;
+        const writesComplete: { kind: string; item_ids: string[] }[] = [];
+
+        const collectionKind = args.collection_kind as string | undefined;
+        const collectionItems = args.collection_items as Array<Record<string, unknown>> | undefined;
+        const collectionPayload = args.collection_payload as Record<string, unknown> | undefined;
+        const collectionMode = args.collection_mode as string | undefined;
+
+        if (collectionKind) {
+          const payloads = collectionItems ?? (collectionPayload ? [collectionPayload] : []);
+          if (payloads.length === 0) {
+            throw new Error("node_complete with collection_kind requires collection_items (array) or collection_payload (single object).");
+          }
+          const mode = collectionMode === "set" || collectionMode === "append" ? collectionMode : payloads.length > 1 ? "set" : "append";
+          if (mode === "set") {
+            const payloadsWithIds = payloads.map((p, i) => ({
+              ...p,
+              id: (p as { id?: string }).id ?? `${collectionKind}_${i}`,
+            }));
+            const itemIds = payloadsWithIds.map((p) => (p as { id: string }).id);
+            await writeCollections(
+              runIdComplete,
+              collectionKind,
+              payloadsWithIds,
+              { created_by_node_id: nodeIdComplete, created_by_node_result_id: nodeResultIdComplete },
+              cwd
+            );
+            writesComplete.push({ kind: collectionKind, item_ids: itemIds });
+          } else {
+            const single = payloads[0] as Record<string, unknown>;
+            const item = await appendCollection(
+              runIdComplete,
+              collectionKind,
+              single,
+              { created_by_node_id: nodeIdComplete, created_by_node_result_id: nodeResultIdComplete },
+              cwd
+            );
+            writesComplete.push({ kind: collectionKind, item_ids: [item.id] });
+          }
+        }
+
+        const resultComplete: NodeResultRecord = {
+          node_result_id: nodeResultIdComplete,
+          run_id: runIdComplete,
+          workflow_id: runComplete.workflow_id,
+          workflow_version_id: runComplete.workflow_version_id,
+          node_id: nodeIdComplete,
+          status: statusComplete as NodeResultRecord["status"],
+          started_at: nowComplete,
+          completed_at: nowComplete,
+          ...(outputComplete ? { output: outputComplete } : {}),
+          ...(writesComplete.length > 0 ? { writes: writesComplete } : {}),
+        };
+        await writeNodeResult(runIdComplete, nodeIdComplete, resultComplete, cwd);
+
+        const stepCompletedEvent: EventPayload = {
+          ts: nowComplete,
+          type: "step_completed",
+          by: byComplete,
+          data: { step: nodeIdComplete, step_id: nodeIdComplete },
+        };
+        await appendEventLine(runIdComplete, stepCompletedEvent, cwd);
+
+        return JSON.stringify({ node_result_id: nodeResultIdComplete });
+      }
       default:
         throw new Error(`Unknown tool: ${name}`);
     }
@@ -603,7 +750,8 @@ async function handleInitialize(): Promise<{
       "When you start a run with run_start, you MUST execute the workflow. Do not leave runs incomplete. " +
       "SCHEMA-FIRST: Before collection_set/collection_append, call collection_schema_get. If schema lacks kinds for workflow outputs (see run_start/workflow_get suggested_collection_kinds), use collection_schema_add_kind to add them. " +
       "RICH TEXT: Use **Markdown** in collection item fields for summaries, theses, descriptions, and reasons (e.g. idea_summary, why_now_thesis, reliability_reason). Studio renders these as formatted documents. " +
-      "After run_start: 1) workflow_get (note suggested_collection_kinds), 2) collection_schema_get, 3) collection_schema_add_kind for any missing kinds, 4) for each step: event_append step_started/step_completed, collection_set/collection_append outputs, 5) event_append run_completed, 6) run_complete. " +
+      "EFFICIENT NODE FLOW: Prefer node_start (optional) then node_complete per step. node_complete creates the node result, optionally writes collection (collection_kind + collection_items or collection_payload), and appends step_completed in one call. Returns { node_result_id }. " +
+      "After run_start: 1) workflow_get (note suggested_collection_kinds), 2) collection_schema_get, 3) collection_schema_add_kind for any missing kinds, 4) for each step: node_start (optional), do work, node_complete (with optional collection_kind + items/payload), 5) event_append run_completed, 6) run_complete. " +
       "Step events MUST include data.step (or step_id) = the workflow node id.",
   };
 }

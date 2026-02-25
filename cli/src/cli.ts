@@ -65,6 +65,27 @@ async function resolveBy(cwd: string): Promise<string> {
   return (config.default_by as string) ?? DEFAULT_BY;
 }
 
+/** Read JSON payload from file or stdin. If filePath is omitted, reads from stdin. */
+async function readPayloadFromFileOrStdin(filePath: string | undefined, cwd: string): Promise<string> {
+  if (filePath) {
+    return fs.readFile(path.resolve(cwd, filePath), "utf-8");
+  }
+  if (process.stdin.isTTY) {
+    console.error("Error: No input. Provide --file <path> or pipe JSON (e.g. cognetivy event append --run <id> < event.json).");
+    process.exit(1);
+  }
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) {
+    chunks.push(Buffer.from(chunk));
+  }
+  const raw = Buffer.concat(chunks).toString("utf-8").trim();
+  if (!raw) {
+    console.error("Error: No payload from stdin. Pipe JSON or use --file.");
+    process.exit(1);
+  }
+  return raw;
+}
+
 program
   .name("cognetivy")
   .description("Reasoning orchestration state — workflow, runs, events, collections (no LLMs)")
@@ -308,6 +329,7 @@ runCmd
       cwd
     );
     console.log(runId);
+    console.log(`COGNETIVY_RUN_ID=${runId}`);
   });
 runCmd
   .command("complete")
@@ -344,18 +366,18 @@ const eventCmd = program
   .description("Event log operations");
 eventCmd
   .command("append")
-  .description("Append one event (from JSON file) to run's NDJSON log. If appending run_completed, also run 'cognetivy run complete --run <id>' to ensure status is persisted.")
+  .description("Append one event (from JSON file or stdin) to run's NDJSON log. If appending run_completed, also run 'cognetivy run complete --run <id>' to ensure status is persisted.")
   .requiredOption("--run <run_id>", "Run ID")
-  .requiredOption("--file <path>", "Path to JSON file (event payload or full event)")
+  .option("--file <path>", "Path to JSON file (omit to read event from stdin)")
   .option("--by <string>", "Actor; defaults to config or 'cli'")
-  .action(async (opts: { run: string; file: string; by?: string }) => {
+  .action(async (opts: { run: string; file?: string; by?: string }) => {
     const cwd = process.cwd();
     const exists = await runExists(opts.run, cwd);
     if (!exists) {
       console.error(`Error: Run "${opts.run}" not found. Run \`cognetivy run start\` first.`);
       process.exit(1);
     }
-    const raw = await fs.readFile(path.resolve(cwd, opts.file), "utf-8");
+    const raw = await readPayloadFromFileOrStdin(opts.file, cwd);
     const data = JSON.parse(raw) as Record<string, unknown>;
     const by = opts.by ?? (await resolveBy(cwd));
     const now = new Date().toISOString();
@@ -435,15 +457,15 @@ collectionCmd
   });
 collectionCmd
   .command("set")
-  .description("Replace all collections of a kind for a run (from JSON file)")
+  .description("Replace all collections of a kind for a run (from JSON file or stdin)")
   .requiredOption("--run <run_id>", "Run ID")
   .requiredOption("--kind <kind>", "Collection kind")
-  .requiredOption("--file <path>", "Path to JSON file (array of collection items)")
+  .option("--file <path>", "Path to JSON file (omit to read array from stdin)")
   .requiredOption("--node <node_id>", "Node id that created these items")
   .requiredOption("--node-result <node_result_id>", "Node result id that created these items")
-  .action(async (opts: { run: string; kind: string; file: string; node: string; nodeResult: string }) => {
+  .action(async (opts: { run: string; kind: string; file?: string; node: string; nodeResult: string }) => {
     const cwd = process.cwd();
-    const raw = await fs.readFile(path.resolve(cwd, opts.file), "utf-8");
+    const raw = await readPayloadFromFileOrStdin(opts.file, cwd);
     const payloads = JSON.parse(raw) as Array<Record<string, unknown>>;
     if (!Array.isArray(payloads)) {
       console.error("Error: file must contain a JSON array of collection items.");
@@ -460,16 +482,16 @@ collectionCmd
   });
 collectionCmd
   .command("append")
-  .description("Append one collection item (from JSON file) to a run's kind")
+  .description("Append one collection item (from JSON file or stdin) to a run's kind")
   .requiredOption("--run <run_id>", "Run ID")
   .requiredOption("--kind <kind>", "Collection kind")
-  .requiredOption("--file <path>", "Path to JSON file (single collection payload)")
+  .option("--file <path>", "Path to JSON file (omit to read payload from stdin)")
   .requiredOption("--node <node_id>", "Node id that created this item")
   .requiredOption("--node-result <node_result_id>", "Node result id that created this item")
   .option("--id <string>", "Optional collection id")
-  .action(async (opts: { run: string; kind: string; file: string; id?: string; node: string; nodeResult: string }) => {
+  .action(async (opts: { run: string; kind: string; file?: string; id?: string; node: string; nodeResult: string }) => {
     const cwd = process.cwd();
-    const raw = await fs.readFile(path.resolve(cwd, opts.file), "utf-8");
+    const raw = await readPayloadFromFileOrStdin(opts.file, cwd);
     const payload = JSON.parse(raw) as Record<string, unknown>;
     const item = await appendCollection(
       opts.run,
@@ -551,7 +573,157 @@ nodeResultCmd
         ...(output ? { output } : {}),
       };
       await writeNodeResult(opts.run, opts.node, result, cwd);
+      console.log(`COGNETIVY_NODE_RESULT_ID=${id}`);
       console.log(JSON.stringify(result, null, 2));
+    }
+  );
+
+const nodeCmd = program
+  .command("node")
+  .description("Node lifecycle: start (step_started + id) and complete (node result + optional collection + step_completed)");
+
+nodeCmd
+  .command("start")
+  .description("Append step_started and create a started node result; prints COGNETIVY_NODE_RESULT_ID for use in workflows")
+  .requiredOption("--run <run_id>", "Run ID")
+  .requiredOption("--node <node_id>", "Workflow node ID")
+  .option("--by <string>", "Actor; defaults to config or 'cli'")
+  .action(async (opts: { run: string; node: string; by?: string }) => {
+    const cwd = process.cwd();
+    const exists = await runExists(opts.run, cwd);
+    if (!exists) {
+      console.error(`Error: Run "${opts.run}" not found.`);
+      process.exit(1);
+    }
+    const run = await readRunFile(opts.run, cwd);
+    const by = opts.by ?? (await resolveBy(cwd));
+    const now = new Date().toISOString();
+    const nodeResultId = generateId("node_result");
+    const event: EventPayload = {
+      ts: now,
+      type: "step_started",
+      by,
+      data: { step: opts.node, step_id: opts.node },
+    };
+    await appendEventLine(opts.run, event, cwd);
+    const result: NodeResultRecord = {
+      node_result_id: nodeResultId,
+      run_id: opts.run,
+      workflow_id: run.workflow_id,
+      workflow_version_id: run.workflow_version_id,
+      node_id: opts.node,
+      status: NodeResultStatus.Started,
+      started_at: now,
+    };
+    await writeNodeResult(opts.run, opts.node, result, cwd);
+    console.log(`COGNETIVY_NODE_RESULT_ID=${nodeResultId}`);
+  });
+
+nodeCmd
+  .command("complete")
+  .description("Create node result, optionally write collection payload, append step_completed (single call for agent efficiency)")
+  .requiredOption("--run <run_id>", "Run ID")
+  .requiredOption("--node <node_id>", "Workflow node ID")
+  .requiredOption("--status <status>", "Status: completed|failed|needs_human")
+  .option("--output <string>", "Inline output text for the node result")
+  .option("--output-file <path>", "Path to file for node result output")
+  .option("--collection-kind <kind>", "Collection kind to set or append (payload from --collection-file or stdin)")
+  .option("--collection-file <path>", "Path to JSON payload (omit to read from stdin when --collection-kind is set)")
+  .option("--collection-mode <mode>", "set (array) or append (single object); default: infer from payload", "infer")
+  .option("--by <string>", "Actor; defaults to config or 'cli'")
+  .action(
+    async (opts: {
+      run: string;
+      node: string;
+      status: string;
+      output?: string;
+      outputFile?: string;
+      collectionKind?: string;
+      collectionFile?: string;
+      collectionMode?: string;
+      by?: string;
+    }) => {
+      const cwd = process.cwd();
+      const exists = await runExists(opts.run, cwd);
+      if (!exists) {
+        console.error(`Error: Run "${opts.run}" not found.`);
+        process.exit(1);
+      }
+      const run = await readRunFile(opts.run, cwd);
+      const validStatuses = ["completed", "failed", "needs_human"] as const;
+      if (!validStatuses.includes(opts.status as (typeof validStatuses)[number])) {
+        console.error(`Error: status must be one of: ${validStatuses.join(", ")}`);
+        process.exit(1);
+      }
+      const status = opts.status as NodeResultRecord["status"];
+      const by = opts.by ?? (await resolveBy(cwd));
+      const now = new Date().toISOString();
+      let output: string | undefined = opts.output;
+      if (opts.outputFile) {
+        output = await fs.readFile(path.resolve(cwd, opts.outputFile), "utf-8");
+      }
+      const nodeResultId = generateId("node_result");
+      const writes: { kind: string; item_ids: string[] }[] = [];
+
+      if (opts.collectionKind) {
+        const raw = await readPayloadFromFileOrStdin(opts.collectionFile, cwd);
+        const payload = JSON.parse(raw) as unknown;
+        const mode = opts.collectionMode === "set" || opts.collectionMode === "append" ? opts.collectionMode : Array.isArray(payload) ? "set" : "append";
+        if (mode === "set") {
+          const payloads = payload as Array<Record<string, unknown>>;
+          if (!Array.isArray(payloads)) {
+            console.error("Error: collection payload must be a JSON array when using set.");
+            process.exit(1);
+          }
+          const payloadsWithIds = payloads.map((p, i) => ({
+            ...p,
+            id: (p as { id?: string }).id ?? `${opts.collectionKind}_${i}`,
+          }));
+          const itemIds = payloadsWithIds.map((p) => (p as { id: string }).id);
+          await writeCollections(
+            opts.run,
+            opts.collectionKind,
+            payloadsWithIds,
+            { created_by_node_id: opts.node, created_by_node_result_id: nodeResultId },
+            cwd
+          );
+          writes.push({ kind: opts.collectionKind, item_ids: itemIds });
+        } else {
+          const single = payload as Record<string, unknown>;
+          const item = await appendCollection(
+            opts.run,
+            opts.collectionKind,
+            single,
+            { created_by_node_id: opts.node, created_by_node_result_id: nodeResultId },
+            cwd
+          );
+          writes.push({ kind: opts.collectionKind, item_ids: [item.id] });
+        }
+      }
+
+      const result: NodeResultRecord = {
+        node_result_id: nodeResultId,
+        run_id: opts.run,
+        workflow_id: run.workflow_id,
+        workflow_version_id: run.workflow_version_id,
+        node_id: opts.node,
+        status,
+        started_at: now,
+        completed_at: now,
+        ...(output ? { output } : {}),
+        ...(writes.length > 0 ? { writes } : {}),
+      };
+      await writeNodeResult(opts.run, opts.node, result, cwd);
+
+      const stepCompletedEvent: EventPayload = {
+        ts: now,
+        type: "step_completed",
+        by,
+        data: { step: opts.node, step_id: opts.node },
+      };
+      await appendEventLine(opts.run, stepCompletedEvent, cwd);
+
+      console.log(`COGNETIVY_NODE_RESULT_ID=${nodeResultId}`);
     }
   );
 

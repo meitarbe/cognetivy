@@ -424,7 +424,7 @@ For a full CLI reference (every command and option), see [REFERENCE.md](REFERENC
    \`\`\`bash
    cognetivy run start --input input.json --name "Short descriptive name"
    \`\`\`
-   Capture the printed \`run_id\`; use it for all following commands.
+   Capture the printed \`run_id\` (first line) or \`COGNETIVY_RUN_ID=...\` (second line; grep/sed for machine-readable use).
 
 2. **Inspect the workflow version (collection→node→collection)**:
    \`\`\`bash
@@ -438,28 +438,18 @@ For a full CLI reference (every command and option), see [REFERENCE.md](REFERENC
    \`\`\`
    Schema is strict **JSON Schema** and is workflow-scoped (stored under \`.cognetivy/workflows/<workflowId>/collections/schema.json\`). If a kind is missing, update the schema with \`collection-schema set\`.
 
-4. **For each workflow node**:
-   - Append \`step_started\` (Studio progress):
-     - Event JSON: \`{"type":"step_started","data":{"step":"<node_id>"}}\`
-     - Command: \`cognetivy event append --run <run_id> --file step_started.json\`
-   - Do the node work (prompt/tool/human-in-loop).
-   - Write a **node result** (required for traceability):
+4. **For each workflow node** (efficient single-call option first):
+   - **Option A — node complete (recommended):** Do the node work, then one call:
      \`\`\`bash
-     cognetivy node-result set --run <run_id> --node <node_id> --status completed --output-file output.md
+     cognetivy node complete --run <run_id> --node <node_id> --status completed [--output-file output.md | --output "text"] [--collection-kind <kind> [--collection-file items.json | < payload.json]]
      \`\`\`
-     Capture \`node_result_id\` from the JSON output.
-   - Write items to **output collections**. Provenance is required on every write:
-     - Replace all items:
-       \`\`\`bash
-       cognetivy collection set --run <run_id> --kind <kind> --file items.json --node <node_id> --node-result <node_result_id>
-       \`\`\`
-     - Append one item:
-       \`\`\`bash
-       cognetivy collection append --run <run_id> --kind <kind> --file item.json --node <node_id> --node-result <node_result_id>
-       \`\`\`
-   - Append \`step_completed\`:
-     - Event JSON: \`{"type":"step_completed","data":{"step":"<node_id>"}}\`
-     - Command: \`cognetivy event append --run <run_id> --file step_completed.json\`
+     Creates node result, optionally writes collection (set if array, append if object), appends \`step_completed\`. Prints \`COGNETIVY_NODE_RESULT_ID=...\`.
+   - **Option B — optional node start then complete:** To log step_started and get a stable id first:
+     \`\`\`bash
+     cognetivy node start --run <run_id> --node <node_id>
+     \`\`\`
+     Prints \`COGNETIVY_NODE_RESULT_ID=...\`. Then do the work, then use \`node complete\` (without collection) or \`node-result set\` + \`collection set\`/append + \`event append\` step_completed.
+   - **Option C — granular (legacy):** step_started via \`event append --run <run_id> --file step_started.json\` (or pipe: \`echo '{"type":"step_started","data":{"step":"<node_id>"}}' | cognetivy event append --run <run_id>\`), then \`node-result set\` (capture \`COGNETIVY_NODE_RESULT_ID=...\` or from JSON), then \`collection set\`/append, then \`event append\` step_completed.
 
 5. **End the run**:
    - Append \`run_completed\`: \`{"type":"run_completed","data":{}}\` then \`cognetivy event append --run <run_id> --file run_completed.json\`.
@@ -497,7 +487,7 @@ Append one event per call; event is a JSON object with \`type\`, \`data\` (and o
   Example: \`{"type":"step_started","data":{"step":"expand_domain"}}\`, \`{"type":"step_completed","data":{"step":"expand_domain"}}\`.
 - **Run completed**: \`{"type":"run_completed","data":{}}\` — then run \`cognetivy run complete --run <run_id>\`.
 
-Command: \`cognetivy event append --run <run_id> --file <path>\`.
+Command: \`cognetivy event append --run <run_id> [--file <path>]\`. Omit \`--file\` to read event JSON from stdin (e.g. \`echo '{"type":"step_completed","data":{"step":"synthesize"}}' | cognetivy event append --run <run_id>\`).
 
 ---
 
@@ -507,7 +497,7 @@ Node results capture the output/summary of running a node (and are shown in Stud
 
 - **List**: \`cognetivy node-result list --run <run_id>\`
 - **Get**: \`cognetivy node-result get --run <run_id> --node <node_id>\`
-- **Set**: \`cognetivy node-result set --run <run_id> --node <node_id> --status <started|completed|failed|needs_human> [--output-file <path> | --output <text>]\`
+- **Set**: \`cognetivy node-result set --run <run_id> --node <node_id> --status <started|completed|failed|needs_human> [--output-file <path> | --output <text>]\` — prints \`COGNETIVY_NODE_RESULT_ID=...\` then JSON.
 
 ---
 
@@ -518,10 +508,8 @@ Node results capture the output/summary of running a node (and are shown in Stud
   - Optional \`references\` allows Studio to link fields to other kinds.
 - **List kinds** that have data for a run: \`cognetivy collection list --run <run_id>\`.
 - **Get items**: \`cognetivy collection get --run <run_id> --kind <kind>\`.
-- **Replace all items** of a kind:
-  \`cognetivy collection set --run <run_id> --kind <kind> --file <path> --node <node_id> --node-result <node_result_id>\`
-- **Append one item**:
-  \`cognetivy collection append --run <run_id> --kind <kind> --file <path> --node <node_id> --node-result <node_result_id>\`
+- **Replace all items** of a kind: \`cognetivy collection set --run <run_id> --kind <kind> [--file <path>] --node <node_id> --node-result <node_result_id>\` (omit \`--file\` to read JSON array from stdin).
+- **Append one item**: \`cognetivy collection append --run <run_id> --kind <kind> [--file <path>] --node <node_id> --node-result <node_result_id>\` (omit \`--file\` to read JSON from stdin).
 
 Use **Markdown** in long text fields (summaries, theses, descriptions) so Studio renders them as rich text.
 

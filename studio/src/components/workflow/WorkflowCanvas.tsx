@@ -174,9 +174,10 @@ function WorkflowCanvasInner({
           {d.description && (
             <div>
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Prompt</p>
-              <p className="text-sm text-foreground mt-1 leading-relaxed whitespace-pre-wrap">
-                {d.description}
-              </p>
+              <RichText
+                content={d.description}
+                className="text-sm text-foreground mt-1 leading-relaxed prose prose-sm dark:prose-invert max-w-none [&_p]:mt-0 [&_p:first-child]:mt-0"
+              />
             </div>
           )}
           <div>
