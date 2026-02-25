@@ -33,11 +33,12 @@ npm install -g cognetivy
 
 ### Step 1 - Run cognetivy
 
-Open a terminal in your project folder (or an empty folder) and run, an installer will open in the terminal:
+Open a terminal in your project folder (or an empty folder) and run:
 
 ```bash
 npx cognetivy
 ```
+An installer will open in the terminal:
 
 ---
 
