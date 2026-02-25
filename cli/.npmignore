@@ -1,0 +1,3 @@
+# Package contents are controlled by "files" in package.json.
+# This file ensures npm does not use .gitignore (which would exclude dist/ etc).
+# Do not add patterns here that would exclude README.md or dist/.

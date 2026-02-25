@@ -1,6 +1,6 @@
 {
   "name": "cognetivy",
-  "version": "0.1.0",
+  "version": "0.1.5",
   "description": "Reasoning orchestration state: workflow structure, run logs, and versioned mutations",
   "type": "module",
   "main": "dist/index.js",
@@ -12,7 +12,10 @@
     "prepare": "npm run build",
     "test": "npm run build && node --test test/*.test.mjs",
     "build:studio": "cd ../studio && npm run build && node -e \"require('fs').cpSync(require('path').join(process.cwd(),'dist'), require('path').join(process.cwd(),'../cli/dist/studio'), {recursive:true})\"",
-    "build:full": "npm run build && npm run build:studio"
+    "build:full": "npm run build && npm run build:studio",
+    "release": "npm version patch && npm publish",
+    "release:minor": "npm version minor && npm publish",
+    "release:major": "npm version major && npm publish"
   },
   "keywords": [
     "cli",
@@ -42,6 +45,8 @@
     "typescript": "^5.7.0"
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    "studio_example.jpg"
   ]
 }
