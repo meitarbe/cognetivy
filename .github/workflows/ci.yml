@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  cli:
+    name: CLI (build + test)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: ['18', '20']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: 'npm'
+          cache-dependency-path: cli/package-lock.json
+
+      - name: Install (cli)
+        run: npm ci
+        working-directory: cli
+
+      - name: Build (cli)
+        run: npm run build
+        working-directory: cli
+
+      - name: Test (cli)
+        run: npm test
+        working-directory: cli
+
+  studio:
+    name: Studio (build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: studio/package-lock.json
+
+      - name: Install (studio)
+        run: npm ci
+        working-directory: studio
+
+      - name: Build (studio)
+        run: npm run build
+        working-directory: studio
+
+  full-build:
+    name: Full build (cli + studio)
+    runs-on: ubuntu-latest
+    needs: [cli, studio]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install studio deps
+        run: npm ci
+        working-directory: studio
+
+      - name: Install cli deps and full build
+        run: npm ci && npm run build && npm run build:studio
+        working-directory: cli
