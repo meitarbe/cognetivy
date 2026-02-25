@@ -1,6 +1,6 @@
 # Cognetivy
 
-![Cognetivy Studio: workflow canvas, run details, and data collected](studio_example.jpg)
+![Cognetivy Studio: workflow canvas, run details, and data collected](cli/studio_example.jpg)
 
 **Workflow and reasoning state for your coding agent.** One command, then follow the steps. Your agent (Cursor, Claude Code, OpenClaw) can create workflows and run them from chat.
 
