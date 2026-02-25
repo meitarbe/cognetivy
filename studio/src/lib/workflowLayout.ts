@@ -21,7 +21,8 @@ export interface NodePosition {
 const NODE_WIDTH = 220;
 const NODE_HEIGHT = 100;
 const HORIZONTAL_GAP = 80;
-const VERTICAL_GAP = 100;
+/** Vertical space between rows (half of original 100 for tighter top-to-bottom). */
+const VERTICAL_GAP = 50;
 
 /**
  * Top-to-bottom layout for a generic DAG:

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useParams, useNavigate } from "react-router-dom";
+import { Link, useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { api, type CollectionSchemaConfig, type CollectionItem, type RunRecord } from "@/api";
 import { useWorkflowSelection } from "@/contexts/WorkflowSelectionContext";
 import { formatTimestamp } from "@/lib/utils";
@@ -16,9 +16,17 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn, downloadTableCsv, getCollectionColor, TABLE_LINK_CLASS } from "@/lib/utils";
 
 const POLL_MS = 5000;
+const COLLECTION_RUN_FILTER_STORAGE_KEY = "cognetivy_collection_run_id";
 
 function formatCellValue(value: unknown): string {
   if (value === undefined || value === null) return "—";
@@ -31,12 +39,15 @@ function formatCellValue(value: unknown): string {
 
 export function EntityPage() {
   const { kind } = useParams<{ kind: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { selectedWorkflowId, selectedWorkflow } = useWorkflowSelection();
   const [schema, setSchema] = useState<CollectionSchemaConfig | null>(null);
   const [items, setItems] = useState<CollectionItem[]>([]);
   const [runs, setRuns] = useState<RunRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
+
+  const runFilterId = searchParams.get("run_id") ?? "";
 
   const runIdToName = useMemo(() => {
     const map = new Map<string, string>();
@@ -69,6 +80,20 @@ export function EntityPage() {
     const t = setInterval(load, POLL_MS);
     return () => clearInterval(t);
   }, [load]);
+
+  useEffect(() => {
+    if (!kind || searchParams.get("run_id")) return;
+    try {
+      const saved = localStorage.getItem(COLLECTION_RUN_FILTER_STORAGE_KEY);
+      if (saved) {
+        const next = new URLSearchParams(searchParams);
+        next.set("run_id", saved);
+        setSearchParams(next, { replace: true });
+      }
+    } catch {
+      // ignore localStorage errors
+    }
+  }, [kind, searchParams, setSearchParams]);
 
   if (!kind || error) {
     return (
@@ -106,7 +131,32 @@ export function EntityPage() {
 
   const displayColumns = columns.filter((c, i, a) => a.indexOf(c) === i && c !== "run_id");
 
+  const filteredItems = useMemo(() => {
+    if (!runFilterId) return items;
+    return items.filter((item) => String(item.run_id ?? "") === runFilterId);
+  }, [items, runFilterId]);
+
   const displayKind = kind.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
+  function handleRunFilterChange(value: string) {
+    const nextRunId = value === "all" ? "" : value;
+    const next = new URLSearchParams(searchParams);
+    if (nextRunId) {
+      next.set("run_id", nextRunId);
+    } else {
+      next.delete("run_id");
+    }
+    setSearchParams(next, { replace: true });
+    try {
+      if (nextRunId) {
+        localStorage.setItem(COLLECTION_RUN_FILTER_STORAGE_KEY, nextRunId);
+      } else {
+        localStorage.removeItem(COLLECTION_RUN_FILTER_STORAGE_KEY);
+      }
+    } catch {
+      // ignore localStorage errors
+    }
+  }
 
   const kindSafe = kind ?? "";
 
@@ -128,7 +178,7 @@ export function EntityPage() {
   function handleDownloadCsv() {
     const csvColumns = ["created_at", "run_name", ...displayColumns];
     const headers = ["Added", "Run", ...displayColumns.map((c) => c.replace(/_/g, " "))];
-    const rows = items.map((item) => ({
+    const rows = filteredItems.map((item) => ({
       ...item,
       run_name: item.run_id ? (runIdToName.get(String(item.run_id)) ?? "") : "",
     }));
@@ -150,9 +200,26 @@ export function EntityPage() {
       )}
 
       <Card>
-        <CardHeader className="py-2 px-3 flex flex-row items-center justify-between gap-2">
-          <CardTitle className="text-sm">Data ({items.length} items)</CardTitle>
-          {items.length > 0 && (
+        <CardHeader className="py-2 px-3 flex flex-row items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-3 flex-wrap">
+            <CardTitle className="text-sm">Data ({filteredItems.length} items)</CardTitle>
+            {runs.length > 0 && (
+              <Select value={runFilterId || "all"} onValueChange={handleRunFilterChange}>
+                <SelectTrigger className="w-[200px] h-8 text-xs" size="sm">
+                  <SelectValue placeholder="Filter by run" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All runs</SelectItem>
+                  {runs.map((r) => (
+                    <SelectItem key={r.run_id} value={r.run_id}>
+                      {r.name ?? r.run_id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+          {filteredItems.length > 0 && (
             <button
               type="button"
               onClick={handleDownloadCsv}
@@ -163,9 +230,13 @@ export function EntityPage() {
           )}
         </CardHeader>
         <CardContent className="p-0">
-          {items.length === 0 ? (
+          {filteredItems.length === 0 ? (
             <p className="p-4 text-sm text-muted-foreground text-center">
-              No data yet. Agent defines and populates entities via collection_schema_set and collection_set.
+              {items.length === 0
+                ? "No data yet. Agent defines and populates entities via collection_schema_set and collection_set."
+                : runFilterId
+                  ? "No items for the selected run."
+                  : "No data yet."}
             </p>
           ) : (
             <>
@@ -184,7 +255,7 @@ export function EntityPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {items.map((item, i) => {
+                {filteredItems.map((item, i) => {
                   const itemPath = getItemPagePath(item, i);
                   return (
                     <TableRow
