@@ -6,6 +6,7 @@ import fs from "node:fs/promises";
 import {
   ensureWorkspace,
   requireWorkspace,
+  workspaceExists,
   readWorkflowIndex,
   writeWorkflowIndex,
   listWorkflows,
@@ -86,9 +87,20 @@ async function readPayloadFromFileOrStdin(filePath: string | undefined, cwd: str
   return raw;
 }
 
+/** Launch Studio server and open in browser. Reused by default command and after init. Tries port, then port+1, ... if in use. */
+async function launchStudio(workspacePath: string, port: number = STUDIO_DEFAULT_PORT): Promise<void> {
+  await requireWorkspace(workspacePath);
+  const { port: actualPort } = await startStudioServer(workspacePath, port, { apiOnly: false });
+  const url = `http://127.0.0.1:${actualPort}`;
+  await open(url);
+  console.log(`Studio at ${url} (workspace: ${workspacePath}). Press Ctrl+C to stop.`);
+}
+
 program
   .name("cognetivy")
-  .description("Reasoning orchestration state — workflow, runs, events, collections (no LLMs)")
+  .description(
+    "Reasoning orchestration state — workflow, runs, events, collections (no LLMs). Run with no command: init workspace if missing, then open Studio."
+  )
   .version("0.1.0");
 
 program
@@ -103,10 +115,11 @@ program
     if (opts.workspaceOnly) {
       await ensureWorkspace(cwd, { force: opts.force, noGitignore });
       console.log("Initialized cognetivy workspace at .cognetivy/");
-      return;
+    } else {
+      const { runInstallTUI } = await import("./install-tui.js");
+      await runInstallTUI({ cwd, force: opts.force, init: true, noGitignore });
     }
-    const { runInstallTUI } = await import("./install-tui.js");
-    await runInstallTUI({ cwd, force: opts.force, init: true, noGitignore });
+    await launchStudio(cwd);
   });
 
 const workflowCmd = program
@@ -344,6 +357,77 @@ runCmd
     }
     await updateRunFile(opts.run, { status: "completed" }, cwd);
     console.log(`Run "${opts.run}" marked as completed.`);
+  });
+runCmd
+  .command("status")
+  .description("Show run metadata, each node's completion status, and item count per collection")
+  .requiredOption("--run <run_id>", "Run ID")
+  .option("--json", "Output as JSON")
+  .action(async (opts: { run: string; json?: boolean }) => {
+    const cwd = process.cwd();
+    const exists = await runExists(opts.run, cwd);
+    if (!exists) {
+      console.error(`Error: Run "${opts.run}" not found.`);
+      process.exit(1);
+    }
+    const run = await readRunFile(opts.run, cwd);
+    let version: Awaited<ReturnType<typeof readWorkflowVersionRecord>> | null = null;
+    try {
+      version = await readWorkflowVersionRecord(run.workflow_id, run.workflow_version_id, cwd);
+    } catch {
+      // workflow version missing
+    }
+    const nodeResults = await listNodeResults(opts.run, cwd);
+    const nodeResultByNodeId = new Map(nodeResults.map((r) => [r.node_id, r]));
+    const kinds = await listCollectionKindsForRun(opts.run, cwd);
+    const collections: { kind: string; item_count: number }[] = [];
+    for (const kind of kinds) {
+      const store = await readCollections(opts.run, kind, cwd);
+      collections.push({ kind, item_count: store.items.length });
+    }
+    const nodesList: { node_id: string; status: string; completed_at?: string }[] = [];
+    if (version?.nodes) {
+      for (const node of version.nodes) {
+        const nr = nodeResultByNodeId.get(node.id);
+        nodesList.push({
+          node_id: node.id,
+          status: nr?.status ?? "—",
+          completed_at: nr?.completed_at,
+        });
+      }
+    }
+    // Include __system__ if we have a result for it but it's not in workflow nodes
+    if (nodeResultByNodeId.has("__system__") && version?.nodes && !version.nodes.some((n) => n.id === "__system__")) {
+      const nr = nodeResultByNodeId.get("__system__")!;
+      nodesList.unshift({ node_id: "__system__", status: nr.status, completed_at: nr.completed_at });
+    }
+    const runSummary = {
+      run_id: run.run_id,
+      status: run.status,
+      name: run.name,
+      workflow_id: run.workflow_id,
+      workflow_version_id: run.workflow_version_id,
+    };
+    if (opts.json) {
+      console.log(JSON.stringify({ run: runSummary, nodes: nodesList, collections }, null, 2));
+      return;
+    }
+    console.log("Run:", run.run_id, run.status, run.name ? `"${run.name}"` : "", `(${run.workflow_id} @ ${run.workflow_version_id})`);
+    if (nodesList.length > 0) {
+      console.log("Nodes:");
+      for (const n of nodesList) {
+        const at = n.completed_at ? ` @ ${n.completed_at}` : "";
+        console.log(`  ${n.node_id}: ${n.status}${at}`);
+      }
+    } else if (!version) {
+      console.log("Nodes: (workflow version unavailable)");
+    }
+    if (collections.length > 0) {
+      console.log("Collections:");
+      for (const c of collections) {
+        console.log(`  ${c.kind}: ${c.item_count} item(s)`);
+      }
+    }
   });
 runCmd
   .command("set-name")
@@ -1007,17 +1091,26 @@ program
     const cwd = process.cwd();
     const workspacePath = opts.workspace ? path.resolve(cwd, opts.workspace) : cwd;
     await requireWorkspace(workspacePath);
-    const port = opts.port ?? STUDIO_DEFAULT_PORT;
-    const { server } = await startStudioServer(workspacePath, port, { apiOnly: opts.apiOnly });
+    const requestedPort = opts.port ?? STUDIO_DEFAULT_PORT;
+    const { port: actualPort } = await startStudioServer(workspacePath, requestedPort, { apiOnly: opts.apiOnly });
     if (!opts.apiOnly) {
-      const url = `http://127.0.0.1:${port}`;
+      const url = `http://127.0.0.1:${actualPort}`;
       await open(url);
       console.log(`Studio at ${url} (workspace: ${workspacePath}). Press Ctrl+C to stop.`);
     } else {
-      console.log(`Studio API at http://127.0.0.1:${port} (workspace: ${workspacePath}).`);
+      console.log(`Studio API at http://127.0.0.1:${actualPort} (workspace: ${workspacePath}).`);
       console.log(`Run the app in dev: cd studio && npm run dev, then open http://localhost:5173`);
       console.log("Press Ctrl+C to stop.");
     }
   });
+
+program.action(async () => {
+  const cwd = process.cwd();
+  if (!(await workspaceExists(cwd))) {
+    const { runInstallTUI } = await import("./install-tui.js");
+    await runInstallTUI({ cwd, init: true });
+  }
+  await launchStudio(cwd);
+});
 
 program.parse();

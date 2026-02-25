@@ -25,6 +25,7 @@ import {
   writeCollections,
   appendCollection,
   writeNodeResult,
+  listNodeResults,
 } from "./workspace.js";
 import { getMergedConfig } from "./config.js";
 import { validateWorkflowVersion } from "./validate.js";
@@ -115,6 +116,16 @@ const TOOLS: Array<{ name: string; description: string; inputSchema: { type: "ob
     inputSchema: {
       type: "object",
       properties: { run_id: { type: "string", description: "Run ID to mark complete" } },
+      required: ["run_id"],
+    },
+  },
+  {
+    name: "run_status",
+    description:
+      "Get run status: run metadata, each node's completion status, and item count per collection. Use after completing nodes to verify state without multiple collection_get calls.",
+    inputSchema: {
+      type: "object",
+      properties: { run_id: { type: "string", description: "Run ID" } },
       required: ["run_id"],
     },
   },
@@ -450,6 +461,50 @@ async function handleToolsCall(
         await updateRunFile(runIdComplete, { status: "completed" }, cwd);
         return "Run marked as completed.";
       }
+      case "run_status": {
+        const runIdStatus = args.run_id as string;
+        if (!(await runExists(runIdStatus, cwd))) {
+          throw new Error(`Run "${runIdStatus}" not found.`);
+        }
+        const run = await readRunFile(runIdStatus, cwd);
+        let version: Awaited<ReturnType<typeof readWorkflowVersionRecord>> | null = null;
+        try {
+          version = await readWorkflowVersionRecord(run.workflow_id, run.workflow_version_id, cwd);
+        } catch {
+          // workflow version missing
+        }
+        const nodeResults = await listNodeResults(runIdStatus, cwd);
+        const nodeResultByNodeId = new Map(nodeResults.map((r) => [r.node_id, r]));
+        const kinds = await listCollectionKindsForRun(runIdStatus, cwd);
+        const collections: { kind: string; item_count: number }[] = [];
+        for (const kind of kinds) {
+          const store = await readCollections(runIdStatus, kind, cwd);
+          collections.push({ kind, item_count: store.items.length });
+        }
+        const nodesList: { node_id: string; status: string; completed_at?: string }[] = [];
+        if (version?.nodes) {
+          for (const node of version.nodes) {
+            const nr = nodeResultByNodeId.get(node.id);
+            nodesList.push({
+              node_id: node.id,
+              status: nr?.status ?? "—",
+              completed_at: nr?.completed_at,
+            });
+          }
+        }
+        if (nodeResultByNodeId.has("__system__") && version?.nodes && !version.nodes.some((n) => n.id === "__system__")) {
+          const nr = nodeResultByNodeId.get("__system__")!;
+          nodesList.unshift({ node_id: "__system__", status: nr.status, completed_at: nr.completed_at });
+        }
+        const runSummary = {
+          run_id: run.run_id,
+          status: run.status,
+          name: run.name,
+          workflow_id: run.workflow_id,
+          workflow_version_id: run.workflow_version_id,
+        };
+        return JSON.stringify({ run: runSummary, nodes: nodesList, collections });
+      }
       case "event_append": {
         const runId = args.run_id as string;
         const eventJson = args.event_json as Record<string, unknown>;
@@ -751,8 +806,9 @@ async function handleInitialize(): Promise<{
       "SCHEMA-FIRST: Before collection_set/collection_append, call collection_schema_get. If schema lacks kinds for workflow outputs (see run_start/workflow_get suggested_collection_kinds), use collection_schema_add_kind to add them. " +
       "RICH TEXT: Use **Markdown** in collection item fields for summaries, theses, descriptions, and reasons (e.g. idea_summary, why_now_thesis, reliability_reason). Studio renders these as formatted documents. " +
       "EFFICIENT NODE FLOW: Prefer node_start (optional) then node_complete per step. node_complete creates the node result, optionally writes collection (collection_kind + collection_items or collection_payload), and appends step_completed in one call. Returns { node_result_id }. " +
-      "After run_start: 1) workflow_get (note suggested_collection_kinds), 2) collection_schema_get, 3) collection_schema_add_kind for any missing kinds, 4) for each step: node_start (optional), do work, node_complete (with optional collection_kind + items/payload), 5) event_append run_completed, 6) run_complete. " +
-      "Step events MUST include data.step (or step_id) = the workflow node id.",
+      "After run_start: 1) workflow_get (note suggested_collection_kinds), 2) collection_schema_get, 3) collection_schema_add_kind for any missing kinds, 4) for each step: node_start (optional), do work, node_complete (with optional collection_kind + items/payload), 5) event_append run_completed, 6) run_complete. Use run_status(run_id) to verify node completion and collection counts without multiple collection_get calls. " +
+      "Step events MUST include data.step (or step_id) = the workflow node id. " +
+      "If you can spawn sub-agents, scope work per node (one sub-agent per node with only that node's inputs) to reduce context size. For large outputs, prefer multiple collection_append or node_complete calls per item instead of one large collection_set.",
   };
 }
 

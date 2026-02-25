@@ -47,6 +47,7 @@ By default, `cognetivy init` adds a `.gitignore` snippet so `runs/`, `events/`, 
 | `cognetivy workflow get` | Print current workflow version JSON to stdout |
 | `cognetivy workflow set --file <path>` | Set workflow from JSON file (creates new version, updates pointer) |
 | `cognetivy run start --input <path> [--name <string>] [--by <string>]` | Start a run; prints `run_id` then `COGNETIVY_RUN_ID=...` (machine-readable) |
+| `cognetivy run status --run <run_id> [--json]` | Run status: node completion and collection item counts; optional `--json` |
 | `cognetivy run set-name --run <run_id> --name <string>` | Set human-readable name for an existing run |
 | `cognetivy event append --run <run_id> [--file <path>] [--by <string>]` | Append one event (JSON from file or stdin) to run's NDJSON log |
 | `cognetivy node start --run <run_id> --node <node_id>` | Append step_started, create started node result; prints `COGNETIVY_NODE_RESULT_ID=...` |
@@ -70,6 +71,8 @@ By default, `cognetivy init` adds a `.gitignore` snippet so `runs/`, `events/`, 
 | `cognetivy studio [--workspace <path>] [--port <port>]` | Start read-only Studio and open in browser |
 | `cognetivy studio --api-only [--workspace <path>] [--port <port>]` | Serve only the Studio API (for dev with Vite; see Studio dev mode below) |
 
+**Tip:** Collection payload for `node complete` can be piped from stdin when `--collection-file` is omitted (e.g. `echo '<json>' | cognetivy node complete --run <id> --node <id> --status completed --collection-kind <kind>`).
+
 ## Skills (Agent skills and OpenClaw skills)
 
 cognetivy supports the **SKILL.md** format (Agent skills / OpenClaw skills): a directory containing `SKILL.md` with YAML frontmatter (`name`, `description`, optional `license`, `compatibility`, `metadata`, `allowed-tools`) and markdown instructions. You can manage skills **without using MCP** — install, update, list, and validate from the CLI so that agents (e.g. OpenClaw, Cursor, and other compatible tools) load them from disk.
@@ -89,6 +92,7 @@ When using the cognetivy MCP server (e.g. in Cursor), the tools **skills_list** 
 - `workflow_get()` — get current workflow JSON
 - `workflow_set(workflow_json)` — set workflow (new version)
 - `run_start(input_json, name?, by?)` — start run; returns `run_id`
+- `run_status(run_id)` — run status (nodes + collection counts)
 - `event_append(run_id, event_json, by?)` — append event to run
 - `node_start(run_id, node_id, by?)` — append step_started, create started node result; returns `{ node_result_id }`
 - `node_complete(run_id, node_id, status, output?, collection_kind?, collection_items?|collection_payload?, ...)` — create node result, optional collection, append step_completed; returns `{ node_result_id }`

@@ -374,16 +374,32 @@ export function createStudioServer(workspacePath: string, options: StudioServerO
 
 export const STUDIO_DEFAULT_PORT = DEFAULT_PORT;
 
-export function startStudioServer(
+const STUDIO_PORT_RETRIES = 10;
+
+export async function startStudioServer(
   workspacePath: string,
   port: number = DEFAULT_PORT,
   options: { apiOnly?: boolean } = {}
 ): Promise<{ server: http.Server; port: number }> {
-  const server = createStudioServer(workspacePath, options);
-  return new Promise((resolve, reject) => {
-    server.listen(port, "127.0.0.1", () => {
-      resolve({ server, port });
-    });
-    server.on("error", reject);
-  });
+  let lastError: Error | null = null;
+  for (let offset = 0; offset < STUDIO_PORT_RETRIES; offset++) {
+    const tryPort = port + offset;
+    const server = createStudioServer(workspacePath, options);
+    try {
+      await new Promise<void>((resolve, reject) => {
+        server.on("error", reject);
+        server.listen(tryPort, "127.0.0.1", () => resolve());
+      });
+      return { server, port: tryPort };
+    } catch (err) {
+      const nodeErr = err as NodeJS.ErrnoException;
+      lastError = err instanceof Error ? err : new Error(String(err));
+      if (nodeErr?.code === "EADDRINUSE") {
+        server.close();
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastError ?? new Error(`No available port in range ${port}-${port + STUDIO_PORT_RETRIES - 1}`);
 }
