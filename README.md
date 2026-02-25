@@ -1,4 +1,9 @@
+<p align="center">
+  <img src="studio/public/favicon.png" alt="Cognetivy" width="96" height="96" />
+</p>
+
 # Cognetivy
+
 [![npm version](https://img.shields.io/npm/v/cognetivy.svg)](https://www.npmjs.com/package/cognetivy) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ![Cognetivy Studio: workflow canvas, run details, and data collected](cli/studio_example.jpg)
@@ -46,6 +51,8 @@ An installer will open in the terminal:
 
 ### Step 2 - Use the installer
 
+<img src="cli/installer.jpg" alt="Cognetivy installer: choose your coding tool(s)" width="35%" />
+
 1. In the installer, choose your coding agent (Claude Code, Cursor, OpenClaw, etc.)
 2. Cognetivy will create a `.cognetivy/` workspace in the current folder.
 3. Cognetivy will install its skills into the workspace.
@@ -54,13 +61,17 @@ An installer will open in the terminal:
 
 ### Step 3 - Studio opens
 
+<img src="cli/light_theme_studio.jpg" alt="Cognetivy Studio" width="75%" />
+
 When the installer finishes, Cognetivy Studio opens in your browser.
 
-- You’ll see the read-only UI: workflow, runs, and collections.
+You'll see the read-only UI: workflow, runs, and collections.
 
 ---
 
 ### Step 4 - Ask your agent to create a workflow and run it
+
+<img src="cli/claude_example.jpg" alt="Claude Code: create a workflow" width="60%" />
 
 In another chat window, ask your agent to create a workflow and run it.
 
