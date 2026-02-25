@@ -1,5 +1,7 @@
 # cognetivy
 
+![Cognetivy Studio: workflow canvas, run details, and data collected](cli/studio_example.jpg)
+
 Monorepo for **cognetivy** — reasoning orchestration state (workflows, runs, events, mutations). No LLMs; file-based storage.
 
 ## Packages
