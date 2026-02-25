@@ -84,9 +84,9 @@ export function downloadTableCsv(
   URL.revokeObjectURL(url);
 }
 
-/** Format ISO timestamp for display. Returns "—" if missing or invalid. */
+/** Format ISO timestamp for display. Returns "-" if missing or invalid. */
 export function formatTimestamp(ts: string | undefined): string {
-  if (!ts) return "—";
+  if (!ts) return "-";
   try {
     const d = new Date(ts);
     if (Number.isNaN(d.getTime())) return ts;

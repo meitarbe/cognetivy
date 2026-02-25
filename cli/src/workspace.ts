@@ -33,7 +33,7 @@ export const COLLECTIONS_DIR = "collections";
 export const NODE_RESULTS_DIR = "node-results";
 
 const GITIGNORE_SNIPPET = `
-# cognetivy — ignore runtime data; commit workflows/*/versions/
+# cognetivy - ignore runtime data; commit workflows/*/versions/
 .cognetivy/runs/
 .cognetivy/events/
 .cognetivy/collections/

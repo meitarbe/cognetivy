@@ -80,7 +80,7 @@ export function CollectionsPage() {
       <div className="mb-4">
         <Breadcrumbs items={[{ label: "Collections" }]} />
         <p className="text-sm text-muted-foreground mt-1">
-          Schema-backed stores per run for workflow: <span className="font-medium text-foreground/80">{selectedWorkflow?.name ?? "—"}</span>.
+          Schema-backed stores per run for workflow: <span className="font-medium text-foreground/80">{selectedWorkflow?.name ?? "-"}</span>.
         </p>
       </div>
       {kinds.length === 0 ? (

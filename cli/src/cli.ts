@@ -99,7 +99,7 @@ async function launchStudio(workspacePath: string, port: number = STUDIO_DEFAULT
 program
   .name("cognetivy")
   .description(
-    "Reasoning orchestration state — workflow, runs, events, collections (no LLMs). Run with no command: init workspace if missing, then open Studio."
+    "Reasoning orchestration state - workflow, runs, events, collections (no LLMs). Run with no command: init workspace if missing, then open Studio."
   )
   .version("0.1.0");
 
@@ -391,7 +391,7 @@ runCmd
         const nr = nodeResultByNodeId.get(node.id);
         nodesList.push({
           node_id: node.id,
-          status: nr?.status ?? "—",
+          status: nr?.status ?? "-",
           completed_at: nr?.completed_at,
         });
       }
@@ -519,7 +519,7 @@ collectionSchemaCmd
 
 const collectionCmd = program
   .command("collection")
-  .description("Structured collections per run (sources, ideas — schema-backed)");
+  .description("Structured collections per run (sources, ideas - schema-backed)");
 collectionCmd
   .command("list")
   .description("List collection kinds that have data for a run")

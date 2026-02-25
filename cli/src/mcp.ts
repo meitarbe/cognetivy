@@ -208,7 +208,7 @@ const TOOLS: Array<{ name: string; description: string; inputSchema: { type: "ob
   {
     name: "collection_set",
     description:
-      "Replace all collections of a kind for a run. Items are validated against schema. If kind is unknown or validation fails, error includes schema—use collection_schema_add_kind first. Use **Markdown** for long text fields (summaries, theses, descriptions, reasons) so Studio renders them as rich text.",
+      "Replace all collections of a kind for a run. Items are validated against schema. If kind is unknown or validation fails, error includes schema-use collection_schema_add_kind first. Use **Markdown** for long text fields (summaries, theses, descriptions, reasons) so Studio renders them as rich text.",
     inputSchema: {
       type: "object",
       properties: {
@@ -487,7 +487,7 @@ async function handleToolsCall(
             const nr = nodeResultByNodeId.get(node.id);
             nodesList.push({
               node_id: node.id,
-              status: nr?.status ?? "—",
+              status: nr?.status ?? "-",
               completed_at: nr?.completed_at,
             });
           }

@@ -6,7 +6,7 @@ interface EventDataSummaryProps {
 }
 
 function formatValue(v: unknown): string {
-  if (v === undefined || v === null) return "—";
+  if (v === undefined || v === null) return "-";
   if (typeof v === "string") return v;
   if (typeof v === "number" || typeof v === "boolean") return String(v);
   if (Array.isArray(v)) return v.map(formatValue).join(", ");
@@ -169,7 +169,7 @@ function RunCompletedSummary({ data }: { data: Record<string, unknown> }) {
 
 function GenericSummary({ data }: { data: Record<string, unknown> }) {
   const keys = Object.keys(data);
-  if (keys.length === 0) return <span className="text-muted-foreground italic">—</span>;
+  if (keys.length === 0) return <span className="text-muted-foreground italic">-</span>;
   const parts: string[] = [];
   const step = data.step ?? data.step_id ?? data.node_id;
   if (step != null) parts.push(`step: ${String(step)}`);
@@ -182,7 +182,7 @@ function GenericSummary({ data }: { data: Record<string, unknown> }) {
 
 export function EventDataSummary({ type, data }: EventDataSummaryProps) {
   const keys = Object.keys(data);
-  if (keys.length === 0) return <span className="text-muted-foreground italic">—</span>;
+  if (keys.length === 0) return <span className="text-muted-foreground italic">-</span>;
 
   let content: ReactNode;
   switch (type) {

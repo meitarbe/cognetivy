@@ -11,7 +11,7 @@ interface PatchDisplayProps {
 }
 
 function formatValue(v: unknown): string {
-  if (v === undefined || v === null) return "—";
+  if (v === undefined || v === null) return "-";
   if (typeof v === "string") return v;
   if (typeof v === "number" || typeof v === "boolean") return String(v);
   return JSON.stringify(v);

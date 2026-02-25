@@ -6,7 +6,7 @@ Read-only React UI for the Cognetivy workspace: workflow DAG, runs, events, arti
 
 To run the Studio in **dev mode** with a **selected workspace folder**:
 
-1. **Terminal 1 — start the Studio API** (from repo root or any directory):
+1. **Terminal 1 - start the Studio API** (from repo root or any directory):
    ```bash
    cognetivy studio --api-only --workspace <path-to-workspace>
    ```
@@ -16,7 +16,7 @@ To run the Studio in **dev mode** with a **selected workspace folder**:
    ```
    Uses port **3742** by default. Leave this running.
 
-2. **Terminal 2 — start Vite dev server**:
+2. **Terminal 2 - start Vite dev server**:
    ```bash
    npm run dev
    ```

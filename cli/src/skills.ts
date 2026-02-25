@@ -425,11 +425,11 @@ Workflows, runs, node results, and schema-backed collections. Run commands from 
    \`\`\`
    Capture \`run_id\` (first line) or \`COGNETIVY_RUN_ID=...\` (second line).
 
-2. **Inspect workflow**: \`cognetivy workflow get\` — note \`nodes[].id\`, \`input_collections\`, \`output_collections\`.
+2. **Inspect workflow**: \`cognetivy workflow get\` - note \`nodes[].id\`, \`input_collections\`, \`output_collections\`.
 
 3. **Schema**: \`cognetivy collection-schema get\`. Add missing kinds with \`collection-schema set\` so output collections exist.
 
-4. **For each node:** Do the work, then **one call** — \`node complete\`:
+4. **For each node:** Do the work, then **one call** - \`node complete\`:
    \`\`\`bash
    cognetivy node complete --run <run_id> --node <node_id> --status completed [--output "text" | --output-file path] [--collection-kind <kind>]
    \`\`\`
@@ -447,11 +447,11 @@ Workflows, runs, node results, and schema-backed collections. Run commands from 
 
 ## Runs
 
-\`run start\` (prints \`run_id\`, seeds \`run_input\`), \`run status --run <id> [--json]\` (nodes + collection counts — use to verify), \`run complete\`, \`run set-name\`.
+\`run start\` (prints \`run_id\`, seeds \`run_input\`), \`run status --run <id> [--json]\` (nodes + collection counts - use to verify), \`run complete\`, \`run set-name\`.
 
 ## Events
 
-\`event append --run <run_id> [--file <path>]\` — omit \`--file\` to read from stdin. Event JSON: \`type\`, \`data\` (for step events set \`data.step\` = node id). E.g. \`echo '{"type":"step_completed","data":{"step":"synthesize"}}' | cognetivy event append --run <run_id>\`.
+\`event append --run <run_id> [--file <path>]\` - omit \`--file\` to read from stdin. Event JSON: \`type\`, \`data\` (for step events set \`data.step\` = node id). E.g. \`echo '{"type":"step_completed","data":{"step":"synthesize"}}' | cognetivy event append --run <run_id>\`.
 
 ## Node results
 
@@ -464,7 +464,7 @@ Usually covered by \`node complete\`. For inspect or when not using it: \`node-r
 \`collection-schema get\` / \`set --file\` (kinds + \`item_schema\`). \`collection list --run <id>\`, \`collection get --run <id> --kind <kind>\`. \`collection set\` / \`collection append\` need \`--node\` and \`--node-result\` (or use \`node complete --collection-kind\` which creates the result). Omit \`--file\` to read from stdin.
 - **Many items:** Prefer incremental \`collection append\` or \`node complete\` per item instead of one large \`collection set\`. Use Markdown in long text fields for Studio.
 
-**Payload:** Must match \`item_schema\` for the kind; do not include \`created_at\`, \`created_by_node_id\` — cognetivy adds them.
+**Payload:** Must match \`item_schema\` for the kind; do not include \`created_at\`, \`created_by_node_id\` - cognetivy adds them.
 
 ---
 
@@ -482,7 +482,7 @@ Usually covered by \`node complete\`. For inspect or when not using it: \`node-r
 ## Performance
 
 - **Smaller context:** Per-item extraction (e.g. per-video) over all-at-once when a node maps over a list.
-- **Parallel sub-agents:** For data-parallel nodes (e.g. 10 transcripts), spawning one agent per item in parallel can yield ~10x wall-clock speedup — highest-leverage for map-over-list workflows.
+- **Parallel sub-agents:** For data-parallel nodes (e.g. 10 transcripts), spawning one agent per item in parallel can yield ~10x wall-clock speedup - highest-leverage for map-over-list workflows.
 - **Structured output:** Future extensions may enforce "output must match this schema" so the agent skips manual schema-checking.
 `;
 }
@@ -494,42 +494,42 @@ function getCognetivyReferenceContent(): string {
 Full command reference. Use from project root (directory containing \`.cognetivy/\`).
 
 ## workflow
-- \`cognetivy workflow list\` — list workflows.
-- \`cognetivy workflow create --name <string> [--id <string>] [--description <string>]\` — create a workflow (creates v1 and default schema).
-- \`cognetivy workflow select --workflow <workflow_id>\` — select current workflow.
-- \`cognetivy workflow versions [--workflow <workflow_id>]\` — list versions for a workflow.
-- \`cognetivy workflow get [--workflow <workflow_id>] [--version <version_id>]\` — print a workflow version JSON.
-- \`cognetivy workflow set --file <path> [--workflow <workflow_id>] [--name <string>]\` — set workflow version from JSON file (creates new version and sets it current).
+- \`cognetivy workflow list\` - list workflows.
+- \`cognetivy workflow create --name <string> [--id <string>] [--description <string>]\` - create a workflow (creates v1 and default schema).
+- \`cognetivy workflow select --workflow <workflow_id>\` - select current workflow.
+- \`cognetivy workflow versions [--workflow <workflow_id>]\` - list versions for a workflow.
+- \`cognetivy workflow get [--workflow <workflow_id>] [--version <version_id>]\` - print a workflow version JSON.
+- \`cognetivy workflow set --file <path> [--workflow <workflow_id>] [--name <string>]\` - set workflow version from JSON file (creates new version and sets it current).
 
 ## run
-- \`cognetivy run start --input <path> [--name <string>] ...\` — start run; prints run_id (seeds run_input + __system__).
-- \`cognetivy run status --run <run_id> [--json]\` — node completion + collection item counts.
+- \`cognetivy run start --input <path> [--name <string>] ...\` - start run; prints run_id (seeds run_input + __system__).
+- \`cognetivy run status --run <run_id> [--json]\` - node completion + collection item counts.
 - \`cognetivy run complete --run <run_id>\`, \`run set-name --run <run_id> --name <string>\`.
 
 ## node
-- \`cognetivy node start --run <run_id> --node <node_id>\` — step_started + started node result; prints COGNETIVY_NODE_RESULT_ID.
-- \`cognetivy node complete --run <run_id> --node <node_id> --status completed [--output ...] [--collection-kind <kind>]\` — node result + optional collection (omit --collection-file to read from stdin) + step_completed.
+- \`cognetivy node start --run <run_id> --node <node_id>\` - step_started + started node result; prints COGNETIVY_NODE_RESULT_ID.
+- \`cognetivy node complete --run <run_id> --node <node_id> --status completed [--output ...] [--collection-kind <kind>]\` - node result + optional collection (omit --collection-file to read from stdin) + step_completed.
 
 ## event
-- \`cognetivy event append --run <run_id> [--file <path>] [--by <string>]\` — append event (omit --file to read from stdin). Step events: data.step = node id.
+- \`cognetivy event append --run <run_id> [--file <path>] [--by <string>]\` - append event (omit --file to read from stdin). Step events: data.step = node id.
 
 ## collection-schema
-- \`cognetivy collection-schema get [--workflow <workflow_id>]\` — print workflow-scoped schema (kinds, item_schema, references).
-- \`cognetivy collection-schema set --file <path> [--workflow <workflow_id>]\` — set schema from JSON.
+- \`cognetivy collection-schema get [--workflow <workflow_id>]\` - print workflow-scoped schema (kinds, item_schema, references).
+- \`cognetivy collection-schema set --file <path> [--workflow <workflow_id>]\` - set schema from JSON.
 
 ## collection
-- \`cognetivy collection list --run <run_id>\` — list kinds that have data for run.
-- \`cognetivy collection get --run <run_id> --kind <kind>\` — get all items of kind.
-- \`cognetivy collection set --run <run_id> --kind <kind> [--file <path>] --node <node_id> --node-result <node_result_id>\` — replace items (omit --file for stdin).
-- \`cognetivy collection append --run <run_id> --kind <kind> [--file <path>] --node <node_id> --node-result <node_result_id> [--id <id>]\` — append one item (omit --file for stdin).
+- \`cognetivy collection list --run <run_id>\` - list kinds that have data for run.
+- \`cognetivy collection get --run <run_id> --kind <kind>\` - get all items of kind.
+- \`cognetivy collection set --run <run_id> --kind <kind> [--file <path>] --node <node_id> --node-result <node_result_id>\` - replace items (omit --file for stdin).
+- \`cognetivy collection append --run <run_id> --kind <kind> [--file <path>] --node <node_id> --node-result <node_result_id> [--id <id>]\` - append one item (omit --file for stdin).
 
 ## node-result
-- \`cognetivy node-result list --run <run_id>\` — list node results for run.
-- \`cognetivy node-result get --run <run_id> --node <node_id>\` — get node result.
-- \`cognetivy node-result set --run <run_id> --node <node_id> --status <started|completed|failed|needs_human> [--id <node_result_id>] [--output-file <path> | --output <string>]\` — set node result.
+- \`cognetivy node-result list --run <run_id>\` - list node results for run.
+- \`cognetivy node-result get --run <run_id> --node <node_id>\` - get node result.
+- \`cognetivy node-result set --run <run_id> --node <node_id> --status <started|completed|failed|needs_human> [--id <node_result_id>] [--output-file <path> | --output <string>]\` - set node result.
 
 ## studio
-- \`cognetivy studio [--workspace <path>] [--port <port>]\` — open read-only Studio (workflow, runs, events, collections) in browser.
+- \`cognetivy studio [--workspace <path>] [--port <port>]\` - open read-only Studio (workflow, runs, events, collections) in browser.
 `;
 }
 

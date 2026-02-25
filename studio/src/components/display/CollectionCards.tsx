@@ -22,7 +22,7 @@ function SourceCard({ item }: { item: CollectionItem }) {
             rel="noopener noreferrer"
             className="font-medium text-primary hover:underline text-sm truncate max-w-full"
           >
-            {title || url || "—"}
+            {title || url || "-"}
           </a>
           {type && <Badge variant="secondary">{type}</Badge>}
         </div>
@@ -78,7 +78,7 @@ function CollectedCard({ item }: { item: CollectionItem }) {
 }
 
 function IdeaCard({ item }: { item: CollectionItem }) {
-  const name = (item.name as string) ?? "—";
+  const name = (item.name as string) ?? "-";
   const whyNow = (item.why_now as string) ?? "";
   const description = (item.description as string) ?? "";
   const targetSegment = (item.target_segment as string) ?? "";

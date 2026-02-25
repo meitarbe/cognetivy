@@ -28,12 +28,12 @@ import { ListChecks } from "lucide-react";
 
 const POLL_MS = 3000;
 
-/** Format seconds as "+Xs" or "—" for first event. */
+/** Format seconds as "+Xs" or "-" for first event. */
 function formatEventDelta(ts: string, prevTs: string | null): string {
-  if (!prevTs) return "—";
+  if (!prevTs) return "-";
   const a = Date.parse(ts);
   const b = Date.parse(prevTs);
-  if (Number.isNaN(a) || Number.isNaN(b)) return "—";
+  if (Number.isNaN(a) || Number.isNaN(b)) return "-";
   const sec = (a - b) / 1000;
   if (sec < 60) return `+${sec.toFixed(1)}s`;
   const min = Math.floor(sec / 60);
@@ -348,13 +348,13 @@ export function RunDetailPage() {
                             <TableCell className="text-[11px] text-muted-foreground py-1 font-mono">
                               {formatEventDelta(ev.ts, i > 0 ? events[i - 1].ts : null)}
                             </TableCell>
-                            <TableCell className="text-[11px] text-muted-foreground py-1">{ev.ts ?? "—"}</TableCell>
+                            <TableCell className="text-[11px] text-muted-foreground py-1">{ev.ts ?? "-"}</TableCell>
                             <TableCell className="py-1">
                               <Badge variant="outline" className={cn("text-[10px]", getEventTypeBadgeVariant(ev.type))}>
                                 {ev.type}
                               </Badge>
                             </TableCell>
-                            <TableCell className="text-sm py-1">{ev.by ?? "—"}</TableCell>
+                            <TableCell className="text-sm py-1">{ev.by ?? "-"}</TableCell>
                             <TableCell className="min-w-[280px] max-w-none whitespace-normal break-words align-top py-1.5 text-xs overflow-visible">
                               <EventDataSummary type={ev.type} data={ev.data} />
                             </TableCell>

@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 const MAX_IO_ITEMS = 3;
 
 function formatIoList(list: string[]): string {
-  if (list.length === 0) return "—";
+  if (list.length === 0) return "-";
   if (list.length <= MAX_IO_ITEMS) return list.join(", ");
   return `${list.slice(0, MAX_IO_ITEMS).join(", ")} +${list.length - MAX_IO_ITEMS}`;
 }

@@ -182,11 +182,11 @@ function WorkflowCanvasInner({
           )}
           <div>
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Input collections</p>
-            <p className="font-mono text-sm">{(d.input ?? []).join(", ") || "—"}</p>
+            <p className="font-mono text-sm">{(d.input ?? []).join(", ") || "-"}</p>
           </div>
           <div>
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Output collections</p>
-            <p className="font-mono text-sm">{(d.output ?? []).join(", ") || "—"}</p>
+            <p className="font-mono text-sm">{(d.output ?? []).join(", ") || "-"}</p>
           </div>
           {d.stepStatus && (
             <div>

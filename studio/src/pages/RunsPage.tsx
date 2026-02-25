@@ -223,7 +223,7 @@ export function RunsPage() {
                       to={`/runs/${encodeURIComponent(run.run_id)}`}
                       className={TABLE_LINK_CLASS}
                     >
-                      {run.name ?? "—"}
+                      {run.name ?? "-"}
                     </Link>
                   </TableCell>
                   <TableCell className="max-w-[200px]">

@@ -143,7 +143,7 @@ async function handleApi(
   const apiMatch = pathname.replace(/^\/api\/?/, "").split("/").filter(Boolean);
 
   try {
-    // PATCH /api/runs/:id — update run name
+    // PATCH /api/runs/:id - update run name
     if (method === "PATCH" && apiMatch[0] === "runs" && apiMatch.length === 2) {
       const runId = apiMatch[1];
       if (!(await runExists(runId, cwd))) {

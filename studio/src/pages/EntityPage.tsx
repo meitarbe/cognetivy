@@ -29,7 +29,7 @@ const POLL_MS = 5000;
 const COLLECTION_RUN_FILTER_STORAGE_KEY = "cognetivy_collection_run_id";
 
 function formatCellValue(value: unknown): string {
-  if (value === undefined || value === null) return "—";
+  if (value === undefined || value === null) return "-";
   if (typeof value === "string") return value;
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   if (Array.isArray(value)) return value.map((v) => formatCellValue(v)).join(", ");
@@ -194,7 +194,7 @@ export function EntityPage() {
 
       {kindSchema && (
         <div className="text-xs text-muted-foreground py-1.5 px-2 rounded-md bg-muted/40 border border-border/50">
-          <span className="font-medium text-foreground/80">Workflow:</span> {selectedWorkflow?.name ?? "—"}
+          <span className="font-medium text-foreground/80">Workflow:</span> {selectedWorkflow?.name ?? "-"}
           <span className="ml-2"><span className="font-medium text-foreground/80">Schema:</span> {kindSchema.description}</span>
         </div>
       )}
@@ -276,10 +276,10 @@ export function EntityPage() {
                             className={TABLE_LINK_CLASS}
                             onClick={(e) => e.stopPropagation()}
                           >
-                            {runIdToName.get(String(item.run_id)) ?? "—"}
+                            {runIdToName.get(String(item.run_id)) ?? "-"}
                           </Link>
                         ) : (
-                          "—"
+                          "-"
                         )}
                       </TableCell>
                       {displayColumns.map((col) => {

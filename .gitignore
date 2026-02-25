@@ -1,6 +1,6 @@
 
 
-# cognetivy — ignore runtime data; commit workflow.versions/
+# cognetivy - ignore runtime data; commit workflow.versions/
 .cognetivy/runs/
 .cognetivy/events/
 .cognetivy/collections/
