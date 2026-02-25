@@ -1,14 +1,15 @@
 # Cognetivy
+[![npm version](https://img.shields.io/npm/v/cognetivy.svg)](https://www.npmjs.com/package/cognetivy) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-![Cognetivy Studio: workflow canvas, run details, and data collected](studio_example.jpg)
+Cognetivy is an open-source state layer for AI-assistants like Claude Code, Cursor, OpenClaw, etc. It helps you define workflows, track runs and events, and store structured collections in a local `.cognetivy/` workspace. No LLMs inside - just the data and tools your editor's agent uses via [Skills](https://agentskills.io/) and [MCP](https://agentskills.io/). Works with **Claude Code**, **Cursor**, **OpenClaw**, and other Skills and MCP-compatible clients.
 
-Cognetivy is an open-source state layer for AI-assisted development: define workflows, track runs and events, and store structured collections in a local `.cognetivy/` workspace. No LLMs inside - just the data and tools your editor's agent uses via [Skills](https://agentskills.io/) and [MCP](https://agentskills.io/). Works with **Cursor**, **Claude Code**, **OpenClaw**, and other MCP-compatible clients.
+**Project status:** Actively maintained. We welcome [issues](https://github.com/meitarbe/cognetivy/issues) and [pull requests](https://github.com/meitarbe/cognetivy/pulls).
 
 ## Requirements
 
 - **Node.js** ≥ 18
 - A project directory (or an empty folder) to create a workspace in
-- A coding agent (Cursor, Claude Code, OpenClaw, etc.) working on that directory
+- A coding agent (Claude Code, Cursor, OpenClaw, etc.) working on that directory
 
 ---
 
@@ -106,6 +107,14 @@ Use `"args": ["mcp", "--workspace", "/path/to/folder/with/.cognetivy"]` if the w
 
 ---
 
+## Community
+
+- [Contributing](CONTRIBUTING.md) — how to run the project, run tests, and submit changes
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+- [Report a bug](https://github.com/meitarbe/cognetivy/issues/new?template=bug_report.md) · [Request a feature](https://github.com/meitarbe/cognetivy/issues/new?template=feature_request.md)
+
+---
+
 ## License
 
-MIT
+[MIT](LICENSE)
