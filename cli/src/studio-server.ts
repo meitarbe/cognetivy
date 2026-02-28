@@ -11,7 +11,6 @@ import {
   getWorkspacePaths,
   workspaceExists,
   readWorkflowIndex,
-  listWorkflows,
   readWorkflowRecord,
   listWorkflowVersionIds,
   readWorkflowVersionRecord,
@@ -48,7 +47,7 @@ async function handleApiWorkspace(cwd: string): Promise<{ path: string; exists: 
 
 async function handleApiWorkflows(cwd: string): Promise<unknown[]> {
   const index = await readWorkflowIndex(cwd);
-  const workflows = await listWorkflows(cwd);
+  const workflows = index.workflows ?? [];
   return workflows.map((w) => ({ ...w, current: w.workflow_id === index.current_workflow_id }));
 }
 
@@ -64,9 +63,30 @@ async function handleApiWorkflowVersions(cwd: string, workflowId: string): Promi
 async function handleApiWorkflowVersion(
   cwd: string,
   workflowId: string,
-  versionId: string
+  versionId: string,
+  includePrompts: boolean
 ): Promise<unknown> {
-  return readWorkflowVersionRecord(workflowId, versionId, cwd);
+  const version = await readWorkflowVersionRecord(workflowId, versionId, cwd);
+  if (includePrompts) return version;
+  const nodes = (version.nodes ?? []).map((n) => {
+    const { prompt: _p, description: _d, ...rest } = n;
+    return rest;
+  });
+  return { ...version, nodes };
+}
+
+async function handleApiWorkflowNodePrompt(
+  cwd: string,
+  workflowId: string,
+  versionId: string,
+  nodeId: string
+): Promise<{ prompt?: string; description?: string }> {
+  const version = await readWorkflowVersionRecord(workflowId, versionId, cwd);
+  const node = (version.nodes ?? []).find((n) => n.id === nodeId);
+  if (!node) {
+    throw new Error(`Node "${nodeId}" not found in workflow version`);
+  }
+  return { prompt: node.prompt, description: node.description };
 }
 
 async function handleApiRuns(cwd: string): Promise<unknown[]> {
@@ -185,8 +205,17 @@ async function handleApi(
     }
     // GET /api/workflows/:workflowId
     if (apiMatch[0] === "workflows" && apiMatch.length === 2) {
-      const data = await handleApiWorkflowRecord(cwd, apiMatch[1]);
-      sendJson(res, 200, data);
+      try {
+        const data = await handleApiWorkflowRecord(cwd, apiMatch[1]);
+        sendJson(res, 200, data);
+      } catch (err) {
+        const e = err as NodeJS.ErrnoException;
+        if (e?.code === "ENOENT") {
+          sendJson(res, 404, { error: "Workflow not found" });
+          return true;
+        }
+        throw err;
+      }
       return true;
     }
     // GET /api/workflows/:workflowId/versions
@@ -197,7 +226,19 @@ async function handleApi(
     }
     // GET /api/workflows/:workflowId/versions/:versionId
     if (apiMatch[0] === "workflows" && apiMatch[2] === "versions" && apiMatch.length === 4) {
-      const data = await handleApiWorkflowVersion(cwd, apiMatch[1], apiMatch[3]);
+      const includePrompts = searchParams?.get("include_prompts") !== "false";
+      const data = await handleApiWorkflowVersion(cwd, apiMatch[1], apiMatch[3], includePrompts);
+      sendJson(res, 200, data);
+      return true;
+    }
+    // GET /api/workflows/:workflowId/versions/:versionId/nodes/:nodeId
+    if (
+      apiMatch[0] === "workflows" &&
+      apiMatch[2] === "versions" &&
+      apiMatch[4] === "nodes" &&
+      apiMatch.length === 6
+    ) {
+      const data = await handleApiWorkflowNodePrompt(cwd, apiMatch[1], apiMatch[3], apiMatch[5]);
       sendJson(res, 200, data);
       return true;
     }

@@ -52,9 +52,12 @@ export function getDataflowLayout(input: {
 
   const rowByNode: Record<string, number> = {};
   [...nodeIds].forEach((id) => (rowByNode[id] = 0));
+  const maxIterations = nodeIds.size + 1;
+  let iterations = 0;
   let changed = true;
-  while (changed) {
+  while (changed && iterations < maxIterations) {
     changed = false;
+    iterations++;
     for (const id of nodeIds) {
       const preds = inEdges[id] ?? [];
       const predRows = preds.map((from) => rowByNode[from] ?? 0);
@@ -146,9 +149,12 @@ export function getNodeRowsFromDataflow(input: {
   });
   const rowByNode: Record<string, number> = {};
   [...nodeIds].forEach((id) => (rowByNode[id] = 0));
+  const maxIterations = nodeIds.size + 1;
+  let iterations = 0;
   let changed = true;
-  while (changed) {
+  while (changed && iterations < maxIterations) {
     changed = false;
+    iterations++;
     for (const id of nodeIds) {
       const preds = inEdges[id] ?? [];
       const predRows = preds.map((from) => rowByNode[from] ?? 0);

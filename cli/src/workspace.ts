@@ -25,6 +25,7 @@ export const WORKFLOWS_DIR = "workflows";
 export const WORKFLOWS_INDEX_JSON = "index.json";
 export const WORKFLOW_JSON = "workflow.json";
 export const WORKFLOW_VERSIONS_DIR = "versions";
+export const WORKFLOW_VERSION_IDS_JSON = "version_ids.json";
 export const WORKFLOW_COLLECTIONS_DIR = "collections";
 export const WORKFLOW_COLLECTION_SCHEMA_JSON = "schema.json";
 export const RUNS_DIR = "runs";
@@ -223,6 +224,10 @@ export function getWorkflowVersionRecordPath(
   return path.join(getWorkflowVersionsDirPath(workflowId, cwd), `${versionId}.json`);
 }
 
+export function getWorkflowVersionIdsManifestPath(workflowId: string, cwd: string = process.cwd()): string {
+  return path.join(getWorkflowVersionsDirPath(workflowId, cwd), WORKFLOW_VERSION_IDS_JSON);
+}
+
 /**
  * Path to workflow collections directory.
  */
@@ -279,12 +284,28 @@ export async function listWorkflowVersionIds(
   cwd: string = process.cwd()
 ): Promise<string[]> {
   await requireWorkspace(cwd);
+  const manifestPath = getWorkflowVersionIdsManifestPath(workflowId, cwd);
+  try {
+    const raw = await fs.readFile(manifestPath, "utf-8");
+    const data = JSON.parse(raw) as { version_ids?: string[] };
+    if (Array.isArray(data?.version_ids)) {
+      return data.version_ids;
+    }
+  } catch {
+    // manifest missing or invalid; fall back to readdir
+  }
   const dir = getWorkflowVersionsDirPath(workflowId, cwd);
   const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => []);
-  return entries
-    .filter((e) => e.isFile() && e.name.endsWith(".json"))
+  const ids = entries
+    .filter((e) => e.isFile() && e.name.endsWith(".json") && e.name !== WORKFLOW_VERSION_IDS_JSON)
     .map((e) => e.name.replace(/\.json$/, ""))
     .sort((a, b) => a.localeCompare(b, "en", { numeric: true, sensitivity: "base" }));
+  try {
+    await fs.writeFile(manifestPath, JSON.stringify({ version_ids: ids }, null, 2), "utf-8");
+  } catch {
+    // best-effort write
+  }
+  return ids;
 }
 
 export async function readWorkflowVersionRecord(
@@ -311,6 +332,24 @@ export async function writeWorkflowVersionRecord(
   await fs.mkdir(dir, { recursive: true });
   const filePath = getWorkflowVersionRecordPath(workflow.workflow_id, workflow.version_id, cwd);
   await fs.writeFile(filePath, JSON.stringify(workflow, null, 2), "utf-8");
+
+  const manifestPath = getWorkflowVersionIdsManifestPath(workflow.workflow_id, cwd);
+  let ids: string[];
+  try {
+    const raw = await fs.readFile(manifestPath, "utf-8");
+    const data = JSON.parse(raw) as { version_ids?: string[] };
+    ids = Array.isArray(data?.version_ids) ? data.version_ids : [];
+  } catch {
+    const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => []);
+    ids = entries
+      .filter((e) => e.isFile() && e.name.endsWith(".json") && e.name !== WORKFLOW_VERSION_IDS_JSON)
+      .map((e) => e.name.replace(/\.json$/, ""));
+  }
+  if (!ids.includes(workflow.version_id)) {
+    ids.push(workflow.version_id);
+    ids.sort((a, b) => a.localeCompare(b, "en", { numeric: true, sensitivity: "base" }));
+    await fs.writeFile(manifestPath, JSON.stringify({ version_ids: ids }, null, 2), "utf-8").catch(() => {});
+  }
 }
 
 export { DEFAULT_WORKFLOW_ID };

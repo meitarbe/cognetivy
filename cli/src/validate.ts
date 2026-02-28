@@ -1,9 +1,62 @@
-import { WorkflowNodeType, type WorkflowVersionRecord } from "./models.js";
+import { WorkflowNodeType, type WorkflowVersionRecord, type WorkflowNode } from "./models.js";
 
 export class WorkflowValidationError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "WorkflowValidationError";
+  }
+}
+
+/**
+ * Build node-to-node dependency: B is predecessor of A when B outputs a collection that A inputs.
+ * Then detect cycle with DFS; throw if the dataflow graph has a cycle.
+ */
+function assertWorkflowAcyclic(nodes: WorkflowNode[]): void {
+  const nodeIds = new Set(nodes.map((n) => n.id));
+  const inEdges: Record<string, string[]> = {};
+  nodeIds.forEach((id) => (inEdges[id] = []));
+
+  const collectionToProducers = new Map<string, string[]>();
+  const collectionToConsumers = new Map<string, string[]>();
+  for (const n of nodes) {
+    for (const c of n.output_collections ?? []) {
+      if (!collectionToProducers.has(c)) collectionToProducers.set(c, []);
+      collectionToProducers.get(c)!.push(n.id);
+    }
+    for (const c of n.input_collections ?? []) {
+      if (!collectionToConsumers.has(c)) collectionToConsumers.set(c, []);
+      collectionToConsumers.get(c)!.push(n.id);
+    }
+  }
+  for (const [coll, consumers] of collectionToConsumers) {
+    const producers = collectionToProducers.get(coll) ?? [];
+    for (const from of producers) {
+      for (const to of consumers) {
+        if (from !== to) inEdges[to].push(from);
+      }
+    }
+  }
+
+  const visited = new Set<string>();
+  const stack = new Set<string>();
+
+  function visit(id: string): void {
+    if (stack.has(id)) {
+      throw new WorkflowValidationError(
+        `Workflow has a cycle in the dataflow (node "${id}" is part of a circular dependency). Ensure no node depends on a collection produced by a node that depends on it.`
+      );
+    }
+    if (visited.has(id)) return;
+    visited.add(id);
+    stack.add(id);
+    for (const pred of inEdges[id] ?? []) {
+      visit(pred);
+    }
+    stack.delete(id);
+  }
+
+  for (const id of nodeIds) {
+    visit(id);
   }
 }
 
@@ -63,4 +116,6 @@ export function validateWorkflowVersion(wf: unknown): asserts wf is WorkflowVers
       }
     }
   }
+
+  assertWorkflowAcyclic(o.nodes as WorkflowNode[]);
 }
