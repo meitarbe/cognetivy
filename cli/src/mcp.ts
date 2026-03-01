@@ -25,6 +25,7 @@ import {
   writeCollections,
   appendCollection,
   writeNodeResult,
+  readNodeResult,
   listNodeResults,
 } from "./workspace.js";
 import { getMergedConfig } from "./config.js";
@@ -43,6 +44,7 @@ import { CollectionValidationError } from "./validate-collection.js";
 import { mergeKindTemplate } from "./kind-templates.js";
 import { listSkills, getSkillByName } from "./skills.js";
 import type { SkillSource } from "./skills.js";
+import { getNextStep } from "./run-engine.js";
 
 const DEFAULT_BY = "mcp";
 
@@ -101,7 +103,7 @@ const TOOLS: Array<{ name: string; description: string; inputSchema: { type: "ob
   {
     name: "run_start",
     description:
-      "Start a new run. Returns { run_id, suggested_collection_kinds, _hint }. You MUST provide a descriptive name. SCHEMA-FIRST: Call collection_schema_get, then collection_schema_add_kind for any suggested_collection_kinds missing from schema, before collection_set/collection_append.",
+      "Start a new run. Returns run_id, suggested_collection_kinds, next_step (action, node_id?, hint?), and current_node_id when in progress. Follow next_step.hint for what to do next. Prefer run_step to advance; use node_start/node_complete only if needed.",
     inputSchema: {
       type: "object",
       properties: {
@@ -117,22 +119,40 @@ const TOOLS: Array<{ name: string; description: string; inputSchema: { type: "ob
     },
   },
   {
-    name: "run_complete",
+    name: "run_step",
     description:
-      "Explicitly mark a run as completed. ALWAYS call this after event_append run_completed to ensure the run status is updated. Guarantees status=completed is persisted.",
+      "Advance a run: start next node (omit node_id) or complete a node (provide node_id; optional collection_kind + collection_items or collection_payload). Returns next_step and current_node_id. Use this as the main way to advance; follow next_step.hint.",
     inputSchema: {
       type: "object",
-      properties: { run_id: { type: "string", description: "Run ID to mark complete" } },
+      properties: {
+        run_id: { type: "string", description: "Run ID" },
+        node_id: { type: "string", description: "When completing a node, the workflow node ID" },
+        collection_kind: { type: "string", description: "Collection kind when completing with output" },
+        collection_items: { type: "array", items: { type: "object" }, description: "Array for set, or omit and use collection_payload for append" },
+        collection_payload: { type: "object", description: "Single item for append when completing node" },
+        collection_mode: { type: "string", description: "set | append (default: infer)" },
+        by: { type: "string" },
+      },
       required: ["run_id"],
     },
   },
   {
     name: "run_status",
     description:
-      "Get run status: run metadata, each node's completion status, and item count per collection. Use after completing nodes to verify state without multiple collection_get calls.",
+      "Get run status: run metadata, nodes, collections, next_step (action, node_id?, hint?), and current_node_id when a node is in progress. Use to see what to do next without guessing.",
     inputSchema: {
       type: "object",
       properties: { run_id: { type: "string", description: "Run ID" } },
+      required: ["run_id"],
+    },
+  },
+  {
+    name: "run_complete",
+    description:
+      "Mark a run as completed. Call after event_append run_completed. Returns next_step (action: done).",
+    inputSchema: {
+      type: "object",
+      properties: { run_id: { type: "string", description: "Run ID to mark complete" } },
       required: ["run_id"],
     },
   },
@@ -451,13 +471,150 @@ async function handleToolsCall(
 
         const workflow = await readWorkflowVersionRecord(workflowId, versionId, cwd);
         const suggested_collection_kinds = getSuggestedCollectionKinds(workflow);
+        let { next_step, current_node_id } = await getNextStep(runId, cwd);
+        if (next_step.action === "run_node" && next_step.node_id) {
+          await appendEventLine(runId, { ts: now, type: "step_started", by, data: { step: next_step.node_id, step_id: next_step.node_id } }, cwd);
+          await writeNodeResult(runId, next_step.node_id, {
+            node_result_id: generateId("node_result"),
+            run_id: runId,
+            workflow_id: workflowId,
+            workflow_version_id: versionId,
+            node_id: next_step.node_id,
+            status: NodeResultStatus.Started,
+            started_at: now,
+          }, cwd);
+          const after = await getNextStep(runId, cwd);
+          next_step = after.next_step;
+          current_node_id = after.current_node_id;
+        }
         return JSON.stringify({
           run_id: runId,
           suggested_collection_kinds,
+          next_step,
+          ...(current_node_id !== undefined && { current_node_id }),
           _hint:
             suggested_collection_kinds.length > 0
-              ? `Call collection_schema_get. Ensure schema has kinds: ${suggested_collection_kinds.join(", ")}. Use collection_schema_add_kind if missing, then collection_set/collection_append per step.`
+              ? `Call collection_schema_get. Ensure schema has kinds: ${suggested_collection_kinds.join(", ")}. Use collection_schema_add_kind if missing. Then use run_step to advance; follow next_step.hint.`
               : undefined,
+        });
+      }
+      case "run_step": {
+        const runIdStep = args.run_id as string;
+        const nodeIdStep = args.node_id as string | undefined;
+        if (!(await runExists(runIdStep, cwd))) {
+          throw new Error(`Run "${runIdStep}" not found.`);
+        }
+        const runStep = await readRunFile(runIdStep, cwd);
+        if (runStep.status !== "running") {
+          throw new Error(`Run is not running (status: ${runStep.status}).`);
+        }
+        const byStep = (args.by as string) ?? (await resolveBy(cwd));
+        const nowStep = new Date().toISOString();
+
+        if (nodeIdStep !== undefined) {
+          const existingStep = await readNodeResult(runIdStep, nodeIdStep, cwd);
+          if (!existingStep || existingStep.status !== "started") {
+            await appendEventLine(runIdStep, { ts: nowStep, type: "step_started", by: byStep, data: { step: nodeIdStep, step_id: nodeIdStep } }, cwd);
+            await writeNodeResult(runIdStep, nodeIdStep, {
+              node_result_id: generateId("node_result"),
+              run_id: runIdStep,
+              workflow_id: runStep.workflow_id,
+              workflow_version_id: runStep.workflow_version_id,
+              node_id: nodeIdStep,
+              status: NodeResultStatus.Started,
+              started_at: nowStep,
+            }, cwd);
+          }
+          const nodeResultIdStep = generateId("node_result");
+          const collectionKindStep = args.collection_kind as string | undefined;
+          const collectionItemsStep = args.collection_items as Array<Record<string, unknown>> | undefined;
+          const collectionPayloadStep = args.collection_payload as Record<string, unknown> | undefined;
+          const collectionModeStep = args.collection_mode as string | undefined;
+          const writesStep: { kind: string; item_ids: string[] }[] = [];
+
+          if (collectionKindStep) {
+            const payloads = collectionItemsStep ?? (collectionPayloadStep ? [collectionPayloadStep] : []);
+            if (payloads.length === 0) {
+              throw new Error("run_step with collection_kind requires collection_items or collection_payload.");
+            }
+            const mode = collectionModeStep === "set" || collectionModeStep === "append" ? collectionModeStep : payloads.length > 1 ? "set" : "append";
+            if (mode === "set") {
+              const payloadsWithIds = payloads.map((p, i) => ({
+                ...p,
+                id: (p as { id?: string }).id ?? `${collectionKindStep}_${i}`,
+              }));
+              await writeCollections(
+                runIdStep,
+                collectionKindStep,
+                payloadsWithIds,
+                { created_by_node_id: nodeIdStep, created_by_node_result_id: nodeResultIdStep },
+                cwd
+              );
+              writesStep.push({ kind: collectionKindStep, item_ids: payloadsWithIds.map((p) => (p as { id: string }).id) });
+            } else {
+              const item = await appendCollection(
+                runIdStep,
+                collectionKindStep,
+                payloads[0] as Record<string, unknown>,
+                { created_by_node_id: nodeIdStep, created_by_node_result_id: nodeResultIdStep },
+                cwd
+              );
+              writesStep.push({ kind: collectionKindStep, item_ids: [item.id] });
+            }
+          }
+
+          const resultStep: NodeResultRecord = {
+            node_result_id: nodeResultIdStep,
+            run_id: runIdStep,
+            workflow_id: runStep.workflow_id,
+            workflow_version_id: runStep.workflow_version_id,
+            node_id: nodeIdStep,
+            status: NodeResultStatus.Completed,
+            started_at: nowStep,
+            completed_at: nowStep,
+            ...(writesStep.length > 0 && { writes: writesStep }),
+          };
+          await writeNodeResult(runIdStep, nodeIdStep, resultStep, cwd);
+          await appendEventLine(runIdStep, { ts: nowStep, type: "step_completed", by: byStep, data: { step: nodeIdStep, step_id: nodeIdStep } }, cwd);
+        } else {
+          const { next_step: ns } = await getNextStep(runIdStep, cwd);
+          if (ns.action === "run_node" && ns.node_id) {
+            const nodeResultIdStart = generateId("node_result");
+            await appendEventLine(runIdStep, { ts: nowStep, type: "step_started", by: byStep, data: { step: ns.node_id, step_id: ns.node_id } }, cwd);
+            await writeNodeResult(runIdStep, ns.node_id, {
+              node_result_id: nodeResultIdStart,
+              run_id: runIdStep,
+              workflow_id: runStep.workflow_id,
+              workflow_version_id: runStep.workflow_version_id,
+              node_id: ns.node_id,
+              status: NodeResultStatus.Started,
+              started_at: nowStep,
+            }, cwd);
+          }
+        }
+
+        let { next_step: nextStep, current_node_id: currentStep } = await getNextStep(runIdStep, cwd);
+        if (nextStep.action === "run_node" && nextStep.node_id) {
+          await appendEventLine(runIdStep, { ts: nowStep, type: "step_started", by: byStep, data: { step: nextStep.node_id, step_id: nextStep.node_id } }, cwd);
+          await writeNodeResult(runIdStep, nextStep.node_id, {
+            node_result_id: generateId("node_result"),
+            run_id: runIdStep,
+            workflow_id: runStep.workflow_id,
+            workflow_version_id: runStep.workflow_version_id,
+            node_id: nextStep.node_id,
+            status: NodeResultStatus.Started,
+            started_at: nowStep,
+          }, cwd);
+          const after = await getNextStep(runIdStep, cwd);
+          nextStep = after.next_step;
+          currentStep = after.current_node_id;
+        }
+        const runAfter = await readRunFile(runIdStep, cwd);
+        return JSON.stringify({
+          run_id: runAfter.run_id,
+          status: runAfter.status,
+          next_step: nextStep,
+          ...(currentStep !== undefined && { current_node_id: currentStep }),
         });
       }
       case "run_complete": {
@@ -466,7 +623,10 @@ async function handleToolsCall(
           throw new Error(`Run "${runIdComplete}" not found.`);
         }
         await updateRunFile(runIdComplete, { status: "completed" }, cwd);
-        return "Run marked as completed.";
+        return JSON.stringify({
+          message: "Run marked as completed.",
+          next_step: { action: "done" as const, hint: "Run finished." },
+        });
       }
       case "run_status": {
         const runIdStatus = args.run_id as string;
@@ -503,14 +663,22 @@ async function handleToolsCall(
           const nr = nodeResultByNodeId.get("__system__")!;
           nodesList.unshift({ node_id: "__system__", status: nr.status, completed_at: nr.completed_at });
         }
+        const { next_step: statusNextStep, current_node_id: statusCurrentNode } = await getNextStep(runIdStatus, cwd);
         const runSummary = {
           run_id: run.run_id,
           status: run.status,
           name: run.name,
           workflow_id: run.workflow_id,
           workflow_version_id: run.workflow_version_id,
+          ...(statusCurrentNode !== undefined && { current_node_id: statusCurrentNode, current_node_status: "in_progress" }),
         };
-        return JSON.stringify({ run: runSummary, nodes: nodesList, collections });
+        return JSON.stringify({
+          run: runSummary,
+          nodes: nodesList,
+          collections,
+          next_step: statusNextStep,
+          ...(statusCurrentNode !== undefined && { current_node_id: statusCurrentNode }),
+        });
       }
       case "event_append": {
         const runId = args.run_id as string;
@@ -810,12 +978,11 @@ async function handleInitialize(): Promise<{
     serverInfo: { name: "cognetivy", version: "0.1.0" },
     instructions:
       "When you start a run with run_start, you MUST execute the workflow. Do not leave runs incomplete. " +
-      "SCHEMA-FIRST: Before collection_set/collection_append, call collection_schema_get. If schema lacks kinds for workflow outputs (see run_start/workflow_get suggested_collection_kinds), use collection_schema_add_kind to add them. " +
-      "RICH TEXT: Use **Markdown** in collection item fields for summaries, theses, descriptions, and reasons (e.g. idea_summary, why_now_thesis, reliability_reason). Studio renders these as formatted documents. " +
-      "EFFICIENT NODE FLOW: Prefer node_start (optional) then node_complete per step. node_complete creates the node result, optionally writes collection (collection_kind + collection_items or collection_payload), and appends step_completed in one call. Returns { node_result_id }. " +
-      "After run_start: 1) workflow_get (note suggested_collection_kinds), 2) collection_schema_get, 3) collection_schema_add_kind for any missing kinds, 4) for each step: node_start (optional), do work, node_complete (with optional collection_kind + items/payload), 5) event_append run_completed, 6) run_complete. Use run_status(run_id) to verify node completion and collection counts without multiple collection_get calls. " +
-      "Step events MUST include data.step (or step_id) = the workflow node id. " +
-      "If you can spawn sub-agents, scope work per node (one sub-agent per node with only that node's inputs) to reduce context size. For large outputs, prefer multiple collection_append or node_complete calls per item instead of one large collection_set.",
+      "MINIMAL FLOW: run_start returns next_step (action, node_id?, hint?). Use run_step to advance: run_step(run_id) starts the next node; run_step(run_id, node_id, collection_kind, collection_items or collection_payload) completes that node. Every run_start, run_status, and run_step returns next_step and current_node_id (when a node is in progress). Follow next_step.hint; do not guess. When next_step.action is complete_run, call event_append run_completed then run_complete. " +
+      "SCHEMA-FIRST: Before writing collections, call collection_schema_get. If schema lacks kinds for workflow outputs (run_start suggested_collection_kinds), use collection_schema_add_kind. " +
+      "RICH TEXT: Use **Markdown** in collection item fields for summaries, theses, descriptions. " +
+      "After run_start: 1) workflow_get and collection_schema_get (add missing kinds), 2) run_step(run_id) to start first node, 3) do work for next_step.node_id, 4) run_step(run_id, node_id, collection_kind, collection_payload or collection_items) to complete, 5) repeat until next_step.action is complete_run, 6) event_append run_completed, run_complete. run_status(run_id) returns nodes, collections, next_step, current_node_id. " +
+      "Step events use data.step = workflow node id. For sub-agents, one agent per node with only that node's inputs.",
   };
 }
 

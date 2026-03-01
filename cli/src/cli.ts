@@ -344,8 +344,23 @@ runCmd
     );
     console.log(runId);
     console.log(`COGNETIVY_RUN_ID=${runId}`);
-    const { next_step } = await getNextStep(runId, cwd);
-    console.log(formatNextStepLine(runId, "running", next_step));
+    let { next_step, current_node_id } = await getNextStep(runId, cwd);
+    if (next_step.action === "run_node" && next_step.node_id) {
+      await appendEventLine(runId, { ts: now, type: "step_started", by, data: { step: next_step.node_id, step_id: next_step.node_id } }, cwd);
+      await writeNodeResult(runId, next_step.node_id, {
+        node_result_id: generateId("node_result"),
+        run_id: runId,
+        workflow_id: workflowId,
+        workflow_version_id: versionId,
+        node_id: next_step.node_id,
+        status: NodeResultStatus.Started,
+        started_at: now,
+      }, cwd);
+      const after = await getNextStep(runId, cwd);
+      next_step = after.next_step;
+      current_node_id = after.current_node_id;
+    }
+    console.log(formatNextStepLine(runId, "running", next_step, current_node_id));
   });
 runCmd
   .command("complete")
@@ -405,19 +420,23 @@ runCmd
       const nr = nodeResultByNodeId.get("__system__")!;
       nodesList.unshift({ node_id: "__system__", status: nr.status, completed_at: nr.completed_at });
     }
-    const { next_step } = await getNextStep(opts.run, cwd);
+    const { next_step, current_node_id } = await getNextStep(opts.run, cwd);
     const runSummary = {
       run_id: run.run_id,
       status: run.status,
       name: run.name,
       workflow_id: run.workflow_id,
       workflow_version_id: run.workflow_version_id,
+      ...(current_node_id !== undefined && { current_node_id, current_node_status: "in_progress" }),
     };
     if (opts.json) {
-      console.log(JSON.stringify({ run: runSummary, nodes: nodesList, collections, next_step }, null, 2));
+      console.log(JSON.stringify({ run: runSummary, nodes: nodesList, collections, next_step, ...(current_node_id !== undefined && { current_node_id }) }, null, 2));
       return;
     }
     console.log("Run:", run.run_id, run.status, run.name ? `"${run.name}"` : "", `(${run.workflow_id} @ ${run.workflow_version_id})`);
+    if (current_node_id !== undefined) {
+      console.log("Current node (in progress):", current_node_id);
+    }
     if (nodesList.length > 0) {
       console.log("Nodes:");
       for (const n of nodesList) {
@@ -433,7 +452,7 @@ runCmd
         console.log(`  ${c.kind}: ${c.item_count} item(s)`);
       }
     }
-    console.log(formatNextStepLine(run.run_id, run.status, next_step));
+    console.log(formatNextStepLine(run.run_id, run.status, next_step, current_node_id));
   });
 runCmd
   .command("step")
@@ -461,6 +480,20 @@ runCmd
 
       if (opts.node !== undefined) {
         const nodeId = opts.node;
+        const existingResult = await readNodeResult(opts.run, nodeId, cwd);
+        if (!existingResult || existingResult.status !== "started") {
+          const startedAt = new Date().toISOString();
+          await appendEventLine(opts.run, { ts: startedAt, type: "step_started", by, data: { step: nodeId, step_id: nodeId } }, cwd);
+          await writeNodeResult(opts.run, nodeId, {
+            node_result_id: generateId("node_result"),
+            run_id: opts.run,
+            workflow_id: run.workflow_id,
+            workflow_version_id: run.workflow_version_id,
+            node_id: nodeId,
+            status: NodeResultStatus.Started,
+            started_at: startedAt,
+          }, cwd);
+        }
         const nodeResultId = generateId("node_result");
         if (opts.collectionKind) {
           const raw = await readPayloadFromFileOrStdin(undefined, cwd);
@@ -505,24 +538,39 @@ runCmd
           await appendEventLine(opts.run, { ts: now, type: "step_completed", by, data: { step: nodeId, step_id: nodeId } }, cwd);
         }
       } else {
-        const { next_step } = await getNextStep(opts.run, cwd);
-        if (next_step.action === "run_node" && next_step.node_id) {
+        const { next_step: ns } = await getNextStep(opts.run, cwd);
+        if (ns.action === "run_node" && ns.node_id) {
           const nodeResultId = generateId("node_result");
-          await appendEventLine(opts.run, { ts: now, type: "step_started", by, data: { step: next_step.node_id, step_id: next_step.node_id } }, cwd);
-          await writeNodeResult(opts.run, next_step.node_id, {
+          await appendEventLine(opts.run, { ts: now, type: "step_started", by, data: { step: ns.node_id, step_id: ns.node_id } }, cwd);
+          await writeNodeResult(opts.run, ns.node_id, {
             node_result_id: nodeResultId,
             run_id: opts.run,
             workflow_id: run.workflow_id,
             workflow_version_id: run.workflow_version_id,
-            node_id: next_step.node_id,
+            node_id: ns.node_id,
             status: NodeResultStatus.Started,
             started_at: now,
           }, cwd);
         }
       }
-      const { next_step } = await getNextStep(opts.run, cwd);
+      let { next_step, current_node_id } = await getNextStep(opts.run, cwd);
+      if (next_step.action === "run_node" && next_step.node_id) {
+        await appendEventLine(opts.run, { ts: now, type: "step_started", by, data: { step: next_step.node_id, step_id: next_step.node_id } }, cwd);
+        await writeNodeResult(opts.run, next_step.node_id, {
+          node_result_id: generateId("node_result"),
+          run_id: opts.run,
+          workflow_id: run.workflow_id,
+          workflow_version_id: run.workflow_version_id,
+          node_id: next_step.node_id,
+          status: NodeResultStatus.Started,
+          started_at: now,
+        }, cwd);
+        const after = await getNextStep(opts.run, cwd);
+        next_step = after.next_step;
+        current_node_id = after.current_node_id;
+      }
       const runAfter = await readRunFile(opts.run, cwd);
-      console.log(formatNextStepLine(runAfter.run_id, runAfter.status, next_step));
+      console.log(formatNextStepLine(runAfter.run_id, runAfter.status, next_step, current_node_id));
     }
   );
 runCmd

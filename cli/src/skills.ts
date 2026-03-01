@@ -417,13 +417,13 @@ Workflows, runs, node results, and schema-backed collections. Run commands from 
 
 ## Quick start (minimal run)
 
-**Four commands.** Every response includes \`COGNETIVY_NEXT_STEP=...\` (JSON with \`run_id\`, \`status\`, \`next_step\`: \`action\`, \`node_id?\`, \`hint?\`). **Do what the hint says**; no guessing.
+**Four commands.** Every response includes \`COGNETIVY_NEXT_STEP=...\` (JSON with \`run_id\`, \`status\`, \`next_step\`, and \`current_node_id\` when a node is in progress). **Do what the hint says**; no guessing. The next node is chosen by DAG (topological) order so dependencies run before consumers.
 
 1. **Start:** \`cognetivy run start --input input.json --name "Short name"\`
    - Prints \`run_id\` and \`COGNETIVY_NEXT_STEP=...\`. Parse \`next_step\`; usually \`action: "run_node"\`, \`node_id\`, \`hint\` (do work for that node, then run step with payload).
 
 2. **Status (optional):** \`cognetivy run status --run <run_id> [--json]\`
-   - Shows run state and \`next_step\`. Use to see current node and what to do next.
+   - Shows run state, \`current_node_id\` (in progress) when a node is started but not completed, and \`next_step\`.
 
 3. **Step (repeat until done):**
    - **Start next node:** \`cognetivy run step --run <run_id>\` (no \`--node\`). Then do the work for the node in \`next_step.node_id\`.
