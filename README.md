@@ -10,7 +10,38 @@
 
 Cognetivy is an open-source state layer for AI-assistants like Claude Code, Cursor, OpenClaw, etc. It helps you define workflows, track runs and events, and store structured collections in a local `.cognetivy/` workspace. No LLMs inside - just the data and tools your editor's agent uses via [Skills](https://agentskills.io/) and [MCP](https://agentskills.io/). Works with **Claude Code**, **Cursor**, **OpenClaw**, and other Skills and MCP-compatible clients.
 
+## Why Cognetivy
+
+AI coding agents are great at producing output, but their process is usually hard to inspect and hard to repeat.
+
+Cognetivy gives your agent an operational layer so you can:
+
+- **Define how it should work** with explicit workflows
+- **Track what happened** in each run and event
+- **Keep reasoning artifacts organized** in structured collections
+- **Re-run and compare outcomes** with a persistent local workspace
+
+In short: Cognetivy turns powerful-but-chaotic agent sessions into structured, auditable workflows.
+
+## Explain it like I'm new to this
+
+Think of your coding agent as a very smart intern:
+
+- The model is the **brain**
+- Your editor is the **workspace**
+- Cognetivy is the **memory + process manager**
+
+Without Cognetivy, a lot of important context lives in chat history and disappears.
+With Cognetivy, that work is captured as workflows, runs, events, and collections inside `.cognetivy/`.
+
+
 **Project status:** Actively maintained. We welcome [issues](https://github.com/meitarbe/cognetivy/issues) and [pull requests](https://github.com/meitarbe/cognetivy/pulls).
+
+**Great for:**
+
+- Building repeatable AI coding workflows
+- Running structured research tasks with coding agents
+- Teams that need traceability and auditability for agent output
 
 ## Requirements
 
