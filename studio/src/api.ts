@@ -56,6 +56,11 @@ export interface VersionListItem {
   created_at?: string;
 }
 
+export interface WorkflowNodePrompt {
+  prompt?: string;
+  description?: string;
+}
+
 export interface RunRecord {
   run_id: string;
   name?: string;
@@ -151,8 +156,18 @@ export const api = {
   getWorkflow: (workflowId: string) => get<WorkflowRecord>(`/workflows/${encodeURIComponent(workflowId)}`),
   getWorkflowVersions: (workflowId: string) =>
     get<VersionListItem[]>(`/workflows/${encodeURIComponent(workflowId)}/versions`),
-  getWorkflowVersion: (workflowId: string, versionId: string) =>
-    get<WorkflowVersion>(`/workflows/${encodeURIComponent(workflowId)}/versions/${encodeURIComponent(versionId)}`),
+  getWorkflowVersion: (workflowId: string, versionId: string, options?: { includePrompts?: boolean }) => {
+    const params = new URLSearchParams();
+    if (options?.includePrompts === false) params.set("include_prompts", "false");
+    const qs = params.toString();
+    return get<WorkflowVersion>(
+      `/workflows/${encodeURIComponent(workflowId)}/versions/${encodeURIComponent(versionId)}${qs ? `?${qs}` : ""}`
+    );
+  },
+  getWorkflowNodePrompt: (workflowId: string, versionId: string, nodeId: string) =>
+    get<WorkflowNodePrompt>(
+      `/workflows/${encodeURIComponent(workflowId)}/versions/${encodeURIComponent(versionId)}/nodes/${encodeURIComponent(nodeId)}`
+    ),
   getRuns: () => get<RunRecord[]>("/runs"),
   getRun: (id: string) => get<RunRecord>(`/runs/${encodeURIComponent(id)}`),
   getRunEvents: (id: string) => get<EventPayload[]>(`/runs/${encodeURIComponent(id)}/events`),

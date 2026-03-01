@@ -84,10 +84,17 @@ const TOOLS: Array<{ name: string; description: string; inputSchema: { type: "ob
   },
   {
     name: "workflow_set",
-    description: "Set workflow from provided JSON. Creates a new version and updates the pointer.",
+    description:
+      "Set workflow from provided JSON. Creates a new version and updates the pointer. Workflow must be a single connected DAG: no disconnected subgraphs, no cycles (acyclic dataflow).",
     inputSchema: {
       type: "object",
-      properties: { workflow_json: { type: "object", description: "Workflow object (workflow_id, version, nodes, edges)" } },
+      properties: {
+        workflow_json: {
+          type: "object",
+          description:
+            "Workflow object (workflow_id, version, nodes with input_collections/output_collections). Must be one connected graph with no cycles.",
+        },
+      },
       required: ["workflow_json"],
     },
   },

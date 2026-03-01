@@ -123,7 +123,9 @@ export function RunDetailPage() {
       setCollections(col);
       if (runData?.workflow_id && runData?.workflow_version_id) {
         try {
-          const wf = await api.getWorkflowVersion(runData.workflow_id, runData.workflow_version_id);
+          const wf = await api.getWorkflowVersion(runData.workflow_id, runData.workflow_version_id, {
+            includePrompts: false,
+          });
           setWorkflow(wf);
         } catch {
           setWorkflow(null);
@@ -216,6 +218,8 @@ export function RunDetailPage() {
       <div className="flex-1 min-h-0">
         <WorkflowCanvas
           workflow={workflow}
+          workflowId={run?.workflow_id}
+          versionId={run?.workflow_version_id}
           events={events}
           nodeResults={nodeResults}
           readOnly

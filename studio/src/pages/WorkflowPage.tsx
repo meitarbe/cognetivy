@@ -61,7 +61,7 @@ export function WorkflowPage() {
       return;
     }
     api
-      .getWorkflowVersion(selectedWorkflowId, selectedVersionId)
+      .getWorkflowVersion(selectedWorkflowId, selectedVersionId, { includePrompts: false })
       .then(setWorkflowVersion)
       .catch(() => setWorkflowVersion(null));
   }, [selectedWorkflowId, selectedVersionId]);
@@ -138,6 +138,8 @@ export function WorkflowPage() {
         {workflowVersion ? (
           <WorkflowCanvas
             workflow={workflowVersion}
+            workflowId={selectedWorkflowId ?? undefined}
+            versionId={selectedVersionId ?? undefined}
             runsVersionForLink={selectedVersionId ?? undefined}
             readOnly
             showControls

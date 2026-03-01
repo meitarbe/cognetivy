@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ReactFlow,
   Controls,
@@ -13,6 +13,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import type { WorkflowVersion, EventPayload, NodeResultRecord } from "@/api";
+import { api } from "@/api";
 import { WorkflowNode } from "@/components/workflow/WorkflowNode";
 import { type WorkflowNodeData, nodeIdToDisplayName } from "@/components/workflow/WorkflowNode";
 import { CollectionNode, type CollectionNodeData } from "@/components/workflow/CollectionNode";
@@ -34,8 +35,14 @@ import { RichText } from "@/components/display/RichText";
 
 const nodeTypes = { workflow: WorkflowNode, collection: CollectionNode };
 
+const EMPTY_NODES: Node[] = [];
+const EMPTY_EDGES: Edge[] = [];
+
 export interface WorkflowCanvasProps {
   workflow: WorkflowVersion;
+  /** When set with versionId, node prompts are loaded on demand when opening the node detail sheet. */
+  workflowId?: string;
+  versionId?: string;
   events?: EventPayload[];
   onStepClick?: (stepId: string) => void;
   nodeResults?: NodeResultRecord[];
@@ -55,6 +62,8 @@ export interface WorkflowCanvasProps {
 
 function WorkflowCanvasInner({
   workflow,
+  workflowId,
+  versionId,
   events,
   onStepClick,
   nodeResults,
@@ -67,13 +76,23 @@ function WorkflowCanvasInner({
   edgesOverride,
   runsVersionForLink,
 }: WorkflowCanvasProps) {
-  const computed = useMemo(() => {
-    const stepStatuses = events ? getStepStatuses(events) : undefined;
-    return workflowToNodesEdges(workflow, stepStatuses);
+  const [deferredResult, setDeferredResult] = useState<{ nodes: Node[]; edges: Edge[] } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const t = setTimeout(() => {
+      if (cancelled) return;
+      const stepStatuses = events ? getStepStatuses(events) : undefined;
+      setDeferredResult(workflowToNodesEdges(workflow, stepStatuses));
+    }, 0);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
   }, [workflow, events]);
 
-  const baseNodes = nodesOverride ?? computed.nodes;
-  const baseEdges = edgesOverride ?? computed.edges;
+  const baseNodes = nodesOverride ?? (deferredResult ? deferredResult.nodes : EMPTY_NODES);
+  const baseEdges = edgesOverride ?? (deferredResult ? deferredResult.edges : EMPTY_EDGES);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(baseNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(baseEdges);
@@ -85,7 +104,25 @@ function WorkflowCanvasInner({
 
   const canDrag = nodesDraggable || !readOnly;
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+  const [nodePromptCache, setNodePromptCache] = useState<Record<string, { prompt?: string; description?: string }>>({});
+  const [nodePromptLoading, setNodePromptLoading] = useState<Record<string, boolean>>({});
   const { theme } = useTheme();
+
+  useEffect(() => {
+    if (!selectedNode || !workflowId || !versionId) return;
+    const d = selectedNode.data as WorkflowNodeData;
+    const nodeId = d?.nodeId;
+    if (!nodeId || selectedNode.type !== "workflow") return;
+    if (nodeId in nodePromptCache) return;
+    setNodePromptLoading((prev) => ({ ...prev, [nodeId]: true }));
+    api
+      .getWorkflowNodePrompt(workflowId, versionId, nodeId)
+      .then((data) => {
+        setNodePromptCache((prev) => ({ ...prev, [nodeId]: data }));
+        setNodePromptLoading((prev) => ({ ...prev, [nodeId]: false }));
+      })
+      .catch(() => setNodePromptLoading((prev) => ({ ...prev, [nodeId]: false })));
+  }, [selectedNode, workflowId, versionId, nodePromptCache]);
 
   function handleNodeClick(_: React.MouseEvent, node: Node) {
     setSelectedNode(node);
@@ -171,15 +208,33 @@ function WorkflowCanvasInner({
               <p className="text-sm text-muted-foreground mt-1">No node result yet.</p>
             )}
           </div>
-          {d.description && (
-            <div>
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Prompt</p>
-              <RichText
-                content={d.description}
-                className="text-sm text-foreground mt-1 leading-relaxed prose prose-sm dark:prose-invert max-w-none [&_p]:mt-0 [&_p:first-child]:mt-0"
-              />
-            </div>
-          )}
+          {(() => {
+            const promptText =
+              (workflowId && versionId && nodePromptCache[d.nodeId]?.prompt) ??
+              (workflowId && versionId && nodePromptCache[d.nodeId]?.description) ??
+              d.description;
+            const loading = workflowId && versionId && nodePromptLoading[d.nodeId];
+            if (loading) {
+              return (
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Prompt</p>
+                  <p className="text-sm text-muted-foreground mt-1">Loading…</p>
+                </div>
+              );
+            }
+            if (promptText) {
+              return (
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Prompt</p>
+                  <RichText
+                    content={promptText}
+                    className="text-sm text-foreground mt-1 leading-relaxed prose prose-sm dark:prose-invert max-w-none [&_p]:mt-0 [&_p:first-child]:mt-0"
+                  />
+                </div>
+              );
+            }
+            return null;
+          })()}
           <div>
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Input collections</p>
             <p className="font-mono text-sm">{(d.input ?? []).join(", ") || "-"}</p>

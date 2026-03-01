@@ -445,6 +445,10 @@ Workflows, runs, node results, and schema-backed collections. Run commands from 
 
 \`workflow get\` (and \`workflow list\` / \`select\` / \`versions\` / \`set --file <path>\`). Versions have nodes (collection→node→collection).
 
+**Workflow structure (required):**
+- **Single connected graph:** Do not create two or more disconnected subgraphs. All nodes must be part of one dataflow (every node reachable via input/output collections from the rest).
+- **No cycles:** The dataflow must be acyclic. No node may depend (directly or indirectly) on a collection produced by a node that depends on it. Saving a workflow with a cycle will fail validation.
+
 ## Runs
 
 \`run start\` (prints \`run_id\`, seeds \`run_input\`), \`run status --run <id> [--json]\` (nodes + collection counts - use to verify), \`run complete\`, \`run set-name\`.
@@ -499,7 +503,7 @@ Full command reference. Use from project root (directory containing \`.cognetivy
 - \`cognetivy workflow select --workflow <workflow_id>\` - select current workflow.
 - \`cognetivy workflow versions [--workflow <workflow_id>]\` - list versions for a workflow.
 - \`cognetivy workflow get [--workflow <workflow_id>] [--version <version_id>]\` - print a workflow version JSON.
-- \`cognetivy workflow set --file <path> [--workflow <workflow_id>] [--name <string>]\` - set workflow version from JSON file (creates new version and sets it current).
+- \`cognetivy workflow set --file <path> [--workflow <workflow_id>] [--name <string>]\` - set workflow version from JSON file (creates new version and sets it current). **Workflow must be one connected graph with no cycles.**
 
 ## run
 - \`cognetivy run start --input <path> [--name <string>] ...\` - start run; prints run_id (seeds run_input + __system__).
