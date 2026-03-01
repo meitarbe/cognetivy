@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useSearchParams, Link } from "react-router-dom";
-import { api, type CollectionFieldReference, type CollectionItem } from "@/api";
+import { api, type CollectionFieldReference, type CollectionItem, TRACEABILITY_KEYS } from "@/api";
 import { useWorkflowSelection } from "@/contexts/WorkflowSelectionContext";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,10 +8,11 @@ import { formatTimestamp } from "@/lib/utils";
 import { RichText, shouldRenderRichText, type SourceRef } from "@/components/display/RichText";
 import { CopyableId } from "@/components/ui/CopyableId";
 import { getCreatedByNodeId } from "@/components/display/CollectionTable";
+import { TraceabilityDisplay } from "@/components/display/TraceabilityDisplay";
 import { downloadCollectionItemAsPdf } from "@/lib/collectionItemToPdf";
 import { FileDown } from "lucide-react";
 
-const EXCLUDE_KEYS = new Set(["id", "source_refs"]);
+const EXCLUDE_KEYS = new Set(["id", "source_refs", ...TRACEABILITY_KEYS]);
 
 function getSourceRefs(item: CollectionItem): SourceRef[] {
   const refs = item.source_refs;
@@ -168,6 +169,12 @@ export function CollectionItemPage() {
           </div>
         </header>
         <div className="space-y-8">
+          <TraceabilityDisplay
+            item={item}
+            runId={runId ?? (item.run_id as string | undefined)}
+            headingLevel="h2"
+            className="space-y-6"
+          />
           {Object.entries(item)
             .filter(([k]) => !EXCLUDE_KEYS.has(k))
             .map(([key, value]) => {

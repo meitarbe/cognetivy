@@ -8,6 +8,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { CollectionItem, WorkflowVersion } from "@/api";
+import { TRACEABILITY_KEYS } from "@/api";
 import { formatTimestamp, TABLE_LINK_CLASS } from "@/lib/utils";
 import { RichText, shouldRenderRichText } from "./RichText";
 import { collectionItemToMarkdown } from "@/lib/collectionItemToMarkdown";
@@ -33,7 +34,7 @@ export function getCreatedByNodeId(item: CollectionItem): string | null {
 }
 
 function getDisplayKeys(items: CollectionItem[]): string[] {
-  const exclude = new Set(["id", "created_at"]);
+  const exclude = new Set(["id", "created_at", ...TRACEABILITY_KEYS]);
   const keySet = new Set<string>();
   for (const item of items) {
     for (const k of Object.keys(item)) {

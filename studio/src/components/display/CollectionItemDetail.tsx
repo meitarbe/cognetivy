@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import type { CollectionItem } from "@/api";
+import { TRACEABILITY_KEYS } from "@/api";
 import { CopyableId } from "@/components/ui/CopyableId";
 import {
   Dialog,
@@ -9,8 +10,9 @@ import {
 } from "@/components/ui/dialog";
 import { formatTimestamp } from "@/lib/utils";
 import { RichText, isRichTextField, type SourceRef } from "./RichText";
+import { TraceabilityDisplay } from "./TraceabilityDisplay";
 
-const EXCLUDE_KEYS = new Set(["id", "source_refs"]);
+const EXCLUDE_KEYS = new Set(["id", "source_refs", ...TRACEABILITY_KEYS]);
 
 function getSourceRefs(item: CollectionItem): SourceRef[] {
   const refs = item.source_refs;
@@ -23,6 +25,8 @@ interface CollectionItemDetailProps {
   kind: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** When set, citations/derived_from links use run-scoped paths. */
+  runId?: string | null;
 }
 
 function formatValue(value: unknown): string {
@@ -34,11 +38,12 @@ function formatValue(value: unknown): string {
   return String(value);
 }
 
-export function CollectionItemDetail({ item, kind, open, onOpenChange }: CollectionItemDetailProps) {
+export function CollectionItemDetail({ item, kind, open, onOpenChange, runId }: CollectionItemDetailProps) {
   if (!item) return null;
 
   const sourceRefs = getSourceRefs(item);
   const entries = Object.entries(item).filter(([k]) => !EXCLUDE_KEYS.has(k));
+  const effectiveRunId = runId ?? (item.run_id as string | undefined);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -53,6 +58,12 @@ export function CollectionItemDetail({ item, kind, open, onOpenChange }: Collect
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-6 pt-2">
+          <TraceabilityDisplay
+            item={item}
+            runId={effectiveRunId}
+            headingLevel="h3"
+            className="space-y-4"
+          />
           {entries.map(([key, value]) => {
             if (value === undefined || value === null) return null;
             const label = key.replace(/_/g, " ");

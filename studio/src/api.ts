@@ -99,6 +99,29 @@ export interface CollectionItem {
   [key: string]: unknown;
 }
 
+/** Traceability: external source or reference to another collection item. */
+export interface CitationItemRef {
+  kind: string;
+  item_id: string;
+}
+
+/** One citation: external (url) or internal (item_ref). */
+export interface Citation {
+  url?: string;
+  title?: string;
+  excerpt?: string;
+  item_ref?: CitationItemRef;
+}
+
+/** Chain of thinking: item this was derived from. */
+export interface DerivedFrom {
+  kind: string;
+  item_id: string;
+}
+
+/** Keys that are rendered by TraceabilityDisplay, not as generic fields. */
+export const TRACEABILITY_KEYS = new Set(["citations", "derived_from", "reasoning"]);
+
 export const COLLECTION_REFERENCE_CARDINALITY = {
   One: "one",
   Many: "many",
