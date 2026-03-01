@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+(none)
+
+## [0.1.9] - 2025-03-01
+
+- **Tooling:** Repo pins npm via `packageManager` (npm@10.9.4) for consistent installs; CONTRIBUTING.md documents npm 7+ and optional Corepack. Lockfile and package version synced for open-source release.
 - **Run engine:** New run-engine module computes the next step from run state and workflow DAG (topological order). CLI `run start` / `run status` / `run step` and MCP `run_start` / `run_status` / `run_step` return `next_step` (action: `run_node`, `run_nodes_parallel`, `complete_node`, `complete_run`, or `done`), `current_node_id`, and `current_node_ids`. Agent flow: follow the hint; no guessing.
 - **Parallel nodes (deterministic in progress):** When multiple nodes are runnable at the same level, run-engine returns `run_nodes_parallel` with `runnable_node_ids`. Running `run step --run <id>` (no `--node`) causes the CLI and MCP to start all those nodes in one go (step_started + started node result per node), so every parallel node is in progress without relying on sub-agents to call start. Sub-agents do the work and complete with `run step --run <id> --node <node_id> --collection-kind <kind>` and payload. Skill and run-engine hint: you must spawn one sub-agent per node unless the user says otherwise.
 - **Traceability:** Optional `citations`, `derived_from`, and `reasoning` are merged into every collection kind's item schema (except `run_input`) via traceability-schema. Default schema and kind-templates use it; skill and MCP describe traceability. Studio: `TraceabilityDisplay` and collection item detail/page show citations (external links and internal item refs), derived-from links, and reasoning; table and generic item view exclude these keys.
@@ -23,5 +28,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Studio: read-only UI for workflow DAG, runs, events, and collections.
 - Skills installation for Cursor, Claude Code, OpenClaw, and workspace.
 
-[Unreleased]: https://github.com/meitarbe/cognetivy/compare/v0.1.6...HEAD
+[Unreleased]: https://github.com/meitarbe/cognetivy/compare/v0.1.9...HEAD
+[0.1.9]: https://github.com/meitarbe/cognetivy/compare/v0.1.6...v0.1.9
 [0.1.6]: https://github.com/meitarbe/cognetivy/releases/tag/v0.1.6
