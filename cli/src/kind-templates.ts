@@ -1,4 +1,5 @@
 import type { CollectionKindSchema } from "./models.js";
+import { mergeTraceabilityIntoItemSchema } from "./traceability-schema.js";
 
 /**
  * Default fields to merge when adding certain collection kinds via collection_schema_add_kind.
@@ -21,34 +22,39 @@ const KIND_TEMPLATES: Record<
 
 /**
  * Merge kind template into the provided kind schema. Template fields are added if not already present.
+ * Also merges traceability fields (citations, derived_from, reasoning) for non-run_input kinds.
  */
 export function mergeKindTemplate(
   kind: string,
   schema: CollectionKindSchema
 ): CollectionKindSchema {
-  const template = KIND_TEMPLATES[kind];
-  if (!template) return schema;
-
   const itemSchema = schema.item_schema;
   if (itemSchema == null || typeof itemSchema !== "object") return schema;
 
   const base = itemSchema as Record<string, unknown>;
-  if ((base.type as string | undefined) && base.type !== "object") return schema;
+  let mergedSchema = mergeTraceabilityIntoItemSchema(kind, { ...base });
 
-  const required = Array.isArray(base.required) ? [...(base.required as string[])] : [];
+  const template = KIND_TEMPLATES[kind];
+  if (!template) return { ...schema, item_schema: mergedSchema };
+
+  if ((mergedSchema.type as string | undefined) && mergedSchema.type !== "object") return { ...schema, item_schema: mergedSchema };
+
+  const required = Array.isArray(mergedSchema.required) ? [...(mergedSchema.required as string[])] : [];
   for (const field of template.required ?? []) {
     if (!required.includes(field)) required.push(field);
   }
 
   const properties =
-    base.properties && typeof base.properties === "object" ? { ...(base.properties as Record<string, unknown>) } : {};
+    mergedSchema.properties && typeof mergedSchema.properties === "object"
+      ? { ...(mergedSchema.properties as Record<string, unknown>) }
+      : {};
   for (const [key, prop] of Object.entries(template.properties ?? {})) {
     if (!(key in properties)) properties[key] = prop;
   }
 
-  const mergedSchema: Record<string, unknown> = {
+  mergedSchema = {
     type: "object",
-    ...base,
+    ...mergedSchema,
     required: required.length > 0 ? required : undefined,
     properties,
   };

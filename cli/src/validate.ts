@@ -115,6 +115,13 @@ export function validateWorkflowVersion(wf: unknown): asserts wf is WorkflowVers
         throw new WorkflowValidationError(`nodes[${i}].output_collections must contain non-empty strings`);
       }
     }
+    if (n.minimum_rows !== undefined) {
+      if (typeof n.minimum_rows !== "number" || !Number.isInteger(n.minimum_rows) || n.minimum_rows < 1) {
+        throw new WorkflowValidationError(
+          `nodes[${i}].minimum_rows must be a positive integer when present`
+        );
+      }
+    }
   }
 
   assertWorkflowAcyclic(o.nodes as WorkflowNode[]);

@@ -36,6 +36,11 @@ export interface WorkflowNode {
   prompt?: string;
   /** Optional longer description shown in UI. */
   description?: string;
+  /**
+   * When set, the agent should aim to produce at least this many items for this node's output collection(s).
+   * Must be a positive integer if present.
+   */
+  minimum_rows?: number;
 }
 
 export interface WorkflowVersionRecord {
