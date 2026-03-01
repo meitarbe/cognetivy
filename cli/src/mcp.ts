@@ -79,7 +79,7 @@ const TOOLS: Array<{ name: string; description: string; inputSchema: { type: "ob
   {
     name: "workflow_get",
     description:
-      "Get the current workflow version JSON (nodes, edges). Call this after run_start to see which steps you must execute for the run.",
+      "Get the current workflow version JSON (nodes, edges). Call this after run_start to see which steps you must execute for the run. Nodes may include optional minimum_rows; when present, produce at least that many items for the node's output collection(s).",
     inputSchema: { type: "object", properties: {} },
   },
   {

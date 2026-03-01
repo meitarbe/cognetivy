@@ -32,6 +32,7 @@ import {
 } from "./workspace.js";
 import { getMergedConfig } from "./config.js";
 import { validateWorkflowVersion } from "./validate.js";
+import { getNextStep, formatNextStepLine } from "./run-engine.js";
 import { mergeKindTemplate } from "./kind-templates.js";
 import type { RunRecord, EventPayload, CollectionSchemaConfig } from "./models.js";
 import { NodeResultStatus, type NodeResultRecord, type WorkflowRecord } from "./models.js";
@@ -343,6 +344,8 @@ runCmd
     );
     console.log(runId);
     console.log(`COGNETIVY_RUN_ID=${runId}`);
+    const { next_step } = await getNextStep(runId, cwd);
+    console.log(formatNextStepLine(runId, "running", next_step));
   });
 runCmd
   .command("complete")
@@ -357,6 +360,7 @@ runCmd
     }
     await updateRunFile(opts.run, { status: "completed" }, cwd);
     console.log(`Run "${opts.run}" marked as completed.`);
+    console.log(formatNextStepLine(opts.run, "completed", { action: "done", hint: "Run finished." }));
   });
 runCmd
   .command("status")
@@ -401,6 +405,7 @@ runCmd
       const nr = nodeResultByNodeId.get("__system__")!;
       nodesList.unshift({ node_id: "__system__", status: nr.status, completed_at: nr.completed_at });
     }
+    const { next_step } = await getNextStep(opts.run, cwd);
     const runSummary = {
       run_id: run.run_id,
       status: run.status,
@@ -409,7 +414,7 @@ runCmd
       workflow_version_id: run.workflow_version_id,
     };
     if (opts.json) {
-      console.log(JSON.stringify({ run: runSummary, nodes: nodesList, collections }, null, 2));
+      console.log(JSON.stringify({ run: runSummary, nodes: nodesList, collections, next_step }, null, 2));
       return;
     }
     console.log("Run:", run.run_id, run.status, run.name ? `"${run.name}"` : "", `(${run.workflow_id} @ ${run.workflow_version_id})`);
@@ -428,7 +433,98 @@ runCmd
         console.log(`  ${c.kind}: ${c.item_count} item(s)`);
       }
     }
+    console.log(formatNextStepLine(run.run_id, run.status, next_step));
   });
+runCmd
+  .command("step")
+  .description("Advance run: start next node (no args) or complete a node (--node and optional --collection-kind with payload from stdin). Prints next_step.")
+  .requiredOption("--run <run_id>", "Run ID")
+  .option("--node <node_id>", "Node ID (required when completing a node with payload)")
+  .option("--collection-kind <kind>", "Collection kind when completing node (payload from stdin)")
+  .option("--collection-mode <mode>", "set (array) or append (single object); default: infer", "infer")
+  .option("--by <string>", "Actor; defaults to config or 'cli'")
+  .action(
+    async (opts: { run: string; node?: string; collectionKind?: string; collectionMode?: string; by?: string }) => {
+      const cwd = process.cwd();
+      const exists = await runExists(opts.run, cwd);
+      if (!exists) {
+        console.error(`Error: Run "${opts.run}" not found.`);
+        process.exit(1);
+      }
+      const run = await readRunFile(opts.run, cwd);
+      if (run.status !== "running") {
+        console.error(`Error: Run is not running (status: ${run.status}).`);
+        process.exit(1);
+      }
+      const by = opts.by ?? (await resolveBy(cwd));
+      const now = new Date().toISOString();
+
+      if (opts.node !== undefined) {
+        const nodeId = opts.node;
+        const nodeResultId = generateId("node_result");
+        if (opts.collectionKind) {
+          const raw = await readPayloadFromFileOrStdin(undefined, cwd);
+          const payload = JSON.parse(raw) as unknown;
+          const mode = opts.collectionMode === "set" || opts.collectionMode === "append" ? opts.collectionMode : Array.isArray(payload) ? "set" : "append";
+          const writes: { kind: string; item_ids: string[] }[] = [];
+          if (mode === "set") {
+            const payloads = (payload as Array<Record<string, unknown>>).map((p, i) => ({
+              ...p,
+              id: (p as { id?: string }).id ?? `${opts.collectionKind}_${i}`,
+            }));
+            await writeCollections(opts.run, opts.collectionKind, payloads, { created_by_node_id: nodeId, created_by_node_result_id: nodeResultId }, cwd);
+            writes.push({ kind: opts.collectionKind, item_ids: payloads.map((p) => (p as { id: string }).id) });
+          } else {
+            const item = await appendCollection(opts.run, opts.collectionKind, payload as Record<string, unknown>, { created_by_node_id: nodeId, created_by_node_result_id: nodeResultId }, cwd);
+            writes.push({ kind: opts.collectionKind, item_ids: [item.id] });
+          }
+          const result: NodeResultRecord = {
+            node_result_id: nodeResultId,
+            run_id: opts.run,
+            workflow_id: run.workflow_id,
+            workflow_version_id: run.workflow_version_id,
+            node_id: nodeId,
+            status: NodeResultStatus.Completed,
+            started_at: now,
+            completed_at: now,
+            writes,
+          };
+          await writeNodeResult(opts.run, nodeId, result, cwd);
+          await appendEventLine(opts.run, { ts: now, type: "step_completed", by, data: { step: nodeId, step_id: nodeId } }, cwd);
+        } else {
+          await writeNodeResult(opts.run, nodeId, {
+            node_result_id: nodeResultId,
+            run_id: opts.run,
+            workflow_id: run.workflow_id,
+            workflow_version_id: run.workflow_version_id,
+            node_id: nodeId,
+            status: NodeResultStatus.Completed,
+            started_at: now,
+            completed_at: now,
+          }, cwd);
+          await appendEventLine(opts.run, { ts: now, type: "step_completed", by, data: { step: nodeId, step_id: nodeId } }, cwd);
+        }
+      } else {
+        const { next_step } = await getNextStep(opts.run, cwd);
+        if (next_step.action === "run_node" && next_step.node_id) {
+          const nodeResultId = generateId("node_result");
+          await appendEventLine(opts.run, { ts: now, type: "step_started", by, data: { step: next_step.node_id, step_id: next_step.node_id } }, cwd);
+          await writeNodeResult(opts.run, next_step.node_id, {
+            node_result_id: nodeResultId,
+            run_id: opts.run,
+            workflow_id: run.workflow_id,
+            workflow_version_id: run.workflow_version_id,
+            node_id: next_step.node_id,
+            status: NodeResultStatus.Started,
+            started_at: now,
+          }, cwd);
+        }
+      }
+      const { next_step } = await getNextStep(opts.run, cwd);
+      const runAfter = await readRunFile(opts.run, cwd);
+      console.log(formatNextStepLine(runAfter.run_id, runAfter.status, next_step));
+    }
+  );
 runCmd
   .command("set-name")
   .description("Set or update the human-readable name for an existing run")

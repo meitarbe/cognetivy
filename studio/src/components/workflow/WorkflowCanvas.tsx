@@ -104,7 +104,9 @@ function WorkflowCanvasInner({
 
   const canDrag = nodesDraggable || !readOnly;
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
-  const [nodePromptCache, setNodePromptCache] = useState<Record<string, { prompt?: string; description?: string }>>({});
+  const [nodePromptCache, setNodePromptCache] = useState<
+    Record<string, { prompt?: string; description?: string; minimum_rows?: number }>
+  >({});
   const [nodePromptLoading, setNodePromptLoading] = useState<Record<string, boolean>>({});
   const { theme } = useTheme();
 
@@ -230,11 +232,20 @@ function WorkflowCanvasInner({
                     content={promptText}
                     className="text-sm text-foreground mt-1 leading-relaxed prose prose-sm dark:prose-invert max-w-none [&_p]:mt-0 [&_p:first-child]:mt-0"
                   />
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Prompts work best when long and specific: goal, constraints, and format.
+                  </p>
                 </div>
               );
             }
             return null;
           })()}
+          {workflowId && versionId && nodePromptCache[d.nodeId]?.minimum_rows != null && (
+            <div>
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Minimum rows</p>
+              <p className="text-sm mt-0.5">Produce at least {nodePromptCache[d.nodeId].minimum_rows} items</p>
+            </div>
+          )}
           <div>
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Input collections</p>
             <p className="font-mono text-sm">{(d.input ?? []).join(", ") || "-"}</p>
