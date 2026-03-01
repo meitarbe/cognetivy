@@ -11,11 +11,13 @@ import {
   readWorkflowVersionRecord,
 } from "./workspace.js";
 
-export type NextStepAction = "run_node" | "complete_node" | "complete_run" | "done";
+export type NextStepAction = "run_node" | "run_nodes_parallel" | "complete_node" | "complete_run" | "done";
 
 export interface NextStep {
   action: NextStepAction;
   node_id?: string;
+  /** When action is run_nodes_parallel, all runnable node ids at this level (for sub-agents). */
+  runnable_node_ids?: string[];
   output_collections?: string[];
   collection_kind?: string;
   hint?: string;
@@ -29,6 +31,8 @@ export interface RunStatusEnvelope {
   next_step: NextStep;
   /** Node currently in progress (started, not completed). */
   current_node_id?: string;
+  /** All nodes in progress (when using parallel sub-agents). */
+  current_node_ids?: string[];
 }
 
 /**
@@ -78,8 +82,10 @@ export interface GetNextStepResult {
   next_step: NextStep;
   run: RunRecord;
   version: WorkflowVersionRecord | null;
-  /** Set when a node is started but not completed (in progress). */
+  /** Single node in progress (when exactly one started). */
   current_node_id?: string;
+  /** All nodes in progress (started, not completed); use for parallel sub-agents. */
+  current_node_ids?: string[];
 }
 
 /**
@@ -120,6 +126,7 @@ export async function getNextStep(runId: string, cwd: string): Promise<GetNextSt
   const nodes = version.nodes ?? [];
   const orderedNodes = topologicalNodeOrder(nodes);
 
+  const startedList = Array.from(startedNodeIds);
   for (const node of orderedNodes) {
     if (startedNodeIds.has(node.id)) {
       const outKinds = node.output_collections ?? [];
@@ -128,6 +135,7 @@ export async function getNextStep(runId: string, cwd: string): Promise<GetNextSt
         run,
         version,
         current_node_id: node.id,
+        current_node_ids: startedList.length > 0 ? startedList : undefined,
         next_step: {
           action: "complete_node",
           node_id: node.id,
@@ -139,16 +147,32 @@ export async function getNextStep(runId: string, cwd: string): Promise<GetNextSt
       };
     }
   }
-  for (const node of orderedNodes) {
-    if (completedNodeIds.has(node.id)) continue;
-    const inputsSatisfied = node.input_collections.every((c) => kindsWithData.has(c));
-    if (!inputsSatisfied) continue;
+
+  const runnableNodes = orderedNodes.filter(
+    (n) => !completedNodeIds.has(n.id) && !startedNodeIds.has(n.id) && n.input_collections.every((c) => kindsWithData.has(c))
+  );
+  const runnableIds = runnableNodes.map((n) => n.id);
+
+  if (runnableIds.length > 1) {
+    return {
+      run,
+      version,
+      current_node_ids: startedList.length > 0 ? startedList : undefined,
+      next_step: {
+        action: "run_nodes_parallel",
+        runnable_node_ids: runnableIds,
+        hint: `Multiple nodes runnable at this level (${runnableIds.join(", ")}). You must spawn one sub-agent per node unless the user says otherwise. When you run "cognetivy run step --run ${runId}" (no --node), the CLI marks all these nodes in progress. Each sub-agent: do the work for its node, then "cognetivy run step --run ${runId} --node <node_id> --collection-kind <kind>" with payload to complete. No need to "start" first—already in progress.`,
+      },
+    };
+  }
+  if (runnableIds.length === 1) {
+    const node = runnableNodes[0]!;
     const outKinds = node.output_collections ?? [];
     const collectionKind = outKinds.length === 1 ? outKinds[0] : undefined;
     return {
       run,
       version,
-      current_node_id: undefined,
+      current_node_ids: startedList.length > 0 ? startedList : undefined,
       next_step: {
         action: "run_node",
         node_id: node.id,
@@ -178,15 +202,17 @@ export async function getNextStep(runId: string, cwd: string): Promise<GetNextSt
 
 /**
  * Format next_step as a single JSON line for agent parsing (append to stdout).
- * Includes current_node_id when a node is in progress (started, not completed).
+ * Includes current_node_id / current_node_ids when nodes are in progress.
  */
 export function formatNextStepLine(
   runId: string,
   status: string,
   next_step: NextStep,
-  current_node_id?: string
+  current_node_id?: string,
+  current_node_ids?: string[]
 ): string {
   const payload: Record<string, unknown> = { run_id: runId, status, next_step };
   if (current_node_id !== undefined) payload.current_node_id = current_node_id;
+  if (current_node_ids !== undefined && current_node_ids.length > 0) payload.current_node_ids = current_node_ids;
   return `COGNETIVY_NEXT_STEP=${JSON.stringify(payload)}`;
 }

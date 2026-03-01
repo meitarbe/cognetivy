@@ -344,7 +344,7 @@ runCmd
     );
     console.log(runId);
     console.log(`COGNETIVY_RUN_ID=${runId}`);
-    let { next_step, current_node_id } = await getNextStep(runId, cwd);
+    let { next_step, current_node_id, current_node_ids } = await getNextStep(runId, cwd);
     if (next_step.action === "run_node" && next_step.node_id) {
       await appendEventLine(runId, { ts: now, type: "step_started", by, data: { step: next_step.node_id, step_id: next_step.node_id } }, cwd);
       await writeNodeResult(runId, next_step.node_id, {
@@ -359,8 +359,9 @@ runCmd
       const after = await getNextStep(runId, cwd);
       next_step = after.next_step;
       current_node_id = after.current_node_id;
+      current_node_ids = after.current_node_ids;
     }
-    console.log(formatNextStepLine(runId, "running", next_step, current_node_id));
+    console.log(formatNextStepLine(runId, "running", next_step, current_node_id, current_node_ids));
   });
 runCmd
   .command("complete")
@@ -420,7 +421,7 @@ runCmd
       const nr = nodeResultByNodeId.get("__system__")!;
       nodesList.unshift({ node_id: "__system__", status: nr.status, completed_at: nr.completed_at });
     }
-    const { next_step, current_node_id } = await getNextStep(opts.run, cwd);
+    const { next_step, current_node_id, current_node_ids } = await getNextStep(opts.run, cwd);
     const runSummary = {
       run_id: run.run_id,
       status: run.status,
@@ -428,13 +429,16 @@ runCmd
       workflow_id: run.workflow_id,
       workflow_version_id: run.workflow_version_id,
       ...(current_node_id !== undefined && { current_node_id, current_node_status: "in_progress" }),
+      ...(current_node_ids !== undefined && current_node_ids.length > 0 && { current_node_ids }),
     };
     if (opts.json) {
-      console.log(JSON.stringify({ run: runSummary, nodes: nodesList, collections, next_step, ...(current_node_id !== undefined && { current_node_id }) }, null, 2));
+      console.log(JSON.stringify({ run: runSummary, nodes: nodesList, collections, next_step, ...(current_node_id !== undefined && { current_node_id }), ...(current_node_ids !== undefined && current_node_ids.length > 0 && { current_node_ids }) }, null, 2));
       return;
     }
     console.log("Run:", run.run_id, run.status, run.name ? `"${run.name}"` : "", `(${run.workflow_id} @ ${run.workflow_version_id})`);
-    if (current_node_id !== undefined) {
+    if (current_node_ids !== undefined && current_node_ids.length > 0) {
+      console.log("Current nodes (in progress):", current_node_ids.join(", "));
+    } else if (current_node_id !== undefined) {
       console.log("Current node (in progress):", current_node_id);
     }
     if (nodesList.length > 0) {
@@ -452,7 +456,7 @@ runCmd
         console.log(`  ${c.kind}: ${c.item_count} item(s)`);
       }
     }
-    console.log(formatNextStepLine(run.run_id, run.status, next_step, current_node_id));
+    console.log(formatNextStepLine(run.run_id, run.status, next_step, current_node_id, current_node_ids));
   });
 runCmd
   .command("step")
@@ -481,6 +485,22 @@ runCmd
       if (opts.node !== undefined) {
         const nodeId = opts.node;
         const existingResult = await readNodeResult(opts.run, nodeId, cwd);
+        if (!opts.collectionKind && !existingResult) {
+          await appendEventLine(opts.run, { ts: now, type: "step_started", by, data: { step: nodeId, step_id: nodeId } }, cwd);
+          await writeNodeResult(opts.run, nodeId, {
+            node_result_id: generateId("node_result"),
+            run_id: opts.run,
+            workflow_id: run.workflow_id,
+            workflow_version_id: run.workflow_version_id,
+            node_id: nodeId,
+            status: NodeResultStatus.Started,
+            started_at: now,
+          }, cwd);
+          const { next_step: afterStep, current_node_id: afterCurrent, current_node_ids: afterIds } = await getNextStep(opts.run, cwd);
+          const runAfter = await readRunFile(opts.run, cwd);
+          console.log(formatNextStepLine(runAfter.run_id, runAfter.status, afterStep, afterCurrent, afterIds));
+          return;
+        }
         if (!existingResult || existingResult.status !== "started") {
           const startedAt = new Date().toISOString();
           await appendEventLine(opts.run, { ts: startedAt, type: "step_started", by, data: { step: nodeId, step_id: nodeId } }, cwd);
@@ -539,6 +559,28 @@ runCmd
         }
       } else {
         const { next_step: ns } = await getNextStep(opts.run, cwd);
+
+        if (ns.action === "run_nodes_parallel" && ns.runnable_node_ids?.length) {
+          for (const nodeId of ns.runnable_node_ids) {
+            const existing = await readNodeResult(opts.run, nodeId, cwd);
+            if (!existing || existing.status !== NodeResultStatus.Started) {
+              await appendEventLine(opts.run, { ts: now, type: "step_started", by, data: { step: nodeId, step_id: nodeId } }, cwd);
+              await writeNodeResult(opts.run, nodeId, {
+                node_result_id: generateId("node_result"),
+                run_id: opts.run,
+                workflow_id: run.workflow_id,
+                workflow_version_id: run.workflow_version_id,
+                node_id: nodeId,
+                status: NodeResultStatus.Started,
+                started_at: now,
+              }, cwd);
+            }
+          }
+          const runAfter = await readRunFile(opts.run, cwd);
+          console.log(formatNextStepLine(runAfter.run_id, runAfter.status, ns, undefined, ns.runnable_node_ids));
+          return;
+        }
+
         if (ns.action === "run_node" && ns.node_id) {
           const nodeResultId = generateId("node_result");
           await appendEventLine(opts.run, { ts: now, type: "step_started", by, data: { step: ns.node_id, step_id: ns.node_id } }, cwd);
@@ -553,7 +595,7 @@ runCmd
           }, cwd);
         }
       }
-      let { next_step, current_node_id } = await getNextStep(opts.run, cwd);
+      let { next_step, current_node_id, current_node_ids } = await getNextStep(opts.run, cwd);
       if (next_step.action === "run_node" && next_step.node_id) {
         await appendEventLine(opts.run, { ts: now, type: "step_started", by, data: { step: next_step.node_id, step_id: next_step.node_id } }, cwd);
         await writeNodeResult(opts.run, next_step.node_id, {
@@ -568,9 +610,10 @@ runCmd
         const after = await getNextStep(opts.run, cwd);
         next_step = after.next_step;
         current_node_id = after.current_node_id;
+        current_node_ids = after.current_node_ids;
       }
       const runAfter = await readRunFile(opts.run, cwd);
-      console.log(formatNextStepLine(runAfter.run_id, runAfter.status, next_step, current_node_id));
+      console.log(formatNextStepLine(runAfter.run_id, runAfter.status, next_step, current_node_id, current_node_ids));
     }
   );
 runCmd

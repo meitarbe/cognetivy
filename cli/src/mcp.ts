@@ -578,6 +578,32 @@ async function handleToolsCall(
           await appendEventLine(runIdStep, { ts: nowStep, type: "step_completed", by: byStep, data: { step: nodeIdStep, step_id: nodeIdStep } }, cwd);
         } else {
           const { next_step: ns } = await getNextStep(runIdStep, cwd);
+
+          if (ns.action === "run_nodes_parallel" && ns.runnable_node_ids?.length) {
+            for (const nodeId of ns.runnable_node_ids) {
+              const existing = await readNodeResult(runIdStep, nodeId, cwd);
+              if (!existing || existing.status !== NodeResultStatus.Started) {
+                await appendEventLine(runIdStep, { ts: nowStep, type: "step_started", by: byStep, data: { step: nodeId, step_id: nodeId } }, cwd);
+                await writeNodeResult(runIdStep, nodeId, {
+                  node_result_id: generateId("node_result"),
+                  run_id: runIdStep,
+                  workflow_id: runStep.workflow_id,
+                  workflow_version_id: runStep.workflow_version_id,
+                  node_id: nodeId,
+                  status: NodeResultStatus.Started,
+                  started_at: nowStep,
+                }, cwd);
+              }
+            }
+            const runAfter = await readRunFile(runIdStep, cwd);
+            return JSON.stringify({
+              run_id: runAfter.run_id,
+              status: runAfter.status,
+              next_step: ns,
+              current_node_ids: ns.runnable_node_ids,
+            });
+          }
+
           if (ns.action === "run_node" && ns.node_id) {
             const nodeResultIdStart = generateId("node_result");
             await appendEventLine(runIdStep, { ts: nowStep, type: "step_started", by: byStep, data: { step: ns.node_id, step_id: ns.node_id } }, cwd);
@@ -593,7 +619,7 @@ async function handleToolsCall(
           }
         }
 
-        let { next_step: nextStep, current_node_id: currentStep } = await getNextStep(runIdStep, cwd);
+        let { next_step: nextStep, current_node_id: currentStep, current_node_ids: currentStepIds } = await getNextStep(runIdStep, cwd);
         if (nextStep.action === "run_node" && nextStep.node_id) {
           await appendEventLine(runIdStep, { ts: nowStep, type: "step_started", by: byStep, data: { step: nextStep.node_id, step_id: nextStep.node_id } }, cwd);
           await writeNodeResult(runIdStep, nextStep.node_id, {
@@ -608,14 +634,17 @@ async function handleToolsCall(
           const after = await getNextStep(runIdStep, cwd);
           nextStep = after.next_step;
           currentStep = after.current_node_id;
+          currentStepIds = after.current_node_ids;
         }
         const runAfter = await readRunFile(runIdStep, cwd);
-        return JSON.stringify({
+        const result: Record<string, unknown> = {
           run_id: runAfter.run_id,
           status: runAfter.status,
           next_step: nextStep,
-          ...(currentStep !== undefined && { current_node_id: currentStep }),
-        });
+        };
+        if (currentStep !== undefined) result.current_node_id = currentStep;
+        if (currentStepIds !== undefined && currentStepIds.length > 0) result.current_node_ids = currentStepIds;
+        return JSON.stringify(result);
       }
       case "run_complete": {
         const runIdComplete = args.run_id as string;
@@ -981,8 +1010,9 @@ async function handleInitialize(): Promise<{
       "MINIMAL FLOW: run_start returns next_step (action, node_id?, hint?). Use run_step to advance: run_step(run_id) starts the next node; run_step(run_id, node_id, collection_kind, collection_items or collection_payload) completes that node. Every run_start, run_status, and run_step returns next_step and current_node_id (when a node is in progress). Follow next_step.hint; do not guess. When next_step.action is complete_run, call event_append run_completed then run_complete. " +
       "SCHEMA-FIRST: Before writing collections, call collection_schema_get. If schema lacks kinds for workflow outputs (run_start suggested_collection_kinds), use collection_schema_add_kind. " +
       "RICH TEXT: Use **Markdown** in collection item fields for summaries, theses, descriptions. " +
-      "After run_start: 1) workflow_get and collection_schema_get (add missing kinds), 2) run_step(run_id) to start first node, 3) do work for next_step.node_id, 4) run_step(run_id, node_id, collection_kind, collection_payload or collection_items) to complete, 5) repeat until next_step.action is complete_run, 6) event_append run_completed, run_complete. run_status(run_id) returns nodes, collections, next_step, current_node_id. " +
-      "Step events use data.step = workflow node id. For sub-agents, one agent per node with only that node's inputs.",
+      "TRACEABILITY: Every collection item (except run_input) has optional citations, derived_from, reasoning. Always populate citations (sources: url or item_ref to another item) and/or derived_from (kind + item_id of items this was derived from) so outputs are traceable to sources and chain of thinking. " +
+      "After run_start: 1) workflow_get and collection_schema_get (add missing kinds), 2) run_step(run_id) to start first node, 3) do work for next_step.node_id, 4) run_step(run_id, node_id, collection_kind, collection_payload or collection_items) to complete, 5) repeat until next_step.action is complete_run, 6) event_append run_completed, run_complete. run_status(run_id) returns nodes, collections, next_step, current_node_id, current_node_ids. " +
+      "When next_step.action is run_nodes_parallel (next_step.runnable_node_ids has multiple nodes), you MUST spawn one sub-agent per node unless the user says otherwise. Each sub-agent: run_step(run_id, node_id) to start, do work, then run_step(run_id, node_id, collection_kind, ...) to complete. Step events use data.step = workflow node id.",
   };
 }
 
