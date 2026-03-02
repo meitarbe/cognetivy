@@ -41,7 +41,7 @@
     "ajv": "^8.18.0",
     "ajv-formats": "^3.0.1",
     "commander": "^12.1.0",
-    "env-paths": "^3.0.0",
+    "env-paths": "^4.0.0",
     "fast-json-patch": "^3.1.1",
     "front-matter": "^4.0.2",
     "open": "^11.0.0",
