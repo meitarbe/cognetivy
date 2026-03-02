@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Studio: polling and version selection:** Collection schema and workflow list now poll every 2s so schema and sidebar stay in sync with the server. Workflow version poll interval reduced from 3s to 2s. Version selection fixed: when loading a workflow, the selected version is set to the URL version or current version only if it exists in the version list; otherwise the first available version is used, avoiding invalid/stale version IDs.
 - **Workflow nodes: required skills and MCPs:** Nodes can declare `required_skills` (array of skill names) and `required_mcps` (array of MCP server names). CLI: model, validation, studio-server API, default workflow example; skill and MCP instructions document the fields (use `required_skills` not `skills`). Studio: node cards and node detail drawer show Skills and MCPs; workflow node card redesigned (layout, spacing, no ellipsis on I/O and tools).
 - **Studio: workflow layout:** Increased node spacing (width, height, gaps) so the DAG is less cramped; vertical spacing tuned for readability.
 - **Studio: version diff:** Workflow page "Show changes" switch compares current version to the previous one; added/changed/removed nodes are highlighted (green/amber/red dashed); removed nodes appear as ghosts on the canvas.
