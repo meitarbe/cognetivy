@@ -1,15 +1,12 @@
 import { memo } from "react";
 import { Handle, type NodeProps, Position } from "@xyflow/react";
-import { ArrowDownToLine, ArrowUpFromLine } from "lucide-react";
+import { ArrowDownToLine, ArrowUpFromLine, Plug, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
-const MAX_IO_ITEMS = 3;
-
 function formatIoList(list: string[]): string {
   if (list.length === 0) return "-";
-  if (list.length <= MAX_IO_ITEMS) return list.join(", ");
-  return `${list.slice(0, MAX_IO_ITEMS).join(", ")} +${list.length - MAX_IO_ITEMS}`;
+  return list.join(", ");
 }
 
 export type NodeChangeStatus = "added" | "changed" | "removed" | undefined;
@@ -32,6 +29,8 @@ export interface WorkflowNodeData extends Record<string, unknown> {
   description?: string;
   changeStatus?: NodeChangeStatus;
   stepStatus?: StepStatus;
+  requiredMcps?: string[];
+  requiredSkills?: string[];
 }
 
 function WorkflowNodeComponent(props: NodeProps) {
@@ -41,10 +40,16 @@ function WorkflowNodeComponent(props: NodeProps) {
   const changeStatus = d.changeStatus;
   const statusForStyle = stepStatus ?? changeStatus;
   const isHitl = d.type === "HUMAN_IN_THE_LOOP";
+  const mcps = d.requiredMcps ?? [];
+  const skills = d.requiredSkills ?? [];
+  const mcpText = mcps.length === 0 ? "—" : mcps.join(", ");
+  const skillText = skills.length === 0 ? "—" : skills.join(", ");
+
   return (
     <div
       className={cn(
-        "rounded-lg border-2 bg-card px-3 py-2 shadow-sm min-w-[160px] max-w-[200px] cursor-pointer",
+        "rounded-xl border-2 bg-card shadow-md hover:shadow-lg transition-shadow min-w-[180px] cursor-pointer w-max max-w-[340px] overflow-hidden",
+        "px-4 py-3 space-y-3",
         isHitl && "border-violet-500/60 bg-violet-500/5 dark:bg-violet-500/10",
         stepStatus === "completed" && "border-emerald-500/70 bg-emerald-500/10 dark:bg-emerald-500/15",
         stepStatus === "running" && "border-amber-500/70 bg-amber-500/10 dark:bg-amber-500/15 animate-pulse",
@@ -56,39 +61,67 @@ function WorkflowNodeComponent(props: NodeProps) {
       )}
     >
       <Handle type="target" position={Position.Top} />
-      <div className="font-semibold text-xs text-primary hover:underline cursor-pointer">
-        {nodeIdToDisplayName(d.nodeId)}
+      {/* Header: title + type */}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <h3 className="font-semibold text-sm text-foreground break-words leading-tight">
+          {nodeIdToDisplayName(d.nodeId)}
+        </h3>
+        <Badge
+          variant={isHitl ? "default" : "secondary"}
+          className={cn(
+            "text-[10px] font-medium shrink-0",
+            isHitl && "bg-violet-600 hover:bg-violet-600 text-white"
+          )}
+        >
+          {d.type.replace(/_/g, " ")}
+        </Badge>
       </div>
-      <Badge variant="secondary" className="mt-0.5 text-[10px]">
-        {d.type}
-      </Badge>
-      <div className="mt-1.5 rounded border border-border/60 bg-muted/30 px-2 py-1.5 space-y-1.5">
-        <div className="flex items-start gap-1.5">
-          <ArrowDownToLine className="size-3 shrink-0 mt-0.5 text-muted-foreground" aria-hidden />
-          <div className="min-w-0">
-            <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">Input</div>
-            <div className="text-[11px] font-medium text-foreground truncate" title={(d.input ?? []).join(", ")}>
+      {/* Input / Output */}
+      <div className="rounded-lg border border-border/70 bg-muted/40 px-3 py-2 space-y-2">
+        <div className="flex items-start gap-2">
+          <ArrowDownToLine className="size-3.5 shrink-0 mt-0.5 text-muted-foreground" aria-hidden />
+          <div className="min-w-0 break-words">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Input</div>
+            <div className="text-xs font-medium text-foreground break-words mt-0.5">
               {formatIoList(d.input ?? [])}
             </div>
           </div>
         </div>
-        <div className="flex items-start gap-1.5">
-          <ArrowUpFromLine className="size-3 shrink-0 mt-0.5 text-muted-foreground" aria-hidden />
-          <div className="min-w-0">
-            <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">Output</div>
-            <div className="text-[11px] font-medium text-foreground truncate" title={(d.output ?? []).join(", ")}>
+        <div className="flex items-start gap-2">
+          <ArrowUpFromLine className="size-3.5 shrink-0 mt-0.5 text-muted-foreground" aria-hidden />
+          <div className="min-w-0 break-words">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Output</div>
+            <div className="text-xs font-medium text-foreground break-words mt-0.5">
               {formatIoList(d.output ?? [])}
             </div>
           </div>
         </div>
       </div>
+      {/* Skills & MCPs: compact block, full text (no ellipsis), min height so nodes stay even */}
+      <div className="rounded-lg border-2 border-primary/20 bg-primary/5 dark:bg-primary/10 px-3 py-2 min-h-[40px] flex items-center">
+        <div className="flex items-center gap-3 text-[10px] font-medium text-foreground min-w-0 flex-1 flex-wrap">
+          <span className="flex items-center gap-1.5 min-w-0 break-words">
+            <Sparkles className="size-3 text-primary shrink-0" aria-hidden />
+            <span className="text-muted-foreground uppercase tracking-wider font-semibold shrink-0">Skills</span>
+            <span className="break-words">{skillText}</span>
+          </span>
+          <span className="text-border shrink-0" aria-hidden>
+            ·
+          </span>
+          <span className="flex items-center gap-1.5 min-w-0 break-words">
+            <Plug className="size-3 text-primary shrink-0" aria-hidden />
+            <span className="text-muted-foreground uppercase tracking-wider font-semibold shrink-0">MCPs</span>
+            <span className="break-words">{mcpText}</span>
+          </span>
+        </div>
+      </div>
       {stepStatus && (
-        <div className="mt-2">
+        <div className="pt-0.5">
           <span
             className={cn(
-              "text-xs font-medium px-2 py-0.5 rounded",
-              stepStatus === "completed" && "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300",
-              stepStatus === "running" && "bg-amber-500/20 text-amber-700 dark:text-amber-300",
+              "inline-block text-xs font-semibold px-2.5 py-1 rounded-md",
+              stepStatus === "completed" && "bg-emerald-500/25 text-emerald-800 dark:text-emerald-200",
+              stepStatus === "running" && "bg-amber-500/25 text-amber-800 dark:text-amber-200",
               stepStatus === "pending" && "bg-muted text-muted-foreground"
             )}
           >

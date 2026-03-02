@@ -41,6 +41,10 @@ export interface WorkflowNode {
    * Must be a positive integer if present.
    */
   minimum_rows?: number;
+  /** MCP server names that should be available when executing this node. */
+  required_mcps?: string[];
+  /** Skill names that should be applied when executing this node. */
+  required_skills?: string[];
 }
 
 export interface WorkflowVersionRecord {

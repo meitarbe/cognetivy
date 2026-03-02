@@ -445,6 +445,8 @@ Workflows, runs, node results, and schema-backed collections. Run commands from 
 
 **Node prompts and output:** Node prompts work best when **long and specific**: include the goal, constraints (e.g. source discipline, output format), and examples if helpful. Prefer detailed prompts over short one-liners. If a node has \`minimum_rows\`, produce at least that many items for its output collection(s).
 
+**Per-node skills and MCPs:** Each node can declare \`required_skills\` (array of skill names, e.g. \`["cognetivy", "tavily"]\`) and \`required_mcps\` (array of MCP server names, e.g. \`["user-context7", "cursor-ide-browser"]\`). Use these field names in workflow JSON—**not** \`skills\` (use \`required_skills\`). Run \`workflow get\` to see the default workflow example.
+
 ## Runs (agent surface: 4 commands)
 
 \`run start\`, \`run status --run <id> [--json]\`, \`run step --run <id> [--node N] [--collection-kind K]\`, \`run complete\`. Every response includes \`COGNETIVY_NEXT_STEP\`; use it to decide the next action. Low-level \`node\` / \`event\` / \`collection\` commands exist for scripts; see REFERENCE.md.

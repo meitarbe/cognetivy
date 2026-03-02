@@ -148,6 +148,8 @@ export function workflowToNodesEdges(
       type: n.type,
       input: n.input_collections ?? [],
       output: n.output_collections ?? [],
+      requiredMcps: n.required_mcps ?? [],
+      requiredSkills: n.required_skills ?? [],
     };
     if (stepStatuses && stepStatuses[n.id]) data.stepStatus = stepStatuses[n.id];
     return {

@@ -18,11 +18,10 @@ export interface NodePosition {
   colInRow: number;
 }
 
-const NODE_WIDTH = 220;
-const NODE_HEIGHT = 100;
-const HORIZONTAL_GAP = 80;
-/** Vertical space between rows (half of original 100 for tighter top-to-bottom). */
-const VERTICAL_GAP = 50;
+const NODE_WIDTH = 320;
+const NODE_HEIGHT = 120;
+const HORIZONTAL_GAP = 120;
+const VERTICAL_GAP = 82;
 
 /**
  * Top-to-bottom layout for a generic DAG:

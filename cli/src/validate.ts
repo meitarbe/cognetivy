@@ -122,6 +122,26 @@ export function validateWorkflowVersion(wf: unknown): asserts wf is WorkflowVers
         );
       }
     }
+    if (n.required_mcps !== undefined) {
+      if (!Array.isArray(n.required_mcps)) {
+        throw new WorkflowValidationError(`nodes[${i}].required_mcps must be an array`);
+      }
+      for (const v of n.required_mcps as unknown[]) {
+        if (typeof v !== "string" || !v) {
+          throw new WorkflowValidationError(`nodes[${i}].required_mcps must contain non-empty strings`);
+        }
+      }
+    }
+    if (n.required_skills !== undefined) {
+      if (!Array.isArray(n.required_skills)) {
+        throw new WorkflowValidationError(`nodes[${i}].required_skills must be an array`);
+      }
+      for (const v of n.required_skills as unknown[]) {
+        if (typeof v !== "string" || !v) {
+          throw new WorkflowValidationError(`nodes[${i}].required_skills must contain non-empty strings`);
+        }
+      }
+    }
   }
 
   assertWorkflowAcyclic(o.nodes as WorkflowNode[]);
