@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { api, type WorkflowSummary } from "@/api";
 
 const STORAGE_KEY = "cognetivy-selected-workflow-id";
+const POLL_MS = 2000;
 
 export interface WorkflowSelectionState {
   workflows: WorkflowSummary[];
@@ -46,6 +47,10 @@ export function WorkflowSelectionProvider({ children }: { children: React.ReactN
 
   useEffect(() => {
     reloadWorkflows().catch(() => setWorkflows([]));
+    const t = setInterval(() => {
+      reloadWorkflows().catch(() => setWorkflows([]));
+    }, POLL_MS);
+    return () => clearInterval(t);
   }, [reloadWorkflows]);
 
   const setSelectedWorkflowId = useCallback((workflowId: string) => {
@@ -74,4 +79,3 @@ export function useWorkflowSelection(): WorkflowSelectionState {
   if (!ctx) throw new Error("useWorkflowSelection must be used within WorkflowSelectionProvider");
   return ctx;
 }
-

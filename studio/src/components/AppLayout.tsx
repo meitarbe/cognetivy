@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 
 const SIDEBAR_OPEN_KEY = "cognetivy-sidebar-open";
+const SCHEMA_POLL_MS = 2000;
 
 const staticNavItems: Array<{ to: string; label: string; icon: LucideIcon }> = [
   { to: "/", label: "Workflow", icon: GitBranch },
@@ -68,10 +69,16 @@ export function AppLayout() {
       setSchema(null);
       return;
     }
-    api
-      .getCollectionSchema(selectedWorkflowId)
-      .then(setSchema)
-      .catch(() => setSchema(null));
+    const workflowId = selectedWorkflowId;
+    function loadSchema() {
+      api
+        .getCollectionSchema(workflowId)
+        .then(setSchema)
+        .catch(() => setSchema(null));
+    }
+    loadSchema();
+    const t = setInterval(loadSchema, SCHEMA_POLL_MS);
+    return () => clearInterval(t);
   }, [selectedWorkflowId]);
 
   useEffect(() => {

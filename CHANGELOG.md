@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **CLI install wizard:** Fixed bug where selecting "OpenAI Codex" or "Gemini CLI" (without OpenClaw) showed "openclaw" in the install plan and Done list, confusing users. Added two install targets: `gemini` (`.gemini/skills/`, for Gemini CLI) and `agents` (`.agents/skills/`, for OpenAI Codex and other Agent Skills–compatible tools). The wizard now shows user-facing labels (e.g. "Claude Code", "Gemini CLI", "Agent skills", "OpenClaw") instead of internal target IDs. Non-interactive `cognetivy install` and `cognetivy skills install/update` accept `gemini` and `agents`; `install all` installs to all six targets.
 
+## [0.1.10] - 2025-03-02
+
+- **Studio: polling and version selection:** Collection schema and workflow list now poll every 2s so schema and sidebar stay in sync with the server. Workflow version poll interval reduced from 3s to 2s. Version selection fixed: when loading a workflow, the selected version is set to the URL version or current version only if it exists in the version list; otherwise the first available version is used, avoiding invalid/stale version IDs.
+
 ## [0.1.9] - 2025-03-01
 
 - **Tooling:** Repo pins npm via `packageManager` (npm@10.9.4) for consistent installs; CONTRIBUTING.md documents npm 7+ and optional Corepack. Lockfile and package version synced for open-source release.
@@ -36,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Skills installation for Cursor, Claude Code, OpenClaw, and workspace.
 
 [Unreleased]: https://github.com/meitarbe/cognetivy/compare/v0.1.11...HEAD
-[0.1.11]: https://github.com/meitarbe/cognetivy/compare/v0.1.9...v0.1.11
+[0.1.11]: https://github.com/meitarbe/cognetivy/compare/v0.1.10...v0.1.11
+[0.1.10]: https://github.com/meitarbe/cognetivy/compare/v0.1.9...v0.1.10
 [0.1.9]: https://github.com/meitarbe/cognetivy/compare/v0.1.6...v0.1.9
 [0.1.6]: https://github.com/meitarbe/cognetivy/releases/tag/v0.1.6
