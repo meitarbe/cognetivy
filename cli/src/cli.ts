@@ -1001,7 +1001,7 @@ nodeCmd
 program
   .command("install [target]")
   .description(
-    "Set up cognetivy in this project (if needed) and install skills. Target: claude | cursor | openclaw | workspace | all (default: all). Use with no target or --interactive for TUI."
+    "Set up cognetivy in this project (if needed) and install skills. Target: claude | cursor | openclaw | workspace | gemini | agents | all (default: all). Use with no target or --interactive for TUI."
   )
   .option("--force", "Overwrite if skill already exists")
   .option("--no-init", "Skip cognetivy workspace init; only install skills")
@@ -1023,45 +1023,33 @@ program
       cursor: "cursor",
       openclaw: "openclaw",
       workspace: "workspace",
+      gemini: "gemini",
+      agents: "agents",
       all: "all",
     };
     const resolved = targetMap[normalized];
     if (!resolved) {
-      console.error("Target must be: claude, cursor, openclaw, workspace, or all.");
+      console.error("Target must be: claude, cursor, openclaw, workspace, gemini, agents, or all.");
       process.exit(1);
     }
     const config = await getMergedConfig(cwd);
     const skillsConfig = getSkillsConfigFromMerged(config);
     const targetsToInstall: SkillInstallTarget[] =
       resolved === "all"
-        ? (["agent", "cursor", "openclaw", "workspace"] as SkillInstallTarget[])
+        ? (["agent", "cursor", "openclaw", "workspace", "gemini", "agents"] as SkillInstallTarget[])
         : [resolved];
     const optsCommon = { force: opts.force, cwd, config: skillsConfig };
     try {
       for (const internalTarget of targetsToInstall) {
         const { results } = await installSkillsFromDirectory(cwd, internalTarget, optsCommon);
-        const label =
-          internalTarget === "agent"
-            ? "claude"
-            : internalTarget === "cursor"
-              ? "cursor"
-            : internalTarget === "openclaw"
-              ? "openclaw"
-              : "workspace";
+        const label = internalTargetToDisplayLabel(internalTarget);
         for (const r of results) {
           console.log(`[${label}] Installed to ${r.path}`);
         }
       }
       for (const internalTarget of targetsToInstall) {
         const cognetivyPath = await installCognetivySkill(internalTarget, cwd, skillsConfig);
-        const label =
-          internalTarget === "agent"
-            ? "claude"
-            : internalTarget === "cursor"
-              ? "cursor"
-            : internalTarget === "openclaw"
-              ? "openclaw"
-              : "workspace";
+        const label = internalTargetToDisplayLabel(internalTarget);
         console.log(`[${label}] Cognetivy skill at ${cognetivyPath}`);
       }
     } catch (err) {
@@ -1069,6 +1057,25 @@ program
       process.exit(1);
     }
   });
+
+function internalTargetToDisplayLabel(internalTarget: SkillInstallTarget): string {
+  switch (internalTarget) {
+    case "agent":
+      return "Claude Code";
+    case "cursor":
+      return "Cursor";
+    case "openclaw":
+      return "OpenClaw";
+    case "workspace":
+      return "Workspace";
+    case "gemini":
+      return "Gemini CLI";
+    case "agents":
+      return "Agent skills";
+    default:
+      return String(internalTarget);
+  }
+}
 
 function getSkillsConfigFromMerged(
   config: Awaited<ReturnType<typeof getMergedConfig>>
@@ -1184,15 +1191,16 @@ skillsCmd
 skillsCmd
   .command("install [source]")
   .description("Install a skill from current directory (or path/URL) into project or target (default: workspace = .cognetivy/skills)")
-  .option("--target <target>", "Install target: agent, cursor, openclaw, workspace (default: workspace)")
+  .option("--target <target>", "Install target: agent, cursor, openclaw, workspace, gemini, agents (default: workspace)")
   .option("--force", "Overwrite if skill already exists")
   .action(async (source: string | undefined, opts: { target?: string; force?: boolean }) => {
     const cwd = process.cwd();
     const config = await getMergedConfig(cwd);
     const skillsConfig = getSkillsConfigFromMerged(config);
     const target = (opts.target ?? skillsConfig.default_install_target ?? "workspace") as SkillInstallTarget;
-    if (!["agent", "cursor", "openclaw", "workspace"].includes(target)) {
-      console.error("--target must be agent, cursor, openclaw, or workspace.");
+    const allowedTargets = ["agent", "cursor", "openclaw", "workspace", "gemini", "agents"];
+    if (!allowedTargets.includes(target)) {
+      console.error(`--target must be one of: ${allowedTargets.join(", ")}.`);
       process.exit(1);
     }
     const installSource = (source?.trim() || ".") as string;
@@ -1224,7 +1232,7 @@ skillsCmd
 skillsCmd
   .command("update [name]")
   .description("Update skill(s) from recorded origin; use --all to update all for target")
-  .option("--target <target>", "Target: agent, cursor, openclaw, workspace")
+  .option("--target <target>", "Target: agent, cursor, openclaw, workspace, gemini, agents")
   .option("--all", "Update all skills for the target")
   .option("--dry-run", "Do not write changes")
   .action(async (name: string | undefined, opts: { target?: string; all?: boolean; dryRun?: boolean }) => {
@@ -1234,6 +1242,11 @@ skillsCmd
     const target = (opts.target ?? skillsConfig.default_install_target) as SkillInstallTarget | undefined;
     if (!target) {
       console.error("Specify --target or set skills.default_install_target in config.");
+      process.exit(1);
+    }
+    const allowedTargets = ["agent", "cursor", "openclaw", "workspace", "gemini", "agents"];
+    if (!allowedTargets.includes(target)) {
+      console.error(`--target must be one of: ${allowedTargets.join(", ")}.`);
       process.exit(1);
     }
     if (opts.all) {

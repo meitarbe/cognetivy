@@ -2,7 +2,7 @@ import path from "node:path";
 import fs from "node:fs/promises";
 
 export type SkillSourceConfig = "agent" | "openclaw" | "workspace";
-export type SkillInstallTargetConfig = "agent" | "cursor" | "openclaw" | "workspace";
+export type SkillInstallTargetConfig = "agent" | "cursor" | "openclaw" | "workspace" | "gemini" | "agents";
 
 export interface SkillsConfigBlock {
   sources?: SkillSourceConfig[];

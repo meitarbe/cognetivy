@@ -46,36 +46,95 @@ const CLIENT_OPTIONS: ClientOption[] = [
   { value: InstallerClient.ClaudeCode, label: "Claude Code", hint: "Installs into .claude/skills" },
   { value: InstallerClient.Cursor, label: "Cursor", hint: "Installs into .cursor/skills" },
   { value: InstallerClient.OpenClaw, label: "OpenClaw", hint: "Installs Agent Skills bundle into skills/" },
-  { value: InstallerClient.OpenAICodex, label: "OpenAI Codex", hint: "Agent Skills bundle (SKILL.md) into skills/" },
-  { value: InstallerClient.GitHubCopilot, label: "GitHub Copilot", hint: "Agent Skills bundle (SKILL.md) into skills/" },
-  { value: InstallerClient.GeminiCli, label: "Gemini CLI", hint: "Agent Skills bundle (SKILL.md) into skills/" },
-  { value: InstallerClient.Amp, label: "Amp", hint: "Agent Skills bundle (SKILL.md) into skills/" },
-  { value: InstallerClient.CursorAgentCli, label: "Cursor Agent CLI", hint: "Agent Skills bundle (SKILL.md) into skills/" },
-  { value: InstallerClient.OpenCode, label: "OpenCode", hint: "Agent Skills bundle (SKILL.md) into skills/" },
-  { value: InstallerClient.FactoryDroid, label: "Factory Droid", hint: "Agent Skills bundle (SKILL.md) into skills/" },
-  { value: InstallerClient.CCR, label: "CCR (Claude Code Router)", hint: "Agent Skills bundle (SKILL.md) into skills/" },
-  { value: InstallerClient.QwenCode, label: "Qwen Code", hint: "Agent Skills bundle (SKILL.md) into skills/" },
+  { value: InstallerClient.OpenAICodex, label: "OpenAI Codex", hint: "Installs into .agents/skills" },
+  { value: InstallerClient.GitHubCopilot, label: "GitHub Copilot", hint: "Installs into .agents/skills" },
+  { value: InstallerClient.GeminiCli, label: "Gemini CLI", hint: "Installs into .gemini/skills" },
+  { value: InstallerClient.Amp, label: "Amp", hint: "Installs into .agents/skills" },
+  { value: InstallerClient.CursorAgentCli, label: "Cursor Agent CLI", hint: "Installs into .agents/skills" },
+  { value: InstallerClient.OpenCode, label: "OpenCode", hint: "Installs into .agents/skills" },
+  { value: InstallerClient.FactoryDroid, label: "Factory Droid", hint: "Installs into .agents/skills" },
+  { value: InstallerClient.CCR, label: "CCR (Claude Code Router)", hint: "Installs into .agents/skills" },
+  { value: InstallerClient.QwenCode, label: "Qwen Code", hint: "Installs into .agents/skills" },
 ];
+
+function clientToTarget(client: InstallerClient): SkillInstallTarget {
+  switch (client) {
+    case InstallerClient.ClaudeCode:
+      return "agent";
+    case InstallerClient.Cursor:
+      return "cursor";
+    case InstallerClient.OpenClaw:
+      return "openclaw";
+    case InstallerClient.GeminiCli:
+      return "gemini";
+    case InstallerClient.OpenAICodex:
+    case InstallerClient.GitHubCopilot:
+    case InstallerClient.Amp:
+    case InstallerClient.CursorAgentCli:
+    case InstallerClient.OpenCode:
+    case InstallerClient.FactoryDroid:
+    case InstallerClient.CCR:
+    case InstallerClient.QwenCode:
+      return "agents";
+    default:
+      return "agents";
+  }
+}
 
 function clientToTargets(clients: InstallerClient[]): SkillInstallTarget[] {
   const targets = new Set<SkillInstallTarget>();
   for (const c of clients) {
-    switch (c) {
-      case InstallerClient.ClaudeCode:
-        targets.add("agent");
-        break;
-      case InstallerClient.Cursor:
-        targets.add("cursor");
-        break;
-      case InstallerClient.OpenClaw:
-        targets.add("openclaw");
-        break;
-      default:
-        targets.add("openclaw");
-        break;
-    }
+    targets.add(clientToTarget(c));
   }
   return Array.from(targets);
+}
+
+function getTargetToClientsMap(clients: InstallerClient[]): Map<SkillInstallTarget, InstallerClient[]> {
+  const map = new Map<SkillInstallTarget, InstallerClient[]>();
+  for (const c of clients) {
+    const target = clientToTarget(c);
+    const list = map.get(target) ?? [];
+    list.push(c);
+    map.set(target, list);
+  }
+  return map;
+}
+
+function getClientLabel(client: InstallerClient): string {
+  const opt = CLIENT_OPTIONS.find((o) => o.value === client);
+  return opt?.label ?? String(client);
+}
+
+function targetToDisplayLabel(target: SkillInstallTarget, clientsForTarget: InstallerClient[]): string {
+  if (clientsForTarget.length === 0) {
+    return targetToFallbackDisplayLabel(target);
+  }
+  if (clientsForTarget.length === 1) {
+    return getClientLabel(clientsForTarget[0]);
+  }
+  if (target === "agents") {
+    return "Agent skills";
+  }
+  return clientsForTarget.map(getClientLabel).join(", ");
+}
+
+function targetToFallbackDisplayLabel(target: SkillInstallTarget): string {
+  switch (target) {
+    case "agent":
+      return "Claude Code";
+    case "cursor":
+      return "Cursor";
+    case "openclaw":
+      return "OpenClaw";
+    case "gemini":
+      return "Gemini CLI";
+    case "agents":
+      return "Agent skills";
+    case "workspace":
+      return "Workspace";
+    default:
+      return String(target);
+  }
 }
 
 function targetToInstallPathHint(target: SkillInstallTarget): string {
@@ -88,6 +147,10 @@ function targetToInstallPathHint(target: SkillInstallTarget): string {
       return "skills/";
     case "workspace":
       return ".cognetivy/skills";
+    case "gemini":
+      return ".gemini/skills";
+    case "agents":
+      return ".agents/skills";
     default:
       return String(target);
   }
@@ -159,10 +222,14 @@ export async function runInstallTUI(options: InstallTUIOptions): Promise<void> {
     process.exit(0);
   }
 
-  const targetsToInstall = clientToTargets(selectedClients as InstallerClient[]);
+  const selectedClientsList = selectedClients as InstallerClient[];
+  const targetsToInstall = clientToTargets(selectedClientsList);
+  const targetToClients = getTargetToClientsMap(selectedClientsList);
 
   p.note(
-    targetsToInstall.map((t) => `- ${t}: ${targetToInstallPathHint(t)}`).join("\n"),
+    targetsToInstall
+      .map((t) => `- ${targetToDisplayLabel(t, targetToClients.get(t) ?? [])}: ${targetToInstallPathHint(t)}`)
+      .join("\n"),
     "Install plan"
   );
 
@@ -183,15 +250,17 @@ export async function runInstallTUI(options: InstallTUIOptions): Promise<void> {
   const installedPaths: string[] = [];
 
   for (const internalTarget of targetsToInstall) {
-    const spinner = ora(`Installing (${targetToInstallPathHint(internalTarget)})...`).start();
+    const displayLabel = targetToDisplayLabel(internalTarget, targetToClients.get(internalTarget) ?? []);
+    const pathHint = targetToInstallPathHint(internalTarget);
+    const spinner = ora(`Installing (${pathHint})...`).start();
     try {
       const { results } = await installSkillsFromDirectory(cwd, internalTarget, optsCommon);
       for (const r of results) {
-        installedPaths.push(`[${internalTarget}] ${r.path}`);
+        installedPaths.push(`[${displayLabel}] ${r.path}`);
       }
       const cognetivyPath = await installCognetivySkill(internalTarget, cwd, skillsConfig);
-      installedPaths.push(`[${internalTarget}] Cognetivy skill: ${cognetivyPath}`);
-      spinner.succeed(`Installed to ${targetToInstallPathHint(internalTarget)}`);
+      installedPaths.push(`[${displayLabel}] Cognetivy skill: ${cognetivyPath}`);
+      spinner.succeed(`Installed to ${pathHint}`);
     } catch (err) {
       spinner.fail(`Failed for ${internalTarget}`);
       throw err;

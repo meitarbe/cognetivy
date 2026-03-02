@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Studio: version diff:** Workflow page "Show changes" switch compares current version to the previous one; added/changed/removed nodes are highlighted (green/amber/red dashed); removed nodes appear as ghosts on the canvas.
 - **Studio:** Fixed left sidebar overflow with large collection-kind lists by constraining the collections section in `AppLayout` and enabling independent vertical scrolling, preventing layout breakage when many collections exist.
 
+## [0.1.11] - 2025-03-02
+
+- **CLI install wizard:** Fixed bug where selecting "OpenAI Codex" or "Gemini CLI" (without OpenClaw) showed "openclaw" in the install plan and Done list, confusing users. Added two install targets: `gemini` (`.gemini/skills/`, for Gemini CLI) and `agents` (`.agents/skills/`, for OpenAI Codex and other Agent Skills–compatible tools). The wizard now shows user-facing labels (e.g. "Claude Code", "Gemini CLI", "Agent skills", "OpenClaw") instead of internal target IDs. Non-interactive `cognetivy install` and `cognetivy skills install/update` accept `gemini` and `agents`; `install all` installs to all six targets.
+
 ## [0.1.9] - 2025-03-01
 
 - **Tooling:** Repo pins npm via `packageManager` (npm@10.9.4) for consistent installs; CONTRIBUTING.md documents npm 7+ and optional Corepack. Lockfile and package version synced for open-source release.
@@ -31,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Studio: read-only UI for workflow DAG, runs, events, and collections.
 - Skills installation for Cursor, Claude Code, OpenClaw, and workspace.
 
-[Unreleased]: https://github.com/meitarbe/cognetivy/compare/v0.1.9...HEAD
+[Unreleased]: https://github.com/meitarbe/cognetivy/compare/v0.1.11...HEAD
+[0.1.11]: https://github.com/meitarbe/cognetivy/compare/v0.1.9...v0.1.11
 [0.1.9]: https://github.com/meitarbe/cognetivy/compare/v0.1.6...v0.1.9
 [0.1.6]: https://github.com/meitarbe/cognetivy/releases/tag/v0.1.6

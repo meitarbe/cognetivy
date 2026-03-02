@@ -22,3 +22,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+
+# cognetivy - ignore runtime data; commit workflows/*/versions/
+.cognetivy/runs/
+.cognetivy/events/
+.cognetivy/collections/
+.cognetivy/node-results/
