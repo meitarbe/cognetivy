@@ -49,6 +49,8 @@ export interface WorkflowNode {
   prompt?: string;
   description?: string;
   minimum_rows?: number;
+  required_mcps?: string[];
+  required_skills?: string[];
 }
 
 export interface VersionListItem {
@@ -61,6 +63,8 @@ export interface WorkflowNodePrompt {
   prompt?: string;
   description?: string;
   minimum_rows?: number;
+  required_mcps?: string[];
+  required_skills?: string[];
 }
 
 export interface RunRecord {

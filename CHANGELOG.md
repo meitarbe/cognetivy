@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-(none)
+- **Workflow nodes: required skills and MCPs:** Nodes can declare `required_skills` (array of skill names) and `required_mcps` (array of MCP server names). CLI: model, validation, studio-server API, default workflow example; skill and MCP instructions document the fields (use `required_skills` not `skills`). Studio: node cards and node detail drawer show Skills and MCPs; workflow node card redesigned (layout, spacing, no ellipsis on I/O and tools).
+- **Studio: workflow layout:** Increased node spacing (width, height, gaps) so the DAG is less cramped; vertical spacing tuned for readability.
+- **Studio: version diff:** Workflow page "Show changes" switch compares current version to the previous one; added/changed/removed nodes are highlighted (green/amber/red dashed); removed nodes appear as ghosts on the canvas.
 
 ## [0.1.9] - 2025-03-01
 
