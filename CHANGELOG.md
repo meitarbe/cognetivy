@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-(none)
+- **Studio:** Fixed left sidebar overflow with large collection-kind lists by constraining the collections section in `AppLayout` and enabling independent vertical scrolling, preventing layout breakage when many collections exist.
 
 ## [0.1.9] - 2025-03-01
 

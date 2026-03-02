@@ -158,7 +158,7 @@ export function AppLayout() {
     <div className="flex h-screen bg-background">
       <aside
         className={cn(
-          "border-r border-border flex flex-col bg-sidebar shrink-0 transition-[width] duration-200",
+          "border-r border-border flex flex-col bg-sidebar shrink-0 min-h-0 transition-[width] duration-200",
           sidebarOpen ? "w-48" : "w-14"
         )}
       >
@@ -212,13 +212,13 @@ export function AppLayout() {
             )}
           </div>
         )}
-        <ScrollArea className="flex-1">
-          <nav className={cn("p-1.5 space-y-0.5", !sidebarOpen && "flex flex-col items-center gap-1")}>
+        <ScrollArea className="flex-1 min-h-0">
+          <nav className={cn("p-1.5 space-y-0.5", sidebarOpen && "h-full flex flex-col", !sidebarOpen && "flex flex-col items-center gap-1")}>
             {staticNavItems.map(renderStaticNavItem)}
             {entityKinds.length > 0 && (
-              <div className={cn("pt-1", !sidebarOpen && "w-full flex flex-col items-center")}>
+              <div className={cn("pt-1", sidebarOpen && "min-h-0 flex-1 flex flex-col", !sidebarOpen && "w-full flex flex-col items-center")}>
                 {sidebarOpen ? (
-                  <>
+                  <div className="min-h-0 flex-1 flex flex-col">
                     <div className="flex items-center gap-0.5 w-full">
                       <button
                         type="button"
@@ -242,11 +242,11 @@ export function AppLayout() {
                       </Link>
                     </div>
                     {collectionExpanded && (
-                      <div className="ml-3 mt-0.5 space-y-0.5 border-l border-border pl-2">
+                      <div className="ml-3 mt-0.5 space-y-0.5 border-l border-border pl-2 pr-1 min-h-0 flex-1 max-h-[calc(100vh-16rem)] overflow-y-auto">
                         {entityKinds.map(renderEntityKindLink)}
                       </div>
                     )}
-                  </>
+                  </div>
                 ) : (
                   entityKinds.length > 0 && (
                     <Link
