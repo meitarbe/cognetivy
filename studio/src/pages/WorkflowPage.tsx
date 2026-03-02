@@ -14,7 +14,7 @@ import {
 import { TABLE_LINK_CLASS } from "@/lib/utils";
 import { WorkflowCanvas } from "@/components/workflow/WorkflowCanvas";
 
-const POLL_MS = 3000;
+const POLL_MS = 2000;
 
 export function WorkflowPage() {
   const { selectedWorkflowId, setSelectedWorkflowId, selectedWorkflow } = useWorkflowSelection();
@@ -41,13 +41,16 @@ export function WorkflowPage() {
       const versionsList = await api.getWorkflowVersions(selectedWorkflowId);
       setWorkflowRecord(wf);
       setVersions(versionsList);
-      const nextSelected = versionFromUrl ?? selectedVersionId ?? wf.current_version_id;
+
+      const fallbackVersion = versionFromUrl ?? wf.current_version_id;
+      const hasVersion = versionsList.some((v) => v.version_id === fallbackVersion);
+      const nextSelected = hasVersion ? fallbackVersion : (versionsList[0]?.version_id ?? null);
       setSelectedVersionId(nextSelected);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
-  }, [selectedWorkflowId, selectedVersionId, versionFromUrl]);
+  }, [selectedWorkflowId, versionFromUrl]);
 
   useEffect(() => {
     load();
