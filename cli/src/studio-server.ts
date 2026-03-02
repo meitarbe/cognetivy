@@ -80,13 +80,25 @@ async function handleApiWorkflowNodePrompt(
   workflowId: string,
   versionId: string,
   nodeId: string
-): Promise<{ prompt?: string; description?: string; minimum_rows?: number }> {
+): Promise<{
+  prompt?: string;
+  description?: string;
+  minimum_rows?: number;
+  required_mcps?: string[];
+  required_skills?: string[];
+}> {
   const version = await readWorkflowVersionRecord(workflowId, versionId, cwd);
   const node = (version.nodes ?? []).find((n) => n.id === nodeId);
   if (!node) {
     throw new Error(`Node "${nodeId}" not found in workflow version`);
   }
-  return { prompt: node.prompt, description: node.description, minimum_rows: node.minimum_rows };
+  return {
+    prompt: node.prompt,
+    description: node.description,
+    minimum_rows: node.minimum_rows,
+    required_mcps: node.required_mcps,
+    required_skills: node.required_skills,
+  };
 }
 
 async function handleApiRuns(cwd: string): Promise<unknown[]> {

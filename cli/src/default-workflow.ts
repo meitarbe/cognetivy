@@ -42,6 +42,8 @@ export function createDefaultWorkflowVersionRecord(
         input_collections: ["run_input"],
         output_collections: ["sources"],
         minimum_rows: 5,
+        required_skills: ["cognetivy"],
+        required_mcps: ["user-context7", "cursor-ide-browser"],
         prompt:
           "Retrieve relevant sources for the run input topic. Use only real sources: either provided in run input/collections or actually retrieved by you via tools (e.g. web search, MCP, browser). Do not invent or guess URLs or facts. Each source must be something you have verified (e.g. fetched or opened). For each item output: a verified URL, a short title, and a brief excerpt. Aim for at least the minimum number of sources required by this node.",
       },
@@ -50,6 +52,7 @@ export function createDefaultWorkflowVersionRecord(
         type: WorkflowNodeType.Prompt,
         input_collections: ["sources"],
         output_collections: ["summary"],
+        required_skills: ["cognetivy"],
         prompt:
           "Synthesize the provided sources into a concise summary. Use only the content from the sources collection; do not add claims, quotes, or facts that are not present in those sources. If the sources are insufficient for a point, say so rather than inventing information. Output clear, well-structured markdown.",
       },

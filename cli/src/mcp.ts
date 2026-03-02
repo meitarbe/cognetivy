@@ -1007,6 +1007,7 @@ async function handleInitialize(): Promise<{
     serverInfo: { name: "cognetivy", version: "0.1.0" },
     instructions:
       "When you start a run with run_start, you MUST execute the workflow. Do not leave runs incomplete. " +
+      "WORKFLOW NODES: Use required_skills (array of skill names) and required_mcps (array of MCP server names) on each node—not \"skills\". Call workflow_get to see the default workflow example. " +
       "MINIMAL FLOW: run_start returns next_step (action, node_id?, hint?). Use run_step to advance: run_step(run_id) starts the next node; run_step(run_id, node_id, collection_kind, collection_items or collection_payload) completes that node. Every run_start, run_status, and run_step returns next_step and current_node_id (when a node is in progress). Follow next_step.hint; do not guess. When next_step.action is complete_run, call event_append run_completed then run_complete. " +
       "SCHEMA-FIRST: Before writing collections, call collection_schema_get. If schema lacks kinds for workflow outputs (run_start suggested_collection_kinds), use collection_schema_add_kind. " +
       "RICH TEXT: Use **Markdown** in collection item fields for summaries, theses, descriptions. " +

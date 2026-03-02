@@ -12,7 +12,7 @@ import {
   type Edge,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import type { WorkflowVersion, EventPayload, NodeResultRecord } from "@/api";
+import type { WorkflowVersion, EventPayload, NodeResultRecord, WorkflowNodePrompt } from "@/api";
 import { api } from "@/api";
 import { WorkflowNode } from "@/components/workflow/WorkflowNode";
 import { type WorkflowNodeData, nodeIdToDisplayName } from "@/components/workflow/WorkflowNode";
@@ -30,6 +30,7 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet";
 import { TABLE_LINK_CLASS } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
 import { CopyableId } from "@/components/ui/CopyableId";
 import { RichText } from "@/components/display/RichText";
 
@@ -104,9 +105,7 @@ function WorkflowCanvasInner({
 
   const canDrag = nodesDraggable || !readOnly;
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
-  const [nodePromptCache, setNodePromptCache] = useState<
-    Record<string, { prompt?: string; description?: string; minimum_rows?: number }>
-  >({});
+  const [nodePromptCache, setNodePromptCache] = useState<Record<string, WorkflowNodePrompt>>({});
   const [nodePromptLoading, setNodePromptLoading] = useState<Record<string, boolean>>({});
   const { theme } = useTheme();
 
@@ -254,6 +253,47 @@ function WorkflowCanvasInner({
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Output collections</p>
             <p className="font-mono text-sm">{(d.output ?? []).join(", ") || "-"}</p>
           </div>
+          {(() => {
+            const rawMcps =
+              (workflowId && versionId && nodePromptCache[d.nodeId]?.required_mcps) ?? d.requiredMcps;
+            const rawSkills =
+              (workflowId && versionId && nodePromptCache[d.nodeId]?.required_skills) ?? d.requiredSkills;
+            const requiredMcps: string[] = Array.isArray(rawMcps) ? rawMcps : [];
+            const requiredSkills: string[] = Array.isArray(rawSkills) ? rawSkills : [];
+            if (requiredMcps.length === 0 && requiredSkills.length === 0) return null;
+            return (
+              <>
+                {requiredSkills.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
+                      Required skills
+                    </p>
+                    <div className="flex flex-wrap gap-1 mt-0.5">
+                      {requiredSkills.map((name: string) => (
+                        <Badge key={name} variant="outline" className="font-mono text-xs">
+                          {name}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {requiredMcps.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
+                      Required MCPs
+                    </p>
+                    <div className="flex flex-wrap gap-1 mt-0.5">
+                      {requiredMcps.map((name: string) => (
+                        <Badge key={name} variant="secondary" className="font-mono text-xs">
+                          {name}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            );
+          })()}
           {d.stepStatus && (
             <div>
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Status</p>
