@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Studio: version diff:** Workflow page "Show changes" switch compares current version to the previous one; added/changed/removed nodes are highlighted (green/amber/red dashed); removed nodes appear as ghosts on the canvas.
 - **Studio:** Fixed left sidebar overflow with large collection-kind lists by constraining the collections section in `AppLayout` and enabling independent vertical scrolling, preventing layout breakage when many collections exist.
 
+## [0.1.10] - 2025-03-02
+
+- **Studio: polling and version selection:** Collection schema and workflow list now poll every 2s so schema and sidebar stay in sync with the server. Workflow version poll interval reduced from 3s to 2s. Version selection fixed: when loading a workflow, the selected version is set to the URL version or current version only if it exists in the version list; otherwise the first available version is used, avoiding invalid/stale version IDs.
+
 ## [0.1.9] - 2025-03-01
 
 - **Tooling:** Repo pins npm via `packageManager` (npm@10.9.4) for consistent installs; CONTRIBUTING.md documents npm 7+ and optional Corepack. Lockfile and package version synced for open-source release.
@@ -31,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Studio: read-only UI for workflow DAG, runs, events, and collections.
 - Skills installation for Cursor, Claude Code, OpenClaw, and workspace.
 
-[Unreleased]: https://github.com/meitarbe/cognetivy/compare/v0.1.9...HEAD
+[Unreleased]: https://github.com/meitarbe/cognetivy/compare/v0.1.10...HEAD
+[0.1.10]: https://github.com/meitarbe/cognetivy/compare/v0.1.9...v0.1.10
 [0.1.9]: https://github.com/meitarbe/cognetivy/compare/v0.1.6...v0.1.9
 [0.1.6]: https://github.com/meitarbe/cognetivy/releases/tag/v0.1.6
