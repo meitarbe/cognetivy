@@ -107,6 +107,9 @@ export interface CollectionItem {
 export interface CitationItemRef {
   kind: string;
   item_id: string;
+  label?: string;
+  title?: string;
+  name?: string;
 }
 
 /** One citation: external (url) or internal (item_ref). */
@@ -121,6 +124,9 @@ export interface Citation {
 export interface DerivedFrom {
   kind: string;
   item_id: string;
+  label?: string;
+  title?: string;
+  name?: string;
 }
 
 /** Keys that are rendered by TraceabilityDisplay, not as generic fields. */
