@@ -17,6 +17,17 @@ function getDerivedFrom(item: CollectionItem): DerivedFrom[] {
   );
 }
 
+function humanizeIdentifier(value: string): string {
+  return value
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function getRefDisplayName(ref: { label?: string; title?: string; name?: string; item_id: string }): string {
+  return ref.label ?? ref.title ?? ref.name ?? humanizeIdentifier(ref.item_id);
+}
+
 function getReasoning(item: CollectionItem): string | null {
   const r = item.reasoning;
   return typeof r === "string" && r.trim() ? r : null;
@@ -74,12 +85,17 @@ export function TraceabilityDisplay({
                     {c.title ?? c.url}
                   </a>
                 ) : c.item_ref ? (
-                  <Link
-                    to={getItemUrl(c.item_ref.kind, c.item_ref.item_id, runId ?? undefined)}
-                    className="text-primary hover:underline"
-                  >
-                    {c.item_ref.kind} #{c.item_ref.item_id}
-                  </Link>
+                  <>
+                    <Link
+                      to={getItemUrl(c.item_ref.kind, c.item_ref.item_id, runId ?? undefined)}
+                      className="text-primary hover:underline"
+                    >
+                      {getRefDisplayName(c.item_ref)}
+                    </Link>
+                    <span className="block text-muted-foreground text-xs mt-0.5 pl-4">
+                      {humanizeIdentifier(c.item_ref.kind)}
+                    </span>
+                  </>
                 ) : (
                   <span className="text-muted-foreground">—</span>
                 )}
@@ -105,8 +121,11 @@ export function TraceabilityDisplay({
                   to={getItemUrl(d.kind, d.item_id, runId ?? undefined)}
                   className="text-primary hover:underline"
                 >
-                  {d.kind} #{d.item_id}
+                  {getRefDisplayName(d)}
                 </Link>
+                <span className="block text-muted-foreground text-xs mt-0.5 pl-4">
+                  {humanizeIdentifier(d.kind)}
+                </span>
               </li>
             ))}
           </ul>
