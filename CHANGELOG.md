@@ -7,10 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- (none)
+
+## [0.1.23] - 2025-03-03
+
 - **Workflow nodes: required skills and MCPs:** Nodes can declare `required_skills` (array of skill names) and `required_mcps` (array of MCP server names). CLI: model, validation, studio-server API, default workflow example; skill and MCP instructions document the fields (use `required_skills` not `skills`). Studio: node cards and node detail drawer show Skills and MCPs; workflow node card redesigned (layout, spacing, no ellipsis on I/O and tools).
 - **Studio: workflow layout:** Increased node spacing (width, height, gaps) so the DAG is less cramped; vertical spacing tuned for readability.
 - **Studio: version diff:** Workflow page "Show changes" switch compares current version to the previous one; added/changed/removed nodes are highlighted (green/amber/red dashed); removed nodes appear as ghosts on the canvas.
 - **Studio:** Fixed left sidebar overflow with large collection-kind lists by constraining the collections section in `AppLayout` and enabling independent vertical scrolling, preventing layout breakage when many collections exist.
+- **Studio: organized item page layout** (from `codex/organize-item-page-layout`).
+- **CLI: update-notifier.** On each run, check npm for a newer version and show the library’s built-in notification when available.
+- **CLI: skills version tracking.** Record which CLI version was used when skills were installed (`.cognetivy/skills-version.json` and `.cognetivy-version` in each cognetivy skill dir). If the folder version differs from the current CLI, prompt to reinstall skills; after reinstall, launch Studio and keep the process running.
+- **Released to npm** as `cognetivy@0.1.23`.
 
 ## [0.1.10] - 2025-03-02
 
@@ -35,7 +43,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Studio: read-only UI for workflow DAG, runs, events, and collections.
 - Skills installation for Cursor, Claude Code, OpenClaw, and workspace.
 
-[Unreleased]: https://github.com/meitarbe/cognetivy/compare/v0.1.10...HEAD
+[Unreleased]: https://github.com/meitarbe/cognetivy/compare/v0.1.23...HEAD
+[0.1.23]: https://github.com/meitarbe/cognetivy/compare/v0.1.10...v0.1.23
 [0.1.10]: https://github.com/meitarbe/cognetivy/compare/v0.1.9...v0.1.10
 [0.1.9]: https://github.com/meitarbe/cognetivy/compare/v0.1.6...v0.1.9
 [0.1.6]: https://github.com/meitarbe/cognetivy/releases/tag/v0.1.6
