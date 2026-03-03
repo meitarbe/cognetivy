@@ -53,6 +53,14 @@ import {
   type SkillInstallTarget,
   type SkillSource,
 } from "./skills.js";
+import {
+  getCurrentVersionSync,
+  readInstalledSkillsVersion,
+  writeInstalledSkillsVersion,
+  isNewerVersion,
+} from "./skills-version.js";
+import updateNotifier from "update-notifier";
+import * as p from "@clack/prompts";
 
 const DEFAULT_BY = "cli";
 
@@ -102,7 +110,7 @@ program
   .description(
     "Reasoning orchestration state - workflow, runs, events, collections (no LLMs). Run with no command: init workspace if missing, then open Studio."
   )
-  .version("0.1.0");
+  .version(getCurrentVersionSync());
 
 program
   .command("init")
@@ -1064,6 +1072,7 @@ program
               : "workspace";
         console.log(`[${label}] Cognetivy skill at ${cognetivyPath}`);
       }
+      await writeInstalledSkillsVersion(cwd, getCurrentVersionSync());
     } catch (err) {
       console.error(err instanceof Error ? err.message : String(err));
       process.exit(1);
@@ -1291,13 +1300,65 @@ program
     }
   });
 
+let didRunVersionChecksThisProcess = false;
+let didRunReinstallPromptThisProcess = false;
+
+/** 1) Show update-notifier's built-in notification when a newer version exists. 2) If folder skills version !== current CLI, ask to reinstall. */
+async function runVersionChecks(cwd: string): Promise<boolean> {
+  if (didRunVersionChecksThisProcess) return false;
+  if (!process.stdin.isTTY) return false;
+  if (process.argv.includes("--version") || process.argv.includes("-V")) return false;
+  didRunVersionChecksThisProcess = true;
+
+  const pkg = { name: "cognetivy", version: getCurrentVersionSync() };
+  const notifier = updateNotifier({ pkg });
+
+  try {
+    const info = await notifier.fetchInfo();
+    if (info && isNewerVersion(info.latest, info.current)) {
+      notifier.update = info;
+      notifier.notify({ defer: false });
+    }
+  } catch {
+    // ignore
+  }
+
+  const installedVersion = await readInstalledSkillsVersion(cwd);
+  const currentVersion = getCurrentVersionSync();
+  if (installedVersion == null || installedVersion === currentVersion) return false;
+  if (didRunReinstallPromptThisProcess) return false;
+  didRunReinstallPromptThisProcess = true;
+
+  const shouldReinstall = await p.confirm({
+    message: `Skills in this project were installed with v${installedVersion}. You're on v${currentVersion}. Reinstall skills to update?`,
+    initialValue: true,
+  });
+  if (p.isCancel(shouldReinstall) || shouldReinstall === false) return false;
+  const { runInstallTUI } = await import("./install-tui.js");
+  await runInstallTUI({ cwd, force: true });
+  return true;
+}
+
 program.action(async () => {
   const cwd = process.cwd();
+  const didReinstall = await runVersionChecks(cwd);
+  if (didReinstall) {
+    await launchStudio(cwd);
+    return;
+  }
   if (!(await workspaceExists(cwd))) {
     const { runInstallTUI } = await import("./install-tui.js");
     await runInstallTUI({ cwd, init: true });
   }
   await launchStudio(cwd);
+});
+
+program.hook("preAction", async () => {
+  const cwd = process.cwd();
+  const didReinstall = await runVersionChecks(cwd);
+  if (didReinstall) {
+    return;
+  }
 });
 
 program.parse();

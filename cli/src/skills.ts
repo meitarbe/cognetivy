@@ -554,19 +554,25 @@ const REFERENCE_FILENAME = "REFERENCE.md";
 
 /**
  * Install the built-in cognetivy skill (workflow, runs, events, collections) into the target.
- * Writes SKILL.md (Level 2) and REFERENCE.md (Level 3, on-demand). Idempotent; overwrites.
+ * Writes SKILL.md, REFERENCE.md, and .cognetivy-version. Idempotent; overwrites.
  */
 export async function installCognetivySkill(
   target: SkillInstallTarget,
   cwd: string,
   config?: SkillsConfig
 ): Promise<string> {
+  const { getCurrentVersionSync, COGNETIVY_VERSION_FILENAME } = await import("./skills-version.js");
   const targetPath = await getInstallPath(target, COGNETIVY_SKILL_NAME, cwd, config);
   await fs.mkdir(targetPath, { recursive: true });
   await fs.writeFile(path.join(targetPath, SKILL_FILENAME), getCognetivySkillContent(), "utf-8");
   await fs.writeFile(
     path.join(targetPath, REFERENCE_FILENAME),
     getCognetivyReferenceContent(),
+    "utf-8"
+  );
+  await fs.writeFile(
+    path.join(targetPath, COGNETIVY_VERSION_FILENAME),
+    getCurrentVersionSync(),
     "utf-8"
   );
   return targetPath;

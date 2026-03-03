@@ -5,3 +5,10 @@ dist/
 .env
 .env.*
 !.env.example
+
+
+# cognetivy - ignore runtime data; commit workflows/*/versions/
+.cognetivy/runs/
+.cognetivy/events/
+.cognetivy/collections/
+.cognetivy/node-results/

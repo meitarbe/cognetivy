@@ -15,6 +15,7 @@ import { ensureWorkspace } from "./workspace.js";
 import { getMergedConfig } from "./config.js";
 import { installSkillsFromDirectory, installCognetivySkill } from "./skills.js";
 import { renderPngFileToAnsi } from "./terminal-png.js";
+import { getCurrentVersionSync, writeInstalledSkillsVersion } from "./skills-version.js";
 
 function getSkillsConfigFromMerged(config: Awaited<ReturnType<typeof getMergedConfig>>): SkillsConfig | undefined {
   const skills = config.skills as SkillsConfig | undefined;
@@ -197,6 +198,8 @@ export async function runInstallTUI(options: InstallTUIOptions): Promise<void> {
       throw err;
     }
   }
+
+  await writeInstalledSkillsVersion(cwd, getCurrentVersionSync());
 
   p.outro("Done! Installed to:");
   installedPaths.forEach((line) => console.log(`  ${line}`));
