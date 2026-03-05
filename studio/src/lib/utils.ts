@@ -101,3 +101,27 @@ export function getStepIdFromEventData(data: Record<string, unknown> | undefined
   if (!data) return undefined;
   return (data.step ?? data.step_id ?? data.node_id) as string | undefined;
 }
+
+/**
+ * Render unknown values safely for UI text surfaces.
+ * Prevents accidental "[object Object]" output.
+ */
+export function formatUnknownValue(value: unknown): string {
+  if (value === null || value === undefined) return "-";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
+    return String(value);
+  }
+  if (value instanceof Date) return value.toISOString();
+  if (Array.isArray(value)) {
+    return value.map((v) => formatUnknownValue(v)).join(", ");
+  }
+  if (typeof value === "object") {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return "[unserializable object]";
+    }
+  }
+  return String(value);
+}

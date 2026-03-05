@@ -1,3 +1,5 @@
+import { formatUnknownValue } from "@/lib/utils";
+
 interface KeyValueGridProps {
   data: Record<string, unknown>;
   className?: string;
@@ -23,13 +25,13 @@ export function KeyValueGrid({ data, className = "" }: KeyValueGridProps) {
                     {typeof item === "object" && item !== null ? (
                       <KeyValueGrid data={item as Record<string, unknown>} />
                     ) : (
-                      String(item)
+                      formatUnknownValue(item)
                     )}
                   </li>
                 ))}
               </ul>
             ) : (
-              String(value)
+              formatUnknownValue(value)
             )}
           </dd>
         </div>
