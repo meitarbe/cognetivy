@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams, Link } from "react-router-dom";
 import { api, type RunRecord, type EventPayload, type CollectionStore, type WorkflowVersion, type NodeResultRecord } from "@/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -75,6 +75,14 @@ export function RunDetailPage() {
 
   const effectiveCollectionTab =
     selectedCollectionTab ?? (tabParam && kinds.includes(tabParam) ? tabParam : kinds[0]) ?? "";
+
+  const collectedKinds = useMemo(() => {
+    const set = new Set<string>();
+    for (const k of kinds) {
+      if ((collections[k]?.items?.length ?? 0) > 0) set.add(k);
+    }
+    return set;
+  }, [kinds, collections]);
 
   function handleDownloadEventsCsv() {
     const rows = events.map((ev) => ({
@@ -222,6 +230,8 @@ export function RunDetailPage() {
           versionId={run?.workflow_version_id}
           events={events}
           nodeResults={nodeResults}
+          collectedKinds={collectedKinds}
+          onCollectionClick={(kind) => setSelectedCollectionTab(kind)}
           readOnly
           nodesDraggable
           showControls

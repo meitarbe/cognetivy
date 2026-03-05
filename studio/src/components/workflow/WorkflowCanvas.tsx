@@ -46,7 +46,9 @@ export interface WorkflowCanvasProps {
   versionId?: string;
   events?: EventPayload[];
   onStepClick?: (stepId: string) => void;
+  onCollectionClick?: (kind: string) => void;
   nodeResults?: NodeResultRecord[];
+  collectedKinds?: Set<string>;
   readOnly?: boolean;
   /** When true, nodes can be dragged to reposition (overrides readOnly for dragging) */
   nodesDraggable?: boolean;
@@ -67,7 +69,9 @@ function WorkflowCanvasInner({
   versionId,
   events,
   onStepClick,
+  onCollectionClick,
   nodeResults,
+  collectedKinds,
   readOnly = true,
   nodesDraggable = false,
   showControls = true,
@@ -84,13 +88,13 @@ function WorkflowCanvasInner({
     const t = setTimeout(() => {
       if (cancelled) return;
       const stepStatuses = events ? getStepStatuses(events) : undefined;
-      setDeferredResult(workflowToNodesEdges(workflow, stepStatuses));
+      setDeferredResult(workflowToNodesEdges(workflow, stepStatuses, collectedKinds));
     }, 0);
     return () => {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [workflow, events]);
+  }, [workflow, events, collectedKinds]);
 
   const baseNodes = nodesOverride ?? (deferredResult ? deferredResult.nodes : EMPTY_NODES);
   const baseEdges = edgesOverride ?? (deferredResult ? deferredResult.edges : EMPTY_EDGES);
@@ -126,8 +130,15 @@ function WorkflowCanvasInner({
   }, [selectedNode, workflowId, versionId, nodePromptCache]);
 
   function handleNodeClick(_: React.MouseEvent, node: Node) {
-    setSelectedNode(node);
     const d = node.data as Record<string, unknown>;
+    if (node.type === "collection") {
+      const kind = d.kind as string | undefined;
+      if (kind && onCollectionClick) {
+        onCollectionClick(kind);
+        return;
+      }
+    }
+    setSelectedNode(node);
     const nodeId = (d.nodeId as string | undefined) ?? undefined;
     if (nodeId) onStepClick?.(nodeId);
   }
