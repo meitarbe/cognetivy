@@ -59,6 +59,7 @@ import {
   writeInstalledSkillsVersion,
   isNewerVersion,
 } from "./skills-version.js";
+import { setupOpenClaw } from "./openclaw-setup.js";
 import updateNotifier from "update-notifier";
 import * as p from "@clack/prompts";
 
@@ -1073,6 +1074,14 @@ program
         console.log(`[${label}] Cognetivy skill at ${cognetivyPath}`);
       }
       await writeInstalledSkillsVersion(cwd, getCurrentVersionSync());
+      if (targetsToInstall.includes("openclaw")) {
+        const openclawErr = await setupOpenClaw(cwd);
+        if (openclawErr) {
+          console.warn(`OpenClaw setup: ${openclawErr}`);
+        } else {
+          console.log("OpenClaw plugin and config installed in .openclaw/ (extensions + openclaw.json)");
+        }
+      }
     } catch (err) {
       console.error(err instanceof Error ? err.message : String(err));
       process.exit(1);

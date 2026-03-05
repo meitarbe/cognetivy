@@ -7,3 +7,4 @@ export * from "./workspace.js";
 export * from "./models.js";
 export * from "./config.js";
 export { validateWorkflowVersion } from "./validate.js";
+export { COGNETIVY_MCP_TOOLS, invokeCognetivyTool } from "./mcp.js";

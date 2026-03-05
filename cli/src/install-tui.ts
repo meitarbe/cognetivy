@@ -16,6 +16,7 @@ import { getMergedConfig } from "./config.js";
 import { installSkillsFromDirectory, installCognetivySkill } from "./skills.js";
 import { renderPngFileToAnsi } from "./terminal-png.js";
 import { getCurrentVersionSync, writeInstalledSkillsVersion } from "./skills-version.js";
+import { setupOpenClaw } from "./openclaw-setup.js";
 
 function getSkillsConfigFromMerged(config: Awaited<ReturnType<typeof getMergedConfig>>): SkillsConfig | undefined {
   const skills = config.skills as SkillsConfig | undefined;
@@ -86,7 +87,7 @@ function targetToInstallPathHint(target: SkillInstallTarget): string {
     case "cursor":
       return ".cursor/skills";
     case "openclaw":
-      return "skills/";
+      return ".openclaw/skills";
     case "workspace":
       return ".cognetivy/skills";
     default:
@@ -200,6 +201,16 @@ export async function runInstallTUI(options: InstallTUIOptions): Promise<void> {
   }
 
   await writeInstalledSkillsVersion(cwd, getCurrentVersionSync());
+
+  if (targetsToInstall.includes("openclaw")) {
+    const openclawSpinner = ora("Setting up OpenClaw (plugin + config)...").start();
+    const openclawErr = await setupOpenClaw(cwd);
+    if (openclawErr) {
+      openclawSpinner.warn(`OpenClaw setup: ${openclawErr}`);
+    } else {
+      openclawSpinner.succeed("OpenClaw plugin and config installed in .openclaw/ (extensions + openclaw.json)");
+    }
+  }
 
   p.outro("Done! Installed to:");
   installedPaths.forEach((line) => console.log(`  ${line}`));

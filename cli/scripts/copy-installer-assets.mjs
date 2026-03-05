@@ -11,6 +11,20 @@ async function fileExists(filePath) {
   }
 }
 
+async function copyDirRecursive(src, dest) {
+  await fs.mkdir(dest, { recursive: true });
+  const entries = await fs.readdir(src, { withFileTypes: true });
+  for (const ent of entries) {
+    const srcPath = path.join(src, ent.name);
+    const destPath = path.join(dest, ent.name);
+    if (ent.isDirectory()) {
+      await copyDirRecursive(srcPath, destPath);
+    } else {
+      await fs.copyFile(srcPath, destPath);
+    }
+  }
+}
+
 async function main() {
   const thisFile = fileURLToPath(import.meta.url);
   const scriptsDir = path.dirname(thisFile);
@@ -34,6 +48,28 @@ async function main() {
   }
   if (await fileExists(srcFavicon)) {
     await fs.copyFile(srcFavicon, destFavicon);
+  }
+
+  const pluginSrc = path.resolve(repoRoot, "openclaw-plugin");
+  const pluginDest = path.resolve(cliRoot, "dist", "openclaw-plugin");
+  if (await fileExists(path.join(pluginSrc, "openclaw.plugin.json"))) {
+    await fs.mkdir(pluginDest, { recursive: true });
+    await fs.copyFile(
+      path.join(pluginSrc, "openclaw.plugin.json"),
+      path.join(pluginDest, "openclaw.plugin.json")
+    );
+    if (await fileExists(path.join(pluginSrc, "dist"))) {
+      await copyDirRecursive(path.join(pluginSrc, "dist"), path.join(pluginDest, "dist"));
+    }
+    const cliPkg = JSON.parse(await fs.readFile(path.join(cliRoot, "package.json"), "utf-8"));
+    const pluginPkg = JSON.parse(await fs.readFile(path.join(pluginSrc, "package.json"), "utf-8"));
+    pluginPkg.dependencies = pluginPkg.dependencies || {};
+    pluginPkg.dependencies.cognetivy = `^${cliPkg.version}`;
+    await fs.writeFile(
+      path.join(pluginDest, "package.json"),
+      JSON.stringify(pluginPkg, null, 2),
+      "utf-8"
+    );
   }
 }
 

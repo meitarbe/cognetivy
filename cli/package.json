@@ -1,6 +1,6 @@
 {
   "name": "cognetivy",
-  "version": "0.1.23",
+  "version": "0.1.29",
   "description": "Reasoning orchestration state: workflow structure, run logs, and versioned mutations",
   "type": "module",
   "main": "dist/index.js",
@@ -38,6 +38,7 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.0.1",
+    "json5": "^2.2.3",
     "ajv": "^8.18.0",
     "ajv-formats": "^3.0.1",
     "commander": "^12.1.0",

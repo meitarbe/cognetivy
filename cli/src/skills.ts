@@ -293,8 +293,18 @@ export async function getSkillByName(
 }
 
 /**
+ * Resolve the OpenClaw root directory: .openclaw inside cwd, or cwd if cwd is already .openclaw.
+ */
+export function getOpenClawRoot(cwd: string): string {
+  const resolved = path.resolve(cwd);
+  const base = path.basename(resolved);
+  return base === ".openclaw" ? resolved : path.join(resolved, ".openclaw");
+}
+
+/**
  * Resolve absolute install path for a skill in the given target.
  * Uses project-local paths (current directory) so install stays in the terminal's cwd.
+ * For openclaw, installs into .openclaw/skills/ (or cwd/skills/ if cwd is already .openclaw).
  */
 export async function getInstallPath(
   target: SkillInstallTarget,
@@ -308,7 +318,7 @@ export async function getInstallPath(
     case "cursor":
       return path.resolve(cwd, ".cursor", "skills", skillName);
     case "openclaw":
-      return path.resolve(cwd, "skills", skillName);
+      return path.join(getOpenClawRoot(cwd), "skills", skillName);
     case "workspace":
       return path.resolve(cwd, ".cognetivy", "skills", skillName);
     default:

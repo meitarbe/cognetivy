@@ -77,7 +77,11 @@ function sendError(id: string | number | null, code: number, message: string, da
   sendResponse({ jsonrpc: "2.0", id, error: { code, message, data } });
 }
 
-const TOOLS: Array<{ name: string; description: string; inputSchema: { type: "object"; properties: Record<string, unknown>; required?: string[] } }> = [
+export const COGNETIVY_MCP_TOOLS: Array<{
+  name: string;
+  description: string;
+  inputSchema: { type: "object"; properties: Record<string, unknown>; required?: string[] };
+}> = [
   {
     name: "workflow_get",
     description:
@@ -351,8 +355,8 @@ async function resolveBy(cwd: string): Promise<string> {
   return (config.default_by as string) ?? DEFAULT_BY;
 }
 
-async function handleToolsList(): Promise<{ tools: typeof TOOLS }> {
-  return { tools: TOOLS };
+async function handleToolsList(): Promise<{ tools: typeof COGNETIVY_MCP_TOOLS }> {
+  return { tools: COGNETIVY_MCP_TOOLS };
 }
 
 async function handleToolsCall(
@@ -993,6 +997,22 @@ async function handleToolsCall(
 
   const result = await runTool();
   return { content: [{ type: "text" as const, text: result }] };
+}
+
+/**
+ * Invoke a single Cognetivy tool by name and args. For use by OpenClaw plugin or other in-process callers.
+ * @throws if workspace does not exist at cwd or tool returns an error
+ */
+export async function invokeCognetivyTool(
+  name: string,
+  args: Record<string, unknown>,
+  cwd: string
+): Promise<string> {
+  if (!(await workspaceExists(cwd))) {
+    throw new Error(`No cognetivy workspace at ${cwd}. Run \`cognetivy init\` first.`);
+  }
+  const result = await handleToolsCall(name, args, cwd);
+  return result.content[0]?.text ?? "";
 }
 
 async function handleInitialize(): Promise<{

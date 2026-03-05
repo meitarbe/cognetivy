@@ -87,8 +87,7 @@ An installer will open in the terminal:
 <img src="cli/installer.jpg" alt="Cognetivy installer: choose your coding tool(s)" width="35%" />
 
 1. In the installer, choose your coding agent (Claude Code, Cursor, OpenClaw, etc.)
-2. Cognetivy will create a `.cognetivy/` workspace in the current folder.
-3. Cognetivy will install its skills into the workspace.
+2. Cognetivy will create a `.cognetivy/` workspace in the current folder and install its skills. If you choose **OpenClaw**, it will also install the Cognetivy OpenClaw plugin and update your OpenClaw config so the agent can use Cognetivy tools.
 
 ---
 
@@ -126,7 +125,16 @@ Cognetivy works best with **agent skills**, but you can connect via **MCP** so c
 
 Cognetivy tools (workflow, run, event, collection, node, etc.) will then be available in chat.
 
-**Optional — config file:** You can instead add the server to `~/.cursor/mcp.json` (or your project’s `.cursor/mcp.json`):
+### OpenClaw
+
+When you choose **OpenClaw** in the installer (or run `cognetivy install openclaw`), Cognetivy will:
+
+1. Install skills into **`.openclaw/skills/`** (or into `skills/` if you run from inside an existing `.openclaw` directory).
+2. Copy the Cognetivy OpenClaw plugin into **`.openclaw/extensions/cognetivy-openclaw-plugin/`** and update **`.openclaw/openclaw.json`** (plugin enabled, workspace set to this project, `cognetivy-openclaw-plugin` in tools.allow and plugins.allow, and `.openclaw/skills` in skills.load.extraDirs).
+
+Run from your **home directory** (or from `~/.openclaw`) so that the target is `~/.openclaw` and the OpenClaw Gateway finds the plugin and config. Restart the OpenClaw Gateway after installing. See [openclaw-plugin/README.md](openclaw-plugin/README.md) for manual steps.
+
+**Optional — config file (Cursor):** You can instead add the server to `~/.cursor/mcp.json` (or your project’s `.cursor/mcp.json`):
 
 ```json
 {
@@ -150,7 +158,7 @@ Use `"args": ["mcp", "--workspace", "/path/to/folder/with/.cognetivy"]` if the w
 | `cognetivy run start --input <file>` | Start a run |
 | `cognetivy studio` | Open Studio in the browser |
 | `cognetivy mcp` | Start MCP server (for your editor) |
-| `cognetivy install cursor` | Install skills into Cursor (`claude`, `openclaw`, `workspace` also supported) |
+| `cognetivy install [target]` | Install skills; target: `cursor`, `claude`, `openclaw`, `workspace`, or `all`. For OpenClaw, also installs the plugin and updates `~/.openclaw/openclaw.json`. |
 
 ---
 

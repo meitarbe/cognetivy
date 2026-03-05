@@ -1,0 +1,28 @@
+{
+  "name": "cognetivy-openclaw-plugin",
+  "version": "0.1.0",
+  "description": "OpenClaw plugin that exposes Cognetivy workflow, runs, and collections as agent tools",
+  "type": "module",
+  "main": "dist/index.js",
+  "openclaw": {
+    "extensions": ["./dist/index.js"]
+  },
+  "scripts": {
+    "build": "tsc",
+    "prepare": "npm run build"
+  },
+  "dependencies": {
+    "cognetivy": "file:../cli"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "dist",
+    "openclaw.plugin.json"
+  ]
+}
