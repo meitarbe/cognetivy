@@ -359,8 +359,8 @@ export function RunDetailPage() {
             </div>
           </header>
 
-          <section className="shrink-0 border-l-2 border-l-primary/40 pl-2 py-1">
-            <dl className="text-sm space-y-0.5">
+          <section className="shrink-0 border-l-2 border-l-primary/40 pl-2 py-1 max-h-48 overflow-y-auto">
+            <dl className="text-sm space-y-0.5 pr-1">
               <div className="flex gap-2">
                 <dt className="text-muted-foreground shrink-0 w-16">Created</dt>
                 <dd>{formatTimestamp(run?.created_at)}</dd>
