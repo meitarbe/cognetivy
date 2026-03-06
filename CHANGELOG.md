@@ -7,7 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- (none)
+### Added
+
+- **Execution planning docs:** Added `docs/PERFECTION_EXECUTION_PLAN.md` and `docs/EXECUTION_STATE.md` for architecture-first ticket sequencing, conflict-avoidance strategy, and token-overrun resume safety.
+- **Template system expansion:** Added and expanded a practical workflow template catalog in CLI with richer use-cases.
+- **Template parallel DAG lanes:** Every built-in template now includes at least one true parallel level (2 sibling runnable nodes) with valid acyclic fan-out/fan-in structure.
+- **Interactive template apply (CLI):** Added `cognetivy workflow apply-template` with interactive picker (TTY) and non-interactive `--id` path.
+- **Interactive templates command (CLI):** `cognetivy workflow templates` now opens interactive picker/apply UX by default in TTY; `--list` preserves JSON listing behavior.
+- **Workflow page collection schema drawer:** Clicking collection nodes on Workflow page opens a right-side schema drawer.
+- **Prompt drawer schema shortcuts:** Input/output collection chips in prompt-node drawer are now clickable and open collection schema drawer.
+
+### Changed
+
+- **Template install UX:** During install, template selection is now mandatory (removed skip option), and picker ordering is non-developer-first.
+- **Template apply schema creation:** Applying a template now auto-creates collection schema kinds from all template node input/output collections (not just defaults).
+- **Runs page interactions:**
+  - Row click navigates directly to run details.
+  - Removed icon/action column from runs table.
+  - Run name column made bold.
+- **Run detail UX:** Improved monitoring/navigation (signal/lag indicator, node-state summaries, event timeline modes, jump actions).
+- **Run canvas behavior:**
+  - Collected collections are visually marked (green/check).
+  - Collection-node click can jump to inline collected data section (run page behavior).
+  - Auto-fit zoom behavior improved for init/update.
+- **Workflow/collection node affordance:** Removed textual click hints and moved to stronger visual affordance (larger node cards, clearer borders/rings, hover lift/scale/shadow).
+- **Collection row spacing in graph:** Increased same-row collection horizontal spacing by ~75px.
+- **Run detail side section layout:** Constrained details panel height with internal scroll so lower tables remain visible.
+- **Schema drawer rendering:** Replaced raw JSON dump with formatted field UI (type/description + required/optional badges).
+- **Tables behavior consolidation:** Runs/collections tables now share compact row behavior and explicit navigation patterns.
+- **Table actions simplification:** In collection/entity tables, actions now keep only “Go to collection item”.
+
+### Fixed
+
+- **Dropdown UX annoyances:** Improved Select positioning, collision handling, focus-close behavior, scrolling containment, and highlighted/selected states.
+- **Collections table item page actions:** Added copy-as-markdown and copy-as-rich-text actions to collection item page.
+- **Template flow bug:** Fixed missing collection schema kinds when creating workflows from templates.
+
+### Notes
+
+- This Unreleased section was compiled from branch diff `main..feat/perfection-master-plan`.
 
 ## [0.1.23] - 2025-03-03
 
