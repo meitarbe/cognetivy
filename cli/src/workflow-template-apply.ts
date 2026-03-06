@@ -1,5 +1,5 @@
 import { createDefaultCollectionSchema } from "./default-collection-schema.js";
-import type { WorkflowRecord, WorkflowVersionRecord } from "./models.js";
+import type { CollectionSchemaConfig, WorkflowRecord, WorkflowVersionRecord } from "./models.js";
 import {
   readWorkflowIndex,
   readWorkflowRecord,
@@ -26,6 +26,30 @@ export interface ApplyWorkflowTemplateResult {
   template: WorkflowTemplate;
   workflow: WorkflowRecord;
   version: WorkflowVersionRecord;
+}
+
+function createCollectionSchemaFromWorkflow(workflowId: string, version: WorkflowVersionRecord): CollectionSchemaConfig {
+  const schema = createDefaultCollectionSchema(workflowId);
+  const kinds = new Set<string>();
+
+  for (const node of version.nodes ?? []) {
+    for (const k of node.input_collections ?? []) kinds.add(k);
+    for (const k of node.output_collections ?? []) kinds.add(k);
+  }
+
+  for (const kind of kinds) {
+    if (schema.kinds[kind]) continue;
+    schema.kinds[kind] = {
+      name: kind.replace(/_/g, " "),
+      description: `Collection for \"${kind}\" generated from workflow template.`,
+      item_schema: {
+        type: "object",
+        additionalProperties: true,
+      },
+    };
+  }
+
+  return schema;
 }
 
 export async function applyWorkflowTemplateToWorkspace(options: ApplyWorkflowTemplateOptions): Promise<ApplyWorkflowTemplateResult> {
@@ -71,7 +95,7 @@ export async function applyWorkflowTemplateToWorkspace(options: ApplyWorkflowTem
 
   await writeWorkflowRecord(workflow, cwd);
   await writeWorkflowVersionRecord(version, cwd);
-  await writeCollectionSchema(workflowId, createDefaultCollectionSchema(workflowId), cwd);
+  await writeCollectionSchema(workflowId, createCollectionSchemaFromWorkflow(workflowId, version), cwd);
 
   const existingWorkflows = index.workflows ?? [];
   const deduped = existingWorkflows.filter((w) => w.workflow_id !== workflowId);
