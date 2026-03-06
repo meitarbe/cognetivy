@@ -273,11 +273,49 @@ function WorkflowCanvasInner({
           )}
           <div>
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Input collections</p>
-            <p className="font-mono text-sm">{(d.input ?? []).join(", ") || "-"}</p>
+            {(d.input ?? []).length === 0 ? (
+              <p className="font-mono text-sm">-</p>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {(d.input ?? []).map((kind) => (
+                  <button
+                    key={`in-${kind}`}
+                    type="button"
+                    className={`text-xs font-mono px-2 py-1 rounded border border-border bg-muted/30 hover:bg-muted ${onCollectionClick ? TABLE_LINK_CLASS : ""}`}
+                    onClick={() => {
+                      if (!onCollectionClick) return;
+                      onCollectionClick(kind);
+                      setSelectedNode(null);
+                    }}
+                  >
+                    {kind}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <div>
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Output collections</p>
-            <p className="font-mono text-sm">{(d.output ?? []).join(", ") || "-"}</p>
+            {(d.output ?? []).length === 0 ? (
+              <p className="font-mono text-sm">-</p>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {(d.output ?? []).map((kind) => (
+                  <button
+                    key={`out-${kind}`}
+                    type="button"
+                    className={`text-xs font-mono px-2 py-1 rounded border border-border bg-muted/30 hover:bg-muted ${onCollectionClick ? TABLE_LINK_CLASS : ""}`}
+                    onClick={() => {
+                      if (!onCollectionClick) return;
+                      onCollectionClick(kind);
+                      setSelectedNode(null);
+                    }}
+                  >
+                    {kind}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           {(() => {
             const rawMcps =
