@@ -13,7 +13,7 @@ import { formatTimestamp, TABLE_LINK_CLASS } from "@/lib/utils";
 import { RichText, shouldRenderRichText } from "./RichText";
 import { collectionItemToMarkdown } from "@/lib/collectionItemToMarkdown";
 import { downloadCollectionItemAsPdf } from "@/lib/collectionItemToPdf";
-import { Copy, FileDown, ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
+import { Copy, FileDown, ChevronDown, ChevronUp, ExternalLink, Clipboard } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface CollectionTableProps {
@@ -106,6 +106,35 @@ export function CollectionTable({ kind, items, workflow, runId, stepFilter, sear
     e.stopPropagation();
     const md = collectionItemToMarkdown(item, kind);
     navigator.clipboard.writeText(md).catch(() => {});
+  }
+
+  async function handleCopyRichText(item: CollectionItem, e: React.MouseEvent) {
+    e.stopPropagation();
+    const entries = Object.entries(item).filter(([k, v]) => v != null && k !== "id");
+    const html = `
+      <article>
+        <h3>${kind}</h3>
+        <table border="1" cellspacing="0" cellpadding="6">
+          <tbody>
+            ${entries
+              .map(([k, v]) => `<tr><th align="left">${k}</th><td>${String(typeof v === "object" ? JSON.stringify(v, null, 2) : v)}</td></tr>`)
+              .join("")}
+          </tbody>
+        </table>
+      </article>
+    `;
+    const plain = collectionItemToMarkdown(item, kind);
+
+    try {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          "text/html": new Blob([html], { type: "text/html" }),
+          "text/plain": new Blob([plain], { type: "text/plain" }),
+        }),
+      ]);
+    } catch {
+      navigator.clipboard.writeText(plain).catch(() => {});
+    }
   }
 
   async function handleDownloadPdf(item: CollectionItem, e: React.MouseEvent) {
@@ -232,6 +261,15 @@ export function CollectionTable({ kind, items, workflow, runId, stepFilter, sear
                     aria-label="Copy as Markdown"
                   >
                     <Copy className="size-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => handleCopyRichText(item, e)}
+                    className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted"
+                    title="Copy as Rich Text"
+                    aria-label="Copy as Rich Text"
+                  >
+                    <Clipboard className="size-3.5" />
                   </button>
                   <button
                     type="button"
