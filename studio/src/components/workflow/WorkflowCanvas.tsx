@@ -146,9 +146,11 @@ function WorkflowCanvasInner({
     const d = node.data as Record<string, unknown>;
     if (node.type === "collection") {
       const kind = d.kind as string | undefined;
-      if (kind) onCollectionClick?.(kind);
-      setSelectedNode(null);
-      return;
+      if (kind && onCollectionClick) {
+        onCollectionClick(kind);
+        setSelectedNode(null);
+        return;
+      }
     }
 
     setSelectedNode(node);

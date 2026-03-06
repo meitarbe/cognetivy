@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Info } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
-import { api, type WorkflowVersion, type VersionListItem } from "@/api";
+import { api, type CollectionKindSchema, type WorkflowVersion, type VersionListItem } from "@/api";
 import { useWorkflowSelection } from "@/contexts/WorkflowSelectionContext";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { TABLE_LINK_CLASS } from "@/lib/utils";
 import { WorkflowCanvas } from "@/components/workflow/WorkflowCanvas";
 import { diffWorkflowVersions } from "@/lib/workflowDiff";
@@ -32,6 +33,8 @@ export function WorkflowPage() {
   const [workflowVersion, setWorkflowVersion] = useState<WorkflowVersion | null>(null);
   const [prevWorkflowVersion, setPrevWorkflowVersion] = useState<WorkflowVersion | null>(null);
   const [showChanges, setShowChanges] = useState(false);
+  const [collectionSchemas, setCollectionSchemas] = useState<Record<string, CollectionKindSchema>>({});
+  const [selectedCollectionKind, setSelectedCollectionKind] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -74,6 +77,17 @@ export function WorkflowPage() {
       .then(setWorkflowVersion)
       .catch(() => setWorkflowVersion(null));
   }, [selectedWorkflowId, selectedVersionId]);
+
+  useEffect(() => {
+    if (!selectedWorkflowId) {
+      setCollectionSchemas({});
+      return;
+    }
+    api
+      .getCollectionSchema(selectedWorkflowId)
+      .then((schema) => setCollectionSchemas(schema.kinds ?? {}))
+      .catch(() => setCollectionSchemas({}));
+  }, [selectedWorkflowId]);
 
   useEffect(() => {
     if (!selectedWorkflowId || !selectedVersionId || versions.length === 0) {
@@ -218,6 +232,7 @@ export function WorkflowPage() {
             runsVersionForLink={selectedVersionId ?? undefined}
             nodesOverride={diffOverride?.nodes}
             edgesOverride={diffOverride?.edges}
+            onCollectionClick={(kind) => setSelectedCollectionKind(kind)}
             readOnly
             showControls
             showBackground
@@ -229,6 +244,33 @@ export function WorkflowPage() {
           </div>
         )}
       </div>
+
+      <Sheet open={!!selectedCollectionKind} onOpenChange={(open) => !open && setSelectedCollectionKind(null)}>
+        <SheetContent side="right" className="w-full max-w-md">
+          <SheetHeader>
+            <SheetTitle className="text-base">Collection schema: {selectedCollectionKind}</SheetTitle>
+            <SheetDescription className="sr-only">Collection schema details</SheetDescription>
+          </SheetHeader>
+          <div className="pt-4 space-y-3 text-sm">
+            {selectedCollectionKind ? (
+              <>
+                <div>
+                  <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Name</div>
+                  <div>{collectionSchemas[selectedCollectionKind]?.name ?? "-"}</div>
+                </div>
+                <div>
+                  <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Description</div>
+                  <div className="text-muted-foreground">{collectionSchemas[selectedCollectionKind]?.description ?? "-"}</div>
+                </div>
+                <div>
+                  <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Item schema</div>
+                  <pre className="rounded-md border border-border bg-muted/20 p-2 text-xs overflow-auto max-h-[50vh]">{JSON.stringify(collectionSchemas[selectedCollectionKind]?.item_schema ?? {}, null, 2)}</pre>
+                </div>
+              </>
+            ) : null}
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
