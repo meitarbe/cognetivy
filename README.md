@@ -9,9 +9,11 @@
 
 **Website:** [cognetivy.com](https://cognetivy.com)
 
-🎬 **Quick product video (top):** [Watch walkthrough](docs/media/readme/studio-walkthrough.webm)
+🎬 **Quick product video (top):**
 
-<video src="docs/media/readme/studio-walkthrough.webm" controls muted playsinline width="100%"></video>
+[![Cognetivy Studio walkthrough](docs/media/readme/studio-walkthrough.gif)](docs/media/readme/studio-walkthrough.webm)
+
+(Click the GIF to open the full video.)
 
 Cognetivy is an open-source orchestration + memory layer for AI agents.
 It gives your agent a structured local workspace (`.cognetivy/`) to manage:
