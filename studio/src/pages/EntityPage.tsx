@@ -3,9 +3,8 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api, type CollectionSchemaConfig, type CollectionItem, type RunRecord } from "@/api";
 import { useWorkflowSelection } from "@/contexts/WorkflowSelectionContext";
 import { formatTimestamp } from "@/lib/utils";
-import { downloadCollectionItemAsPdf } from "@/lib/collectionItemToPdf";
 import { RichText, shouldRenderRichText } from "@/components/display/RichText";
-import { ChevronDown, ChevronUp, ExternalLink, FileDown } from "lucide-react";
+import { ExternalLink } from "lucide-react";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -170,14 +169,6 @@ export function EntityPage() {
     setExpandedRowKey((prev) => (prev === rowKey ? null : rowKey));
   }
 
-  async function handleDownloadPdf(item: CollectionItem, e: React.MouseEvent) {
-    e.stopPropagation();
-    try {
-      await downloadCollectionItemAsPdf(item, kindSafe);
-    } catch {
-      // ignore
-    }
-  }
 
   function handleDownloadCsv() {
     const csvColumns = ["created_at", "run_name", ...displayColumns];
@@ -246,7 +237,7 @@ export function EntityPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-24 text-right">Actions</TableHead>
+                  <TableHead className="w-16 text-right">Actions</TableHead>
                   <TableHead className="w-8 min-w-8 text-center">#</TableHead>
                   <TableHead className="min-w-[120px]">Added</TableHead>
                   <TableHead className="min-w-[120px]">Run</TableHead>
@@ -268,35 +259,17 @@ export function EntityPage() {
                       className={cn("cursor-pointer hover:bg-muted/50", isExpanded && "bg-muted/30")}
                       onClick={() => toggleRowExpanded(rowKey)}
                     >
-                      <TableCell className="text-right align-top py-1.5" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center justify-end gap-0.5">
-                          <button
-                            type="button"
-                            onClick={() => toggleRowExpanded(rowKey)}
-                            className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted"
-                            title={isExpanded ? "Collapse" : "Expand"}
-                            aria-label={isExpanded ? "Collapse" : "Expand"}
-                          >
-                            {isExpanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
-                          </button>
+                      <TableCell className="text-right align-top py-1.5 w-16" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-end">
                           <a
                             href={itemPath}
                             onClick={(e) => e.stopPropagation()}
                             className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted inline-flex"
-                            title="Open full page"
-                            aria-label="Open full page"
+                            title="Go to collection item"
+                            aria-label="Go to collection item"
                           >
                             <ExternalLink className="size-3.5" />
                           </a>
-                          <button
-                            type="button"
-                            onClick={(e) => handleDownloadPdf(item, e)}
-                            className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted"
-                            title="Download as PDF"
-                            aria-label="Download as PDF"
-                          >
-                            <FileDown className="size-3.5" />
-                          </button>
                         </div>
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground text-center align-top w-8 min-w-8 py-1.5">

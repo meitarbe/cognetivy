@@ -11,9 +11,7 @@ import type { CollectionItem, WorkflowVersion } from "@/api";
 import { TRACEABILITY_KEYS } from "@/api";
 import { formatTimestamp, TABLE_LINK_CLASS } from "@/lib/utils";
 import { RichText, shouldRenderRichText } from "./RichText";
-import { collectionItemToMarkdown } from "@/lib/collectionItemToMarkdown";
-import { downloadCollectionItemAsPdf } from "@/lib/collectionItemToPdf";
-import { Copy, FileDown, ChevronDown, ChevronUp, ExternalLink, Clipboard } from "lucide-react";
+import { ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface CollectionTableProps {
@@ -102,55 +100,13 @@ export function CollectionTable({ kind, items, workflow, runId, stepFilter, sear
   const columns = getDisplayKeys(filteredItems);
   const showTraceability = Boolean(workflow);
 
-  function handleCopyMarkdown(item: CollectionItem, e: React.MouseEvent) {
-    e.stopPropagation();
-    const md = collectionItemToMarkdown(item, kind);
-    navigator.clipboard.writeText(md).catch(() => {});
-  }
 
-  async function handleCopyRichText(item: CollectionItem, e: React.MouseEvent) {
-    e.stopPropagation();
-    const entries = Object.entries(item).filter(([k, v]) => v != null && k !== "id");
-    const html = `
-      <article>
-        <h3>${kind}</h3>
-        <table border="1" cellspacing="0" cellpadding="6">
-          <tbody>
-            ${entries
-              .map(([k, v]) => `<tr><th align="left">${k}</th><td>${String(typeof v === "object" ? JSON.stringify(v, null, 2) : v)}</td></tr>`)
-              .join("")}
-          </tbody>
-        </table>
-      </article>
-    `;
-    const plain = collectionItemToMarkdown(item, kind);
-
-    try {
-      await navigator.clipboard.write([
-        new ClipboardItem({
-          "text/html": new Blob([html], { type: "text/html" }),
-          "text/plain": new Blob([plain], { type: "text/plain" }),
-        }),
-      ]);
-    } catch {
-      navigator.clipboard.writeText(plain).catch(() => {});
-    }
-  }
-
-  async function handleDownloadPdf(item: CollectionItem, e: React.MouseEvent) {
-    e.stopPropagation();
-    try {
-      await downloadCollectionItemAsPdf(item, kind);
-    } catch {
-      // ignore
-    }
-  }
 
   return (
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead className="w-28 text-right">Actions</TableHead>
+          <TableHead className="w-16 text-right">Actions</TableHead>
           <TableHead className="w-8 min-w-8 text-center">#</TableHead>
           <TableHead className="min-w-[120px]">Added</TableHead>
           {showTraceability && (
@@ -175,57 +131,17 @@ export function CollectionTable({ kind, items, workflow, runId, stepFilter, sear
               className={cn("cursor-pointer hover:bg-muted/50", isExpanded && "bg-muted/30")}
               onClick={() => toggleRowExpanded(rowKey)}
             >
-              <TableCell className="text-right align-top py-1.5 w-28" onClick={(e) => e.stopPropagation()}>
-                <div className="flex items-center justify-end gap-0.5 flex-wrap">
-                  <button
-                    type="button"
-                    onClick={() => toggleRowExpanded(rowKey)}
-                    className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted"
-                    title={isExpanded ? "Collapse" : "Expand"}
-                    aria-label={isExpanded ? "Collapse" : "Expand"}
-                  >
-                    {isExpanded ? (
-                      <ChevronUp className="size-3.5" />
-                    ) : (
-                      <ChevronDown className="size-3.5" />
-                    )}
-                  </button>
+              <TableCell className="text-right align-top py-1.5 w-16" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-end">
                   <a
                     href={itemPath}
                     onClick={(e) => e.stopPropagation()}
                     className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted inline-flex"
-                    title="Open full page"
-                    aria-label="Open full page"
+                    title="Go to collection item"
+                    aria-label="Go to collection item"
                   >
                     <ExternalLink className="size-3.5" />
                   </a>
-                  <button
-                    type="button"
-                    onClick={(e) => handleCopyMarkdown(item, e)}
-                    className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted"
-                    title="Copy as Markdown"
-                    aria-label="Copy as Markdown"
-                  >
-                    <Copy className="size-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={(e) => handleCopyRichText(item, e)}
-                    className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted"
-                    title="Copy as Rich Text"
-                    aria-label="Copy as Rich Text"
-                  >
-                    <Clipboard className="size-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={(e) => handleDownloadPdf(item, e)}
-                    className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted"
-                    title="Download as PDF"
-                    aria-label="Download as PDF"
-                  >
-                    <FileDown className="size-3.5" />
-                  </button>
                 </div>
               </TableCell>
               <TableCell className="text-xs text-muted-foreground text-center align-top py-1.5 w-8">
