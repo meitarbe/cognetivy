@@ -55,17 +55,29 @@ With Cognetivy, that work is captured as workflows, runs, events, and collection
 
 ## Install
 
-Run once with npx (no global install):
+### Fast path (recommended)
+
+Open a terminal in your project folder and run:
 
 ```bash
 npx cognetivy
 ```
 
-Or install globally for use from any directory and for MCP:
+That’s it. The installer guides you, creates `.cognetivy/`, installs skills, and launches Studio.
+
+### Global install (optional)
+
+Use this if you want `cognetivy` available everywhere and for MCP setup:
 
 ```bash
 npm install -g cognetivy
 ```
+
+### If something fails
+
+- `npx: command not found` → install Node.js 18+ from <https://nodejs.org>
+- command hangs on first run → retry once (npm cache/network hiccup)
+- Studio didn’t open automatically → run `cognetivy studio`
 
 ---
 
@@ -78,7 +90,8 @@ Open a terminal in your project folder (or an empty folder) and run:
 ```bash
 npx cognetivy
 ```
-An installer will open in the terminal:
+
+An installer will open in the terminal.
 
 ---
 
