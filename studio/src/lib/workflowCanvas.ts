@@ -32,7 +32,8 @@ export function getStepStatuses(events: EventPayload[]): Record<string, StepStat
  */
 export function workflowToNodesEdges(
   wf: WorkflowVersion,
-  stepStatuses?: Record<string, StepStatus>
+  stepStatuses?: Record<string, StepStatus>,
+  collectedKinds?: Set<string>
 ): { nodes: Node[]; edges: Edge[] } {
   const nodeIds = new Set(wf.nodes.map((n) => `node:${n.id}`));
   const edgesSpec: DataflowEdge[] = [];
@@ -130,7 +131,7 @@ export function workflowToNodesEdges(
     .map((v) => {
       const pos = positions.get(v.id);
       const kind = collectionKindFromId(v.id);
-      const data: CollectionNodeData = { kind, label: kind };
+      const data: CollectionNodeData = { kind, label: kind, collected: Boolean(collectedKinds?.has(kind)) };
       return {
         id: v.id,
         type: "collection",

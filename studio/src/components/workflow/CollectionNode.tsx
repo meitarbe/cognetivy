@@ -6,6 +6,7 @@ import { cn, getCollectionColor } from "@/lib/utils";
 export interface CollectionNodeData extends Record<string, unknown> {
   kind: string;
   label: string;
+  collected?: boolean;
 }
 
 function CollectionNodeComponent(props: NodeProps) {
@@ -14,10 +15,10 @@ function CollectionNodeComponent(props: NodeProps) {
   return (
     <div
       className={cn(
-        "relative px-2 py-2 w-[140px] rounded-lg bg-card border shadow-sm text-xs cursor-pointer",
-        "border-border"
+        "relative px-2 py-2 w-[140px] rounded-lg border shadow-sm text-xs cursor-pointer",
+        d.collected ? "bg-emerald-500/10 border-emerald-500/70" : "bg-card border-border"
       )}
-      style={{ borderColor: color }}
+      style={{ borderColor: d.collected ? undefined : color }}
     >
       <Handle type="target" position={Position.Top} />
       <Handle type="source" position={Position.Bottom} />
@@ -28,7 +29,7 @@ function CollectionNodeComponent(props: NodeProps) {
       <div className="flex items-center gap-1.5 justify-center">
         <Database className="size-3 text-muted-foreground" aria-hidden />
         <span className="font-semibold truncate" title={d.kind}>
-          {d.label}
+          {d.label}{d.collected ? " ✓" : ""}
         </span>
       </div>
     </div>

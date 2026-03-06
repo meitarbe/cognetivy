@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ReactFlow,
   Controls,
@@ -10,6 +10,8 @@ import {
   useEdgesState,
   type Node,
   type Edge,
+  useReactFlow,
+  type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import type { WorkflowVersion, EventPayload, NodeResultRecord, WorkflowNodePrompt } from "@/api";
@@ -46,6 +48,8 @@ export interface WorkflowCanvasProps {
   versionId?: string;
   events?: EventPayload[];
   onStepClick?: (stepId: string) => void;
+  onCollectionClick?: (kind: string) => void;
+  collectedKinds?: string[];
   nodeResults?: NodeResultRecord[];
   readOnly?: boolean;
   /** When true, nodes can be dragged to reposition (overrides readOnly for dragging) */
@@ -67,6 +71,8 @@ function WorkflowCanvasInner({
   versionId,
   events,
   onStepClick,
+  onCollectionClick,
+  collectedKinds,
   nodeResults,
   readOnly = true,
   nodesDraggable = false,
@@ -78,19 +84,22 @@ function WorkflowCanvasInner({
   runsVersionForLink,
 }: WorkflowCanvasProps) {
   const [deferredResult, setDeferredResult] = useState<{ nodes: Node[]; edges: Edge[] } | null>(null);
+  const flowRef = useRef<ReactFlowInstance | null>(null);
+  const { fitView } = useReactFlow();
+  const collectedKindsSet = useMemo(() => new Set(collectedKinds ?? []), [collectedKinds]);
 
   useEffect(() => {
     let cancelled = false;
     const t = setTimeout(() => {
       if (cancelled) return;
       const stepStatuses = events ? getStepStatuses(events) : undefined;
-      setDeferredResult(workflowToNodesEdges(workflow, stepStatuses));
+      setDeferredResult(workflowToNodesEdges(workflow, stepStatuses, collectedKindsSet));
     }, 0);
     return () => {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [workflow, events]);
+  }, [workflow, events, collectedKindsSet]);
 
   const baseNodes = nodesOverride ?? (deferredResult ? deferredResult.nodes : EMPTY_NODES);
   const baseEdges = edgesOverride ?? (deferredResult ? deferredResult.edges : EMPTY_EDGES);
@@ -102,6 +111,14 @@ function WorkflowCanvasInner({
     setNodes(baseNodes);
     setEdges(baseEdges);
   }, [baseNodes, baseEdges, setNodes, setEdges]);
+
+  useEffect(() => {
+    if (!nodes.length) return;
+    const t = setTimeout(() => {
+      fitView({ padding: 0.35, duration: 250, minZoom: 0.15, maxZoom: 1.2 });
+    }, 80);
+    return () => clearTimeout(t);
+  }, [nodes.length, edges.length, fitView]);
 
   const canDrag = nodesDraggable || !readOnly;
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
@@ -126,8 +143,15 @@ function WorkflowCanvasInner({
   }, [selectedNode, workflowId, versionId, nodePromptCache]);
 
   function handleNodeClick(_: React.MouseEvent, node: Node) {
-    setSelectedNode(node);
     const d = node.data as Record<string, unknown>;
+    if (node.type === "collection") {
+      const kind = d.kind as string | undefined;
+      if (kind) onCollectionClick?.(kind);
+      setSelectedNode(null);
+      return;
+    }
+
+    setSelectedNode(node);
     const nodeId = (d.nodeId as string | undefined) ?? undefined;
     if (nodeId) onStepClick?.(nodeId);
   }
@@ -321,6 +345,12 @@ function WorkflowCanvasInner({
       nodes={nodes}
       edges={edges}
       onNodesChange={onNodesChange}
+      onInit={(instance) => {
+        flowRef.current = instance;
+        setTimeout(() => {
+          instance.fitView({ padding: 0.35, duration: 200, minZoom: 0.15, maxZoom: 1.2 });
+        }, 60);
+      }}
       onEdgesChange={onEdgesChange}
       onNodeClick={handleNodeClick}
       nodeTypes={nodeTypes}

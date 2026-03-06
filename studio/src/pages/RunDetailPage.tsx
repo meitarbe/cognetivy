@@ -222,6 +222,12 @@ export function RunDetailPage() {
           versionId={run?.workflow_version_id}
           events={events}
           nodeResults={nodeResults}
+          collectedKinds={kinds.filter((k) => (collections[k]?.items?.length ?? 0) > 0)}
+          onCollectionClick={(kind) => {
+            setSelectedCollectionTab(kind);
+            const el = document.querySelector('[data-collected-section="true"]');
+            el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }}
           readOnly
           nodesDraggable
           showControls
@@ -373,7 +379,7 @@ export function RunDetailPage() {
           </Sheet>
 
           {kinds.length > 0 && (
-            <section className="flex-1 min-h-0 flex flex-col border-l-2 border-l-emerald-500/40 pl-2">
+            <section data-collected-section="true" className="flex-1 min-h-0 flex flex-col border-l-2 border-l-emerald-500/40 pl-2">
               <Card className="flex-1 min-h-0 flex flex-col gap-0 py-1">
                 <CardHeader className="py-1 px-2 shrink-0 flex flex-row items-center justify-between gap-2 flex-wrap">
                   <CardTitle className="text-sm">Data collected</CardTitle>
