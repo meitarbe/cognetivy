@@ -227,7 +227,7 @@ export function RunsPage() {
                       {i + 1}
                     </TableCell>
                     <TableCell className="align-top py-1.5">
-                      <div className="text-sm whitespace-normal break-words line-clamp-2 overflow-hidden">
+                      <div className="text-sm font-semibold whitespace-normal break-words line-clamp-2 overflow-hidden">
                         {run.name ?? "-"}
                       </div>
                     </TableCell>
