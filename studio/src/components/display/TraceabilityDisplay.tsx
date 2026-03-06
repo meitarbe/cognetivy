@@ -97,7 +97,7 @@ export function TraceabilityDisplay({
                     </span>
                   </>
                 ) : (
-                  <span className="text-muted-foreground">—</span>
+                  <span className="text-muted-foreground"> - </span>
                 )}
                 {c.excerpt && (
                   <span className="block text-muted-foreground text-xs mt-0.5 pl-4 border-l border-border">
