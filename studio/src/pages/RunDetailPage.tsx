@@ -297,6 +297,8 @@ export function RunDetailPage() {
                       <dd className="min-w-0 break-words">
                         {typeof v === "string" && v.length > 200 ? (
                           <span className="block rounded bg-muted/50 p-2 text-xs whitespace-pre-wrap">{v}</span>
+                        ) : typeof v === "object" ? (
+                          <span className="block rounded bg-muted/50 p-2 text-xs whitespace-pre-wrap font-mono">{JSON.stringify(v, null, 2)}</span>
                         ) : (
                           <span className="rounded bg-muted/50 px-1.5 py-0.5">{String(v)}</span>
                         )}
