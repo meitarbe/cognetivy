@@ -10,7 +10,8 @@ import { CopyableId } from "@/components/ui/CopyableId";
 import { getCreatedByNodeId } from "@/components/display/CollectionTable";
 import { TraceabilityDisplay } from "@/components/display/TraceabilityDisplay";
 import { downloadCollectionItemAsPdf } from "@/lib/collectionItemToPdf";
-import { FileDown } from "lucide-react";
+import { collectionItemToMarkdown } from "@/lib/collectionItemToMarkdown";
+import { Clipboard, Copy, FileDown } from "lucide-react";
 
 const EXCLUDE_KEYS = new Set(["id", "source_refs", ...TRACEABILITY_KEYS]);
 const TECHNICAL_FIELD_KEYS = new Set(["run_id", "created_at", "created_by_node_id", "created_by_node_result_id", "url"]);
@@ -212,19 +213,74 @@ export function CollectionItemPage() {
         { label: item.id ? String(item.id) : "Item" },
       ];
 
+  async function handleCopyMarkdown() {
+    if (!item) return;
+    const md = collectionItemToMarkdown(item, kind);
+    await navigator.clipboard.writeText(md).catch(() => {});
+  }
+
+  async function handleCopyRichText() {
+    if (!item) return;
+    const entries = Object.entries(item).filter(([k, v]) => v != null && k !== "id");
+    const html = `
+      <article>
+        <h3>${kind}</h3>
+        <table border="1" cellspacing="0" cellpadding="6">
+          <tbody>
+            ${entries
+              .map(([k, v]) => `<tr><th align="left">${k}</th><td>${String(typeof v === "object" ? JSON.stringify(v, null, 2) : v)}</td></tr>`)
+              .join("")}
+          </tbody>
+        </table>
+      </article>
+    `;
+    const plain = collectionItemToMarkdown(item, kind);
+
+    try {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          "text/html": new Blob([html], { type: "text/html" }),
+          "text/plain": new Blob([plain], { type: "text/plain" }),
+        }),
+      ]);
+    } catch {
+      await navigator.clipboard.writeText(plain).catch(() => {});
+    }
+  }
+
   return (
     <div className="p-3 max-w-6xl mx-auto">
       <div className="flex items-center justify-between gap-2 mt-2">
         <Breadcrumbs items={breadcrumbItems} />
-        <button
-          type="button"
-          onClick={() => item && downloadCollectionItemAsPdf(item, kind)}
-          className="flex items-center gap-1.5 text-xs px-2 py-1.5 rounded-md border border-border bg-background hover:bg-muted"
-          title="Download as PDF"
-        >
-          <FileDown className="size-3.5" />
-          Download PDF
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleCopyMarkdown}
+            className="flex items-center gap-1.5 text-xs px-2 py-1.5 rounded-md border border-border bg-background hover:bg-muted"
+            title="Copy as Markdown"
+          >
+            <Copy className="size-3.5" />
+            Copy Markdown
+          </button>
+          <button
+            type="button"
+            onClick={handleCopyRichText}
+            className="flex items-center gap-1.5 text-xs px-2 py-1.5 rounded-md border border-border bg-background hover:bg-muted"
+            title="Copy as Rich Text"
+          >
+            <Clipboard className="size-3.5" />
+            Copy Rich Text
+          </button>
+          <button
+            type="button"
+            onClick={() => item && downloadCollectionItemAsPdf(item, kind)}
+            className="flex items-center gap-1.5 text-xs px-2 py-1.5 rounded-md border border-border bg-background hover:bg-muted"
+            title="Download as PDF"
+          >
+            <FileDown className="size-3.5" />
+            Download PDF
+          </button>
+        </div>
       </div>
       <article className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
         <div className="space-y-8">
