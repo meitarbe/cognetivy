@@ -71,6 +71,8 @@ export function RunDetailPage() {
   const [selectedCollectionTab, setSelectedCollectionTab] = useState<string | null>(null);
   const [collectionStepFilter, setCollectionStepFilter] = useState<string | null>(null);
   const [eventsDrawerOpen, setEventsDrawerOpen] = useState(false);
+  const [lastRefreshAt, setLastRefreshAt] = useState<number>(Date.now());
+  const [refreshAgeSec, setRefreshAgeSec] = useState<number>(0);
   const eventsScrollRef = useRef<HTMLDivElement>(null);
 
   const effectiveCollectionTab =
@@ -124,6 +126,7 @@ export function RunDetailPage() {
       setKinds(kindsData);
       setNodeResults(nodeResultsData);
       setError(null);
+      setLastRefreshAt(Date.now());
       const col: Record<string, CollectionStore> = {};
       for (const kind of kindsData) {
         col[kind] = await api.getCollections(runId, kind);
@@ -151,6 +154,13 @@ export function RunDetailPage() {
     const t = setInterval(load, POLL_MS);
     return () => clearInterval(t);
   }, [load]);
+
+  useEffect(() => {
+    const t = setInterval(() => {
+      setRefreshAgeSec(Math.max(0, Math.floor((Date.now() - lastRefreshAt) / 1000)));
+    }, 1000);
+    return () => clearInterval(t);
+  }, [lastRefreshAt]);
 
   if (!runId || error) {
     return (
@@ -272,6 +282,9 @@ export function RunDetailPage() {
               </Link>
             )}
             <div className="flex items-center gap-2 ml-auto shrink-0">
+              <span className="text-[11px] text-muted-foreground">
+                Live sync: {refreshAgeSec === 0 ? "just now" : `${refreshAgeSec}s ago`}
+              </span>
               <CopyableId
                 value={runId}
                 truncateLength={20}
