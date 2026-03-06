@@ -22,8 +22,7 @@ import { CollectionNode, type CollectionNodeData } from "@/components/workflow/C
 import { workflowToNodesEdges, getStepStatuses } from "@/lib/workflowCanvas";
 import { useTheme } from "@/contexts/ThemeContext";
 import { Link } from "react-router-dom";
-import { cn } from "@/lib/utils";
-import { formatTimestamp } from "@/lib/utils";
+import { cn, formatTimestamp, getCollectionColor } from "@/lib/utils";
 import {
   Sheet,
   SheetContent,
@@ -281,7 +280,8 @@ function WorkflowCanvasInner({
                   <button
                     key={`in-${kind}`}
                     type="button"
-                    className={`text-xs font-mono px-2 py-1 rounded border border-border bg-muted/30 hover:bg-muted ${onCollectionClick ? TABLE_LINK_CLASS : ""}`}
+                    className={`text-xs font-mono px-2 py-1 rounded border hover:brightness-95 cursor-pointer transition-colors ${onCollectionClick ? TABLE_LINK_CLASS : ""}`}
+                    style={{ borderColor: getCollectionColor(kind), backgroundColor: `${getCollectionColor(kind)}22` }}
                     onClick={() => {
                       if (!onCollectionClick) return;
                       onCollectionClick(kind);
@@ -304,7 +304,8 @@ function WorkflowCanvasInner({
                   <button
                     key={`out-${kind}`}
                     type="button"
-                    className={`text-xs font-mono px-2 py-1 rounded border border-border bg-muted/30 hover:bg-muted ${onCollectionClick ? TABLE_LINK_CLASS : ""}`}
+                    className={`text-xs font-mono px-2 py-1 rounded border hover:brightness-95 cursor-pointer transition-colors ${onCollectionClick ? TABLE_LINK_CLASS : ""}`}
+                    style={{ borderColor: getCollectionColor(kind), backgroundColor: `${getCollectionColor(kind)}22` }}
                     onClick={() => {
                       if (!onCollectionClick) return;
                       onCollectionClick(kind);
