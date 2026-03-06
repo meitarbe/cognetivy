@@ -19,6 +19,20 @@ cognetivy workflow templates
 
 This prints template metadata (id, name, category, use cases, node count).
 
+## Apply a template interactively (recommended)
+
+```bash
+cognetivy workflow apply-template
+```
+
+This opens an interactive picker, creates a new workflow from the selected template, and sets it as the current workflow.
+
+You can also apply directly by id:
+
+```bash
+cognetivy workflow apply-template --id bug-triage-and-fix
+```
+
 ## Export a template
 
 ```bash

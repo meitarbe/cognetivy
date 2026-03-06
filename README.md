@@ -147,6 +147,8 @@ Use built-in templates inspired by practical Cognetivy use-cases:
 
 ```bash
 cognetivy workflow templates
+cognetivy workflow apply-template            # interactive picker (creates workflow + sets current)
+cognetivy workflow apply-template --id bug-triage-and-fix
 cognetivy workflow template --id bug-triage-and-fix > workflow.template.json
 cognetivy workflow set --workflow <your_workflow_id> --file workflow.template.json --name "template baseline"
 ```
