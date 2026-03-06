@@ -21,7 +21,8 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { CopyableId } from "@/components/ui/CopyableId";
-import { downloadTableCsv, TABLE_LINK_CLASS } from "@/lib/utils";
+import { downloadTableCsv, formatTimestamp } from "@/lib/utils";
+import { ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
 
 const POLL_MS = 3000;
 const ALL_VERSIONS = "";
@@ -34,6 +35,7 @@ export function RunsPage() {
   const statusFilter = searchParams.get("status") ?? ALL_STATUSES;
   const [runs, setRuns] = useState<RunRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [expandedRowKey, setExpandedRowKey] = useState<string | null>(null);
 
   const workflowRuns = useMemo(() => {
     if (!selectedWorkflowId) return runs;
@@ -73,6 +75,10 @@ export function RunsPage() {
       else next.set("status", value);
       return next;
     });
+  }
+
+  function toggleRowExpanded(rowKey: string) {
+    setExpandedRowKey((prev) => (prev === rowKey ? null : rowKey));
   }
 
   const load = useCallback(async () => {
@@ -194,6 +200,7 @@ export function RunsPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-24 text-right">Actions</TableHead>
                 <TableHead className="w-8 min-w-8 text-center">#</TableHead>
                 <TableHead className="min-w-[120px]">Name</TableHead>
                 <TableHead className="min-w-[180px]">ID</TableHead>
@@ -205,53 +212,67 @@ export function RunsPage() {
             <TableBody>
               {filteredRuns.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center text-muted-foreground">
                     {runs.length === 0 ? "No runs yet" : "No runs match filter"}
                   </TableCell>
                 </TableRow>
               )}
-              {filteredRuns.map((run, i) => (
-                <TableRow
-                  key={run.run_id}
-                  className={run.status === "running" ? "bg-amber-500/5 dark:bg-amber-500/10" : undefined}
-                >
-                  <TableCell className="text-xs text-muted-foreground text-center align-top w-8 min-w-8">
-                    {i + 1}
-                  </TableCell>
-                  <TableCell>
-                    <Link
-                      to={`/runs/${encodeURIComponent(run.run_id)}`}
-                      className={TABLE_LINK_CLASS}
-                    >
-                      {run.name ?? "-"}
-                    </Link>
-                  </TableCell>
-                  <TableCell className="max-w-[200px]">
-                    <CopyableId value={run.run_id} truncateLength={24} />
-                  </TableCell>
-                  <TableCell>
-                    <Link
-                      to={`/runs?version=${encodeURIComponent(run.workflow_version_id)}${statusFilter ? `&status=${encodeURIComponent(statusFilter)}` : ""}`}
-                      className={TABLE_LINK_CLASS}
-                    >
-                      {run.workflow_version_id}
-                    </Link>
-                  </TableCell>
-                  <TableCell>
-                    <Link
-                      to={`/runs?status=${encodeURIComponent(run.status)}${versionFilter ? `&version=${encodeURIComponent(versionFilter)}` : ""}`}
-                      className="inline-block"
-                    >
-                      <Badge variant={run.status === "running" ? "default" : "secondary"}>
-                        {run.status}
-                      </Badge>
-                    </Link>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground text-sm whitespace-nowrap">
-                    {run.created_at}
-                  </TableCell>
-                </TableRow>
-              ))}
+              {filteredRuns.map((run, i) => {
+                const rowKey = run.run_id;
+                const isExpanded = expandedRowKey === rowKey;
+                return (
+                  <TableRow
+                    key={run.run_id}
+                    className={[
+                      "cursor-pointer hover:bg-muted/50",
+                      run.status === "running" ? "bg-amber-500/5 dark:bg-amber-500/10" : "",
+                      isExpanded ? "bg-muted/30" : "",
+                    ].join(" ")}
+                    onClick={() => toggleRowExpanded(rowKey)}
+                  >
+                    <TableCell className="text-right align-top py-1.5 w-24" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-end gap-0.5">
+                        <button
+                          type="button"
+                          onClick={() => toggleRowExpanded(rowKey)}
+                          className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted"
+                          title={isExpanded ? "Collapse" : "Expand"}
+                          aria-label={isExpanded ? "Collapse" : "Expand"}
+                        >
+                          {isExpanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+                        </button>
+                        <Link
+                          to={`/runs/${encodeURIComponent(run.run_id)}`}
+                          className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted inline-flex"
+                          title="Open run"
+                          aria-label="Open run"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <ExternalLink className="size-3.5" />
+                        </Link>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground text-center align-top w-8 min-w-8 py-1.5">
+                      {i + 1}
+                    </TableCell>
+                    <TableCell className="align-top py-1.5">
+                      <div className={["text-sm whitespace-normal break-words", !isExpanded ? "line-clamp-2 overflow-hidden" : ""].join(" ")}>
+                        {run.name ?? "-"}
+                      </div>
+                    </TableCell>
+                    <TableCell className="max-w-[200px] align-top py-1.5">
+                      <CopyableId value={run.run_id} truncateLength={24} />
+                    </TableCell>
+                    <TableCell className="align-top py-1.5 text-sm">{run.workflow_version_id}</TableCell>
+                    <TableCell className="align-top py-1.5">
+                      <Badge variant={run.status === "running" ? "default" : "secondary"}>{run.status}</Badge>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-sm whitespace-nowrap align-top py-1.5">
+                      {formatTimestamp(run.created_at)}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </CardContent>
