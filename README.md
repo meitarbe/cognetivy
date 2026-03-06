@@ -11,9 +11,11 @@
 
 🎬 **Quick product video (top):**
 
-[![Cognetivy Studio walkthrough](docs/media/readme/studio-walkthrough.gif)](docs/media/readme/studio-walkthrough.webm)
+<video src="docs/media/readme/studio-walkthrough.mp4" controls playsinline width="100%"></video>
 
-(Click the GIF to open the full video.)
+If video embed doesn't render on your viewer, open directly:
+- [MP4](docs/media/readme/studio-walkthrough.mp4)
+- [WEBM](docs/media/readme/studio-walkthrough.webm)
 
 Cognetivy is an open-source orchestration + memory layer for AI agents.
 It gives your agent a structured local workspace (`.cognetivy/`) to manage:
@@ -112,20 +114,25 @@ Applying a template creates a workflow, sets it current, and creates needed coll
 
 See full gallery: [docs/TEMPLATES.md](docs/TEMPLATES.md)
 
-### Example use case: Competitor analysis (sample/fake data)
+### Example use case: Competitor analysis (real companies, publicly listed pages)
 
-Below is **fake demo data** to show how a competitor-analysis run can look in collections.
+Below is a realistic competitor snapshot (from public company/pricing pages, March 2026).
 
-| competitor | pricing_model | est_starting_price | strengths | weaknesses | confidence |
-|---|---|---:|---|---|---:|
-| FluxBoard | Seat-based | $29/user | Strong onboarding, polished UX | Limited API depth | 0.78 |
-| SprintPilot | Usage-based | $0.004/event | Flexible automations, fast exports | Steeper learning curve | 0.71 |
-| TaskForge | Tiered plans | $49/team | Great collaboration controls | Basic analytics | 0.74 |
+| competitor | site | public pricing page | listed starting price* | model |
+|---|---|---|---:|---|
+| Asana | <https://asana.com> | <https://asana.com/pricing> | $13.49/user/mo | seat-based |
+| Monday.com | <https://monday.com> | <https://monday.com/pricing> | ~$9/user/mo | seat-based |
+| ClickUp | <https://clickup.com> | <https://clickup.com/pricing> | $10/user/mo | seat-based |
+| Notion | <https://www.notion.so> | <https://www.notion.so/pricing> | $10/user/mo | seat-based |
+| Linear | <https://linear.app> | <https://linear.app/pricing> | $8/user/mo | seat-based |
+| Jira | <https://www.atlassian.com/software/jira> | <https://www.atlassian.com/software/jira/pricing> | ~$8.60/user/mo | seat-based |
 
-**Example structured insight (fake):**
-- Mid-market teams are most price-sensitive around onboarding + analytics bundles.
-- A “starter + guided setup” package is likely to outperform feature-only messaging.
-- Differentiation opportunity: transparent audit trail + no vendor lock-in for workflow data.
+\*Pricing can change by region, billing cycle, and plan changes.
+
+**Example structured insight:**
+- Most competitors anchor on seat-based entry tiers between roughly $8–$14/user/mo.
+- Teams comparing tools care strongly about onboarding speed + integration depth, not just task boards.
+- Positioning opportunity: emphasize traceability/auditability for AI-agent workflows, where generic PM tools are weaker.
 
 ---
 
