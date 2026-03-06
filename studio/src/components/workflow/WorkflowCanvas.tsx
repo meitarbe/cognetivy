@@ -341,6 +341,9 @@ function WorkflowCanvasInner({
 
   return (
     <>
+    <div className="pointer-events-none absolute left-3 top-3 z-10 rounded-md border border-border/70 bg-background/90 px-2 py-1 text-[11px] text-muted-foreground shadow-sm">
+      👆 Nodes are clickable
+    </div>
     <ReactFlow
       nodes={nodes}
       edges={edges}
@@ -386,7 +389,7 @@ function WorkflowCanvasInner({
 export function WorkflowCanvas(props: WorkflowCanvasProps) {
   return (
     <ReactFlowProvider>
-      <div className="w-full h-full min-h-[200px]">
+      <div className="relative w-full h-full min-h-[200px]">
         <WorkflowCanvasInner {...props} />
       </div>
     </ReactFlowProvider>

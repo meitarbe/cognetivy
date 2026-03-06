@@ -26,7 +26,7 @@ export function WorkflowPage() {
   const workflowFromUrl = searchParams.get("workflow_id");
   const versionFromUrl = searchParams.get("version_id");
 
-  const [workflowRecord, setWorkflowRecord] = useState<{ current_version_id: string } | null>(null);
+  const [workflowRecord, setWorkflowRecord] = useState<{ current_version_id: string; name?: string; description?: string } | null>(null);
   const [versions, setVersions] = useState<VersionListItem[]>([]);
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(versionFromUrl);
   const [workflowVersion, setWorkflowVersion] = useState<WorkflowVersion | null>(null);
@@ -201,6 +201,12 @@ export function WorkflowPage() {
               </div>
             </div>
           </div>
+        )}
+      </div>
+      <div className="px-3 pt-2 pb-1 border-b border-border bg-muted/10">
+        <div className="text-sm font-semibold">{workflowRecord?.name ?? selectedWorkflow?.name ?? "Workflow"}</div>
+        {workflowRecord?.description && (
+          <div className="text-xs text-muted-foreground mt-0.5">{workflowRecord.description}</div>
         )}
       </div>
       <div className="flex-1 min-h-0">
