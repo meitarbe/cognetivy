@@ -311,8 +311,9 @@ export function EntityPage() {
                             to={`/runs/${encodeURIComponent(String(item.run_id))}`}
                             className={TABLE_LINK_CLASS}
                             onClick={(e) => e.stopPropagation()}
+                            title={runIdToName.get(String(item.run_id)) ?? String(item.run_id)}
                           >
-                            {runIdToName.get(String(item.run_id)) ?? "-"}
+                            Open run
                           </Link>
                         ) : (
                           "-"
