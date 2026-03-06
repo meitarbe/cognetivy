@@ -80,7 +80,7 @@ Cognetivy works best with **agent skills**, but you can connect via **MCP** so c
 
 Cognetivy tools (workflow, run, event, collection, node, etc.) will then be available in chat.
 
-**Optional — config file:** You can instead add the server to `~/.cursor/mcp.json` (or your project’s `.cursor/mcp.json`):
+**Optional  -  config file:** You can instead add the server to `~/.cursor/mcp.json` (or your project’s `.cursor/mcp.json`):
 
 ```json
 {
@@ -110,7 +110,7 @@ Use `"args": ["mcp", "--workspace", "/path/to/folder/with/.cognetivy"]` if the w
 
 ## Community
 
-- [Contributing](CONTRIBUTING.md) — how to run the project, run tests, and submit changes
+- [Contributing](CONTRIBUTING.md)  -  how to run the project, run tests, and submit changes
 - [Code of Conduct](CODE_OF_CONDUCT.md)
 - [Report a bug](https://github.com/meitarbe/cognetivy/issues/new?template=bug_report.md) · [Request a feature](https://github.com/meitarbe/cognetivy/issues/new?template=feature_request.md)
 

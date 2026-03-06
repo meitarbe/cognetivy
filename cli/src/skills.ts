@@ -445,7 +445,7 @@ Workflows, runs, node results, and schema-backed collections. Run commands from 
 
 **Node prompts and output:** Node prompts work best when **long and specific**: include the goal, constraints (e.g. source discipline, output format), and examples if helpful. Prefer detailed prompts over short one-liners. If a node has \`minimum_rows\`, produce at least that many items for its output collection(s).
 
-**Per-node skills and MCPs:** Each node can declare \`required_skills\` (array of skill names, e.g. \`["cognetivy", "tavily"]\`) and \`required_mcps\` (array of MCP server names, e.g. \`["user-context7", "cursor-ide-browser"]\`). Use these field names in workflow JSON—**not** \`skills\` (use \`required_skills\`). Run \`workflow get\` to see the default workflow example.
+**Per-node skills and MCPs:** Each node can declare \`required_skills\` (array of skill names, e.g. \`["cognetivy", "tavily"]\`) and \`required_mcps\` (array of MCP server names, e.g. \`["user-context7", "cursor-ide-browser"]\`). Use these field names in workflow JSON - **not** \`skills\` (use \`required_skills\`). Run \`workflow get\` to see the default workflow example.
 
 ## Runs (agent surface: 4 commands)
 
@@ -468,7 +468,7 @@ Usually covered by \`node complete\`. For inspect or when not using it: \`node-r
 
 **Traceability (enforced by schema):** Every kind (except \`run_input\`) has optional \`citations\`, \`derived_from\`, and \`reasoning\`. **Always populate these** so outputs are traceable:
 - **citations:** Array of sources: \`{ url?, title?, excerpt? }\` for external URLs (only verified), or \`{ item_ref: { kind, item_id } }\` for another collection item (e.g. a \`sources\` item). Enables "where did this come from?"
-- **derived_from:** Array of \`{ kind, item_id }\` — which collection items this was derived from (chain of thinking). Enables "why did we decide this?"
+- **derived_from:** Array of \`{ kind, item_id }\`  -  which collection items this was derived from (chain of thinking). Enables "why did we decide this?"
 - **reasoning:** Optional string explaining the conclusion or chain of thought.
 
 **Payload:** Must match \`item_schema\` for the kind; do not include \`created_at\`, \`created_by_node_id\` - cognetivy adds them. For kinds like \`sources\` that have a \`url\` field: only include URLs you have verified (retrieved or opened); do not invent URLs.

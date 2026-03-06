@@ -42,8 +42,8 @@ function WorkflowNodeComponent(props: NodeProps) {
   const isHitl = d.type === "HUMAN_IN_THE_LOOP";
   const mcps = d.requiredMcps ?? [];
   const skills = d.requiredSkills ?? [];
-  const mcpText = mcps.length === 0 ? "—" : mcps.join(", ");
-  const skillText = skills.length === 0 ? "—" : skills.join(", ");
+  const mcpText = mcps.length === 0 ? " - " : mcps.join(", ");
+  const skillText = skills.length === 0 ? " - " : skills.join(", ");
 
   return (
     <div

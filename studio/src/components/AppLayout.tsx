@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import { cn, getCollectionColor } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useOnboardingVisibility } from "@/hooks/useOnboardingVisibility";
+import { OnboardingModal } from "@/components/onboarding/OnboardingModal";
 import { Switch } from "@/components/ui/switch";
 import { useTheme } from "@/contexts/ThemeContext";
 import { api, type CollectionSchemaConfig, type RunRecord, type WorkspaceInfo } from "@/api";
@@ -51,6 +53,7 @@ function setSidebarOpenStored(open: boolean) {
 export function AppLayout() {
   const location = useLocation();
   const { theme, setTheme } = useTheme();
+  const { open: onboardingOpen, closeForSession, dismissPermanently } = useOnboardingVisibility();
   const { workflows, selectedWorkflowId, setSelectedWorkflowId, selectedWorkflow } = useWorkflowSelection();
   const [schema, setSchema] = useState<CollectionSchemaConfig | null>(null);
   const [runs, setRuns] = useState<RunRecord[]>([]);
@@ -112,6 +115,14 @@ export function AppLayout() {
     setCollectionExpanded((e) => !e);
   }
 
+  function handleOnboardingClose(neverShowAgain: boolean) {
+    if (neverShowAgain) {
+      dismissPermanently();
+    } else {
+      closeForSession();
+    }
+  }
+
   function renderStaticNavItem(item: { to: string; label: string; icon: LucideIcon }) {
     const Icon = item.icon;
     const isActive = location.pathname === item.to || (item.to !== "/" && location.pathname.startsWith(item.to));
@@ -163,6 +174,11 @@ export function AppLayout() {
 
   return (
     <div className="flex h-screen bg-background">
+      <OnboardingModal
+        open={onboardingOpen}
+        onOpenChange={() => {}}
+        onClose={handleOnboardingClose}
+      />
       <aside
         className={cn(
           "border-r border-border flex flex-col bg-sidebar shrink-0 min-h-0 transition-[width] duration-200",

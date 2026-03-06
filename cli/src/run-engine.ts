@@ -161,7 +161,7 @@ export async function getNextStep(runId: string, cwd: string): Promise<GetNextSt
       next_step: {
         action: "run_nodes_parallel",
         runnable_node_ids: runnableIds,
-        hint: `Multiple nodes runnable at this level (${runnableIds.join(", ")}). You must spawn one sub-agent per node unless the user says otherwise. When you run "cognetivy run step --run ${runId}" (no --node), the CLI marks all these nodes in progress. Each sub-agent: do the work for its node, then "cognetivy run step --run ${runId} --node <node_id> --collection-kind <kind>" with payload to complete. No need to "start" first—already in progress.`,
+        hint: `Multiple nodes runnable at this level (${runnableIds.join(", ")}). You must spawn one sub-agent per node unless the user says otherwise. When you run "cognetivy run step --run ${runId}" (no --node), the CLI marks all these nodes in progress. Each sub-agent: do the work for its node, then "cognetivy run step --run ${runId} --node <node_id> --collection-kind <kind>" with payload to complete. No need to "start" first - already in progress.`,
       },
     };
   }

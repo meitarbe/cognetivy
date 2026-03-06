@@ -9,6 +9,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- (none)
+
+### Changed
+
+- (none)
+
+### Fixed
+
+- (none)
+
+## [0.1.31] - 2025-03-06
+
+### Added
+
+- **Studio: first-time onboarding modal.** On first visit, a modal explains that the Studio is read-only and that users should talk to their coding agent (in Cursor, Claude Code, etc.) to create workflows and start runs. Includes a "Don't show this again" checkbox (persisted in localStorage).
+- **Studio: onboarding chat simulation.** The modal shows an animated simulation of a conversation: user asks for a competitor-analysis workflow (research from external sources, extract key points, comparison report), starts a run, then asks for a new workflow version; the "Coding Agent" responds in plain language (no CLI commands). Typing animation and a single "Thinking…" state in a fixed bottom bar; simulation is clearly labeled so users do not type in the modal.
+- **Studio: onboarding copy and disclaimer.** Prominent note that "This app does not run the AI; it only displays what your AI does via Cognetivy"; simulation callout and header stress "Do not type here—use your editor's chat."
+- **Studio: Checkbox component.** Radix-based checkbox in `components/ui/checkbox.tsx` for the onboarding "never show again" option.
+- **Studio: `useOnboardingVisibility` hook.** Hook and localStorage key `cognetivy-onboarding-dismissed` to control one-time vs. permanent dismiss of the onboarding modal.
+
+### Changed
+
+- (none)
+
+### Fixed
+
+- (none)
+
+## [0.1.30] - 2025-03-06
+
+### Added
+
 - **Execution planning docs:** Added `docs/PERFECTION_EXECUTION_PLAN.md` and `docs/EXECUTION_STATE.md` for architecture-first ticket sequencing, conflict-avoidance strategy, and token-overrun resume safety.
 - **Template system expansion:** Added and expanded a practical workflow template catalog in CLI with richer use-cases.
 - **Template parallel DAG lanes:** Every built-in template now includes at least one true parallel level (2 sibling runnable nodes) with valid acyclic fan-out/fan-in structure.
@@ -35,7 +67,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Run detail side section layout:** Constrained details panel height with internal scroll so lower tables remain visible.
 - **Schema drawer rendering:** Replaced raw JSON dump with formatted field UI (type/description + required/optional badges).
 - **Tables behavior consolidation:** Runs/collections tables now share compact row behavior and explicit navigation patterns.
-- **Table actions simplification:** In collection/entity tables, actions now keep only “Go to collection item”.
+- **Table actions simplification:** In collection/entity tables, actions now keep only "Go to collection item".
 
 ### Fixed
 
@@ -45,7 +77,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Notes
 
-- This Unreleased section was compiled from branch diff `main..feat/perfection-master-plan`.
+- Released to npm as `cognetivy@0.1.30`. Changes were compiled from branch diff `main..feat/perfection-master-plan`.
 
 ## [0.1.23] - 2025-03-03
 
@@ -69,7 +101,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Parallel nodes (deterministic in progress):** When multiple nodes are runnable at the same level, run-engine returns `run_nodes_parallel` with `runnable_node_ids`. Running `run step --run <id>` (no `--node`) causes the CLI and MCP to start all those nodes in one go (step_started + started node result per node), so every parallel node is in progress without relying on sub-agents to call start. Sub-agents do the work and complete with `run step --run <id> --node <node_id> --collection-kind <kind>` and payload. Skill and run-engine hint: you must spawn one sub-agent per node unless the user says otherwise.
 - **Traceability:** Optional `citations`, `derived_from`, and `reasoning` are merged into every collection kind's item schema (except `run_input`) via traceability-schema. Default schema and kind-templates use it; skill and MCP describe traceability. Studio: `TraceabilityDisplay` and collection item detail/page show citations (external links and internal item refs), derived-from links, and reasoning; table and generic item view exclude these keys.
 - **CLI/MCP:** `run step --run <id> --node <node_id>` with no payload starts that node only (step_started + started node result). MCP `run_step` tool aligned with CLI (start-all for parallel, `current_node_ids` in responses).
-- **Agent behavior (skill + workflow + Studio):** Improved how agents act with Cognetivy: (1) Source discipline—skill and default workflow direct agents to rely only on given or retrieved sources and to verify URLs instead of inventing them. (2) Proactive version suggestions—skill instructs agents to suggest newer dependency/tool versions when relevant. (3) Long, specific prompts—skill and default node prompts encourage detailed prompts; Studio shows a hint in the node detail sheet. (4) Minimum rows—new optional `minimum_rows` node prop (validated as positive integer); default retrieve_sources node sets it to 5; skill and MCP describe it; Studio displays it in the workflow node sheet. (5) Default collection schema gains a `sources` kind (url, title, excerpt) with description that URLs must be verified.
+- **Agent behavior (skill + workflow + Studio):** Improved how agents act with Cognetivy: (1) Source discipline - skill and default workflow direct agents to rely only on given or retrieved sources and to verify URLs instead of inventing them. (2) Proactive version suggestions - skill instructs agents to suggest newer dependency/tool versions when relevant. (3) Long, specific prompts - skill and default node prompts encourage detailed prompts; Studio shows a hint in the node detail sheet. (4) Minimum rows - new optional `minimum_rows` node prop (validated as positive integer); default retrieve_sources node sets it to 5; skill and MCP describe it; Studio displays it in the workflow node sheet. (5) Default collection schema gains a `sources` kind (url, title, excerpt) with description that URLs must be verified.
 - **Workflows:** Validate that workflow dataflow is acyclic (DAG). Saving or setting a workflow with a cycle in input/output collections now fails with a clear validation error. MCP and skills docs updated to require single connected DAG with no cycles.
 - **Studio:** Node prompts and descriptions load on demand when opening a node in the workflow canvas (smaller initial payload, faster load). Run detail and workflow pages use the new behavior.
 - **Workspace:** Version listing uses a `version_ids.json` manifest per workflow for faster listing; created or updated when listing or writing versions. Missing manifest falls back to directory listing.
@@ -81,7 +113,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Studio: read-only UI for workflow DAG, runs, events, and collections.
 - Skills installation for Cursor, Claude Code, OpenClaw, and workspace.
 
-[Unreleased]: https://github.com/meitarbe/cognetivy/compare/v0.1.23...HEAD
+[Unreleased]: https://github.com/meitarbe/cognetivy/compare/v0.1.31...HEAD
+[0.1.31]: https://github.com/meitarbe/cognetivy/compare/v0.1.30...v0.1.31
+[0.1.30]: https://github.com/meitarbe/cognetivy/compare/v0.1.23...v0.1.30
 [0.1.23]: https://github.com/meitarbe/cognetivy/compare/v0.1.10...v0.1.23
 [0.1.10]: https://github.com/meitarbe/cognetivy/compare/v0.1.9...v0.1.10
 [0.1.9]: https://github.com/meitarbe/cognetivy/compare/v0.1.6...v0.1.9
