@@ -4,64 +4,64 @@
 
 # Cognetivy
 
-[![npm version](https://img.shields.io/npm/v/cognetivy.svg)](https://www.npmjs.com/package/cognetivy) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![npm version](https://img.shields.io/npm/v/cognetivy.svg)](https://www.npmjs.com/package/cognetivy)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **Website:** [cognetivy.com](https://cognetivy.com)
 
-![Cognetivy Studio: workflow canvas, run details, and data collected](cli/studio_example.jpg)
+Cognetivy is an open-source orchestration + memory layer for AI agents.
+It gives your agent a structured local workspace (`.cognetivy/`) to manage:
 
-Cognetivy is an open-source state layer for AI-assistants like Claude Code, Cursor, OpenClaw, etc. It helps you define workflows, track runs and events, and store structured collections in a local `.cognetivy/` workspace. No LLMs inside - just the data and tools your editor's agent uses via [Skills](https://agentskills.io/) and [MCP](https://agentskills.io/). Works with **Claude Code**, **Cursor**, **OpenClaw**, and other Skills and MCP-compatible clients.
+- **Workflows** (how work should happen)
+- **Runs** (what happened each execution)
+- **Events** (timeline + state transitions)
+- **Collections** (structured outputs with schema)
 
-## Why Cognetivy
+It works with Claude Code, Cursor, OpenClaw, and other MCP/Skills-compatible clients.
 
-AI coding agents are great at producing output, but their process is usually hard to inspect and hard to repeat.
+---
 
-Cognetivy gives your agent an operational layer so you can:
+## Why teams use Cognetivy
 
-- **Define how it should work** with explicit workflows
-- **Track what happened** in each run and event
-- **Keep reasoning artifacts organized** in structured collections
-- **Re-run and compare outcomes** with a persistent local workspace
+Without Cognetivy, important agent context gets lost in chat logs.
+With Cognetivy, work becomes **traceable, repeatable, and inspectable**.
 
-In short: Cognetivy turns powerful-but-chaotic agent sessions into structured, auditable workflows.
+- ✅ Re-run the same process with new input
+- ✅ Audit decisions and generated artifacts
+- ✅ Keep outputs structured and queryable
+- ✅ Make agent workflows easier to debug and improve
 
-## Explain it like I'm new to this
+---
 
-Think of your coding agent as a very smart intern:
+## Product tour (captured with Playwright)
 
-- The model is the **brain**
-- Your editor is the **workspace**
-- Cognetivy is the **memory + process manager**
+### Workflow view
+![Workflow page](docs/media/readme/studio-workflow.png)
 
-Without Cognetivy, a lot of important context lives in chat history and disappears.
-With Cognetivy, that work is captured as workflows, runs, events, and collections inside `.cognetivy/`.
+### Runs list
+![Runs page](docs/media/readme/studio-runs.png)
 
+### Run detail
+![Run detail page](docs/media/readme/studio-run-detail.png)
 
-**Project status:** Actively maintained. We welcome [issues](https://github.com/meitarbe/cognetivy/issues) and [pull requests](https://github.com/meitarbe/cognetivy/pulls).
+### Collections/data
+![Collections page](docs/media/readme/studio-collections.png)
 
-**Great for:**
-
-- Building repeatable AI coding workflows
-- Running structured research tasks with coding agents
-- Teams that need traceability and auditability for agent output
-
-## Requirements
-
-- **Node.js** ≥ 18
-- A project directory (or an empty folder) to create a workspace in
-- A coding agent (Claude Code, Cursor, OpenClaw, etc.) working on that directory
+🎬 **Walkthrough video:** [Open studio walkthrough (webm)](docs/media/readme/studio-walkthrough.webm)
 
 ---
 
 ## Install
 
-Run once with npx (no global install):
+### Option A — one-shot (recommended)
 
 ```bash
 npx cognetivy
 ```
 
-Or install globally for use from any directory and for MCP:
+This starts the interactive installer and opens Studio.
+
+### Option B — global
 
 ```bash
 npm install -g cognetivy
@@ -69,112 +69,92 @@ npm install -g cognetivy
 
 ---
 
-## Step-by-step
+## 2-minute quick start
 
-### Step 1 - Run cognetivy
-
-Open a terminal in your project folder (or an empty folder) and run:
+1. Open your project folder
+2. Run:
 
 ```bash
 npx cognetivy
 ```
-An installer will open in the terminal:
+
+3. In the installer:
+   - choose your tool(s): OpenClaw / Claude Code / Cursor / etc.
+   - choose a workflow template (interactive)
+4. Studio opens automatically
+
+That’s it — you now have a working `.cognetivy/` workspace.
 
 ---
 
-### Step 2 - Use the installer
+## Templates
 
-<img src="cli/installer.jpg" alt="Cognetivy installer: choose your coding tool(s)" width="35%" />
-
-1. In the installer, choose your coding agent (Claude Code, Cursor, OpenClaw, etc.)
-2. Cognetivy will create a `.cognetivy/` workspace in the current folder.
-3. Cognetivy will install its skills into the workspace.
-
----
-
-### Step 3 - Studio opens
-
-<img src="cli/light_theme_studio.jpg" alt="Cognetivy Studio" width="75%" />
-
-When the installer finishes, Cognetivy Studio opens in your browser.
-
-You'll see the read-only UI: workflow, runs, and collections.
-
----
-
-### Step 4 - Ask your agent to create a workflow and run it
-
-<img src="cli/claude_example.jpg" alt="Claude Code: create a workflow" width="60%" />
-
-In another chat window, ask your agent to create a workflow and run it.
-
-- "Create a workflow with three nodes: one that gathers requirements, one that writes a plan, and one that writes a summary. Save it as the current workflow."
-- "Start a run for the current workflow with input with the topic 'user onboarding'."
-
-## Connect your agent (MCP)
-
-Cognetivy works best with **agent skills**, but you can connect via **MCP** so cognetivy tools appear in chat.
-
-### Cursor
-
-1. Open **Settings** → **Tools & MCP** (or **Features** → **MCP**).
-2. Click **Add new MCP server**.
-3. Set **Name** to `cognetivy`.
-4. Set **Command** to `cognetivy` (or the full path if not on PATH).
-5. Set **Arguments** to `mcp`. If your project root is not the folder that contains `.cognetivy/`, add `--workspace` and the path to that folder (e.g. `--workspace ./example-usage`).
-6. Save and restart Cursor.
-
-Cognetivy tools (workflow, run, event, collection, node, etc.) will then be available in chat.
-
-**Optional  -  config file:** You can instead add the server to `~/.cursor/mcp.json` (or your project’s `.cursor/mcp.json`):
-
-```json
-{
-  "mcpServers": {
-    "cognetivy": {
-      "command": "cognetivy",
-      "args": ["mcp"]
-    }
-  }
-}
-```
-
-Use `"args": ["mcp", "--workspace", "/path/to/folder/with/.cognetivy"]` if the workspace is not your current project root.
-
-## Workflow templates (new)
-
-Use built-in templates inspired by practical Cognetivy use-cases:
+Cognetivy ships practical templates (product, ops, sales, marketing, research, people-ops, and more).
 
 ```bash
+# interactive template picker + apply
 cognetivy workflow templates
-cognetivy workflow apply-template            # interactive picker (creates workflow + sets current)
+
+# list templates as JSON
+cognetivy workflow templates --list
+
+# apply specific template directly
 cognetivy workflow apply-template --id bug-triage-and-fix
-cognetivy workflow template --id bug-triage-and-fix > workflow.template.json
-cognetivy workflow set --workflow <your_workflow_id> --file workflow.template.json --name "template baseline"
 ```
 
-See full gallery and usage in [docs/TEMPLATES.md](docs/TEMPLATES.md).
+Applying a template creates a workflow, sets it current, and creates needed collection schema kinds.
 
-## Commands
+See full gallery: [docs/TEMPLATES.md](docs/TEMPLATES.md)
 
-| Command | Description |
-|--------|-------------|
-| `npx cognetivy` | Run installer and open Studio (first time) or open Studio |
-| `cognetivy workflow get` | Print current workflow |
-| `cognetivy run start --input <file>` | Start a run |
-| `cognetivy studio` | Open Studio in the browser |
-| `cognetivy mcp` | Start MCP server (for your editor) |
-| `cognetivy install cursor` | Install skills into Cursor (`claude`, `openclaw`, `workspace` also supported) |
+---
+
+## Core commands
+
+```bash
+# open Studio
+cognetivy studio
+
+# show current workflow
+cognetivy workflow get
+
+# start a run
+cognetivy run start --input input.json --name "My run"
+
+# check next step / status
+cognetivy run status --run <run_id>
+
+# run as MCP server
+cognetivy mcp
+```
+
+---
+
+## Use with Cursor (MCP)
+
+1. Cursor → Settings → Tools & MCP
+2. Add MCP server:
+   - **Name:** `cognetivy`
+   - **Command:** `cognetivy`
+   - **Args:** `mcp`
+
+If your `.cognetivy/` is in another folder, pass `--workspace <path>` in args.
+
+---
+
+## Who this is for
+
+- Solo builders using coding agents daily
+- Teams needing auditability of agent output
+- Projects that require repeatable agent workflows
+- Anyone tired of losing context across sessions
 
 ---
 
 ## Community
 
-- [Contributing](CONTRIBUTING.md)  -  how to run the project, run tests, and submit changes
+- [Contributing](CONTRIBUTING.md)
 - [Code of Conduct](CODE_OF_CONDUCT.md)
-- [Report a bug](https://github.com/meitarbe/cognetivy/issues/new?template=bug_report.md) · [Request a feature](https://github.com/meitarbe/cognetivy/issues/new?template=feature_request.md)
-
----
+- [Issues](https://github.com/meitarbe/cognetivy/issues)
 
 ## License
 
