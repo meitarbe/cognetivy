@@ -34,6 +34,7 @@ import { getMergedConfig } from "./config.js";
 import { validateWorkflowVersion } from "./validate.js";
 import { getNextStep, formatNextStepLine } from "./run-engine.js";
 import { mergeKindTemplate } from "./kind-templates.js";
+import { listWorkflowTemplates, materializeWorkflowTemplate } from "./workflow-templates.js";
 import type { RunRecord, EventPayload, CollectionSchemaConfig } from "./models.js";
 import { NodeResultStatus, type NodeResultRecord, type WorkflowRecord } from "./models.js";
 import { runMcpServer } from "./mcp.js";
@@ -234,6 +235,26 @@ workflowCmd
     const workflowId = opts.workflow ?? index.current_workflow_id;
     const ids = await listWorkflowVersionIds(workflowId, cwd);
     console.log(JSON.stringify(ids, null, 2));
+  });
+
+workflowCmd
+  .command("templates")
+  .description("List built-in practical workflow templates")
+  .action(async () => {
+    console.log(JSON.stringify(listWorkflowTemplates(), null, 2));
+  });
+
+workflowCmd
+  .command("template")
+  .description("Print a built-in workflow template JSON by id")
+  .requiredOption("--id <template_id>", "Template ID (see `cognetivy workflow templates`)")
+  .action(async (opts: { id: string }) => {
+    const template = materializeWorkflowTemplate(opts.id);
+    if (!template) {
+      console.error(`Error: Unknown template \"${opts.id}\". Run \`cognetivy workflow templates\` to list IDs.`);
+      process.exit(1);
+    }
+    console.log(JSON.stringify(template, null, 2));
   });
 
 workflowCmd

@@ -22,6 +22,7 @@ import {
   readCollections,
   listNodeResults,
 } from "./workspace.js";
+import { getWorkflowTemplateById, listWorkflowTemplates } from "./workflow-templates.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -207,6 +208,21 @@ async function handleApi(
     if (apiMatch[0] === "workspace" && apiMatch.length === 1) {
       const data = await handleApiWorkspace(cwd);
       sendJson(res, 200, data);
+      return true;
+    }
+    // GET /api/workflow-templates
+    if (apiMatch[0] === "workflow-templates" && apiMatch.length === 1) {
+      sendJson(res, 200, listWorkflowTemplates());
+      return true;
+    }
+    // GET /api/workflow-templates/:templateId
+    if (apiMatch[0] === "workflow-templates" && apiMatch.length === 2) {
+      const template = getWorkflowTemplateById(apiMatch[1]);
+      if (!template) {
+        sendJson(res, 404, { error: "Workflow template not found" });
+        return true;
+      }
+      sendJson(res, 200, template);
       return true;
     }
     // GET /api/workflows

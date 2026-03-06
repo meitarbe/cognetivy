@@ -67,6 +67,15 @@ export interface WorkflowNodePrompt {
   required_skills?: string[];
 }
 
+export interface WorkflowTemplateSummary {
+  id: string;
+  name: string;
+  category: string;
+  description: string;
+  use_cases: string[];
+  node_count: number;
+}
+
 export interface RunRecord {
   run_id: string;
   name?: string;
@@ -203,6 +212,7 @@ export const api = {
     get<WorkflowNodePrompt>(
       `/workflows/${encodeURIComponent(workflowId)}/versions/${encodeURIComponent(versionId)}/nodes/${encodeURIComponent(nodeId)}`
     ),
+  getWorkflowTemplates: () => get<WorkflowTemplateSummary[]>("/workflow-templates"),
   getRuns: () => get<RunRecord[]>("/runs"),
   getRun: (id: string) => get<RunRecord>(`/runs/${encodeURIComponent(id)}`),
   getRunEvents: (id: string) => get<EventPayload[]>(`/runs/${encodeURIComponent(id)}/events`),

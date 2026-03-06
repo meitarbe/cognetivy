@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Info } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
-import { api, type WorkflowVersion, type VersionListItem } from "@/api";
+import { api, type WorkflowTemplateSummary, type WorkflowVersion, type VersionListItem } from "@/api";
 import { useWorkflowSelection } from "@/contexts/WorkflowSelectionContext";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -32,6 +32,7 @@ export function WorkflowPage() {
   const [workflowVersion, setWorkflowVersion] = useState<WorkflowVersion | null>(null);
   const [prevWorkflowVersion, setPrevWorkflowVersion] = useState<WorkflowVersion | null>(null);
   const [showChanges, setShowChanges] = useState(false);
+  const [templates, setTemplates] = useState<WorkflowTemplateSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -45,8 +46,10 @@ export function WorkflowPage() {
       if (!selectedWorkflowId) return;
       const wf = await api.getWorkflow(selectedWorkflowId);
       const versionsList = await api.getWorkflowVersions(selectedWorkflowId);
+      const templateList = await api.getWorkflowTemplates();
       setWorkflowRecord(wf);
       setVersions(versionsList);
+      setTemplates(templateList);
 
       const fallbackVersion = versionFromUrl ?? wf.current_version_id;
       const hasVersion = versionsList.some((v) => v.version_id === fallbackVersion);
@@ -203,6 +206,25 @@ export function WorkflowPage() {
           </div>
         )}
       </div>
+      {templates.length > 0 && (
+        <div className="px-3 py-2 border-b border-border bg-muted/20">
+          <div className="text-xs font-medium mb-2">Practical templates</div>
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {templates.map((template) => (
+              <Card key={template.id} className="min-w-[260px] max-w-[260px] border-border/80">
+                <CardHeader className="py-2 px-3">
+                  <CardTitle className="text-xs leading-snug">{template.name}</CardTitle>
+                </CardHeader>
+                <CardContent className="px-3 pb-3 text-[11px] text-muted-foreground space-y-1">
+                  <p>{template.description}</p>
+                  <p>{template.category} • {template.node_count} nodes</p>
+                  <p className="truncate">Use cases: {template.use_cases.join(", ")}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="flex-1 min-h-0">
         {workflowVersion ? (
           <WorkflowCanvas

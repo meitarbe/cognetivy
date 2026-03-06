@@ -141,6 +141,18 @@ Cognetivy tools (workflow, run, event, collection, node, etc.) will then be avai
 
 Use `"args": ["mcp", "--workspace", "/path/to/folder/with/.cognetivy"]` if the workspace is not your current project root.
 
+## Workflow templates (new)
+
+Use built-in templates inspired by practical Cognetivy use-cases:
+
+```bash
+cognetivy workflow templates
+cognetivy workflow template --id bug-triage-and-fix > workflow.template.json
+cognetivy workflow set --workflow <your_workflow_id> --file workflow.template.json --name "template baseline"
+```
+
+See full gallery and usage in [docs/TEMPLATES.md](docs/TEMPLATES.md).
+
 ## Commands
 
 | Command | Description |
