@@ -48,7 +48,8 @@ function WorkflowNodeComponent(props: NodeProps) {
   return (
     <div
       className={cn(
-        "rounded-xl border-2 bg-card shadow-md hover:shadow-lg transition-shadow min-w-[180px] cursor-pointer w-max max-w-[340px] overflow-hidden",
+        "rounded-2xl border-2 bg-card shadow-md hover:shadow-xl transition-all duration-150 min-w-[220px] cursor-pointer w-max max-w-[380px] overflow-hidden",
+        "hover:scale-[1.02] hover:-translate-y-0.5 ring-2 ring-primary/15",
         "px-4 py-3 space-y-3",
         isHitl && "border-violet-500/60 bg-violet-500/5 dark:bg-violet-500/10",
         stepStatus === "completed" && "border-emerald-500/70 bg-emerald-500/10 dark:bg-emerald-500/15",

@@ -15,8 +15,9 @@ function CollectionNodeComponent(props: NodeProps) {
   return (
     <div
       className={cn(
-        "relative px-2 py-2 w-[140px] rounded-lg border shadow-sm text-xs cursor-pointer",
-        d.collected ? "bg-emerald-500/10 border-emerald-500/70" : "bg-card border-border"
+        "relative px-3 py-3 w-[180px] rounded-xl border-2 shadow-md text-sm cursor-pointer transition-all duration-150",
+        "hover:shadow-lg hover:scale-[1.03] hover:-translate-y-0.5",
+        d.collected ? "bg-emerald-500/10 border-emerald-500/70 ring-2 ring-emerald-500/25" : "bg-card border-primary/45 ring-2 ring-primary/20"
       )}
       style={{ borderColor: d.collected ? undefined : color }}
     >
@@ -32,6 +33,7 @@ function CollectionNodeComponent(props: NodeProps) {
           {d.label}{d.collected ? " ✓" : ""}
         </span>
       </div>
+
     </div>
   );
 }
