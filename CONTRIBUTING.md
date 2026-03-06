@@ -29,7 +29,7 @@ This project follows the [Contributor Covenant](CODE_OF_CONDUCT.md). By particip
    npm test
    ```
 
-3. **Studio (React UI)** — optional for CLI-only work
+3. **Studio (React UI)**  -  optional for CLI-only work
    ```bash
    cd studio
    npm install
@@ -66,9 +66,9 @@ We welcome first-time contributors. Look for issues labeled **good first issue**
 
 ## Project layout
 
-- **`cli/`** — Published npm package: CLI, MCP server, and Studio server. Entry: `dist/cli.js`, `dist/mcp.js`, etc.
-- **`studio/`** — React UI (workflow canvas, runs, collections). Built output is copied into `cli/dist/studio/` for `cognetivy studio`.
-- **`docs/`** — Contributor and maintainer docs (architecture, releasing).
+- **`cli/`**  -  Published npm package: CLI, MCP server, and Studio server. Entry: `dist/cli.js`, `dist/mcp.js`, etc.
+- **`studio/`**  -  React UI (workflow canvas, runs, collections). Built output is copied into `cli/dist/studio/` for `cognetivy studio`.
+- **`docs/`**  -  Contributor and maintainer docs (architecture, releasing).
 
 ## Release process
 

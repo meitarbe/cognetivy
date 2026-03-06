@@ -16,11 +16,11 @@ const SCRIPT: Array<{ type: "you"; text: string } | { type: "thinking" } | { typ
     type: "ai",
     text: "Run started. Check the Runs tab in Studio to watch progress.",
   },
-  { type: "you", text: "Add a new version of this workflow that includes a code review step." },
+  { type: "you", text: "Add a new version of this workflow that also pulls in pricing from their websites." },
   { type: "thinking" },
   {
     type: "ai",
-    text: "New version is ready with the code review step. Would you like me to run it?",
+    text: "New version is ready with the pricing step. Would you like me to run it?",
   },
 ];
 
