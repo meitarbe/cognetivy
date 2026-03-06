@@ -9,6 +9,10 @@
 
 **Website:** [cognetivy.com](https://cognetivy.com)
 
+🎬 **Quick product video (top):** [Watch walkthrough](docs/media/readme/studio-walkthrough.webm)
+
+<video src="docs/media/readme/studio-walkthrough.webm" controls muted playsinline width="100%"></video>
+
 Cognetivy is an open-source orchestration + memory layer for AI agents.
 It gives your agent a structured local workspace (`.cognetivy/`) to manage:
 
@@ -105,6 +109,21 @@ cognetivy workflow apply-template --id bug-triage-and-fix
 Applying a template creates a workflow, sets it current, and creates needed collection schema kinds.
 
 See full gallery: [docs/TEMPLATES.md](docs/TEMPLATES.md)
+
+### Example use case: Competitor analysis (sample/fake data)
+
+Below is **fake demo data** to show how a competitor-analysis run can look in collections.
+
+| competitor | pricing_model | est_starting_price | strengths | weaknesses | confidence |
+|---|---|---:|---|---|---:|
+| FluxBoard | Seat-based | $29/user | Strong onboarding, polished UX | Limited API depth | 0.78 |
+| SprintPilot | Usage-based | $0.004/event | Flexible automations, fast exports | Steeper learning curve | 0.71 |
+| TaskForge | Tiered plans | $49/team | Great collaboration controls | Basic analytics | 0.74 |
+
+**Example structured insight (fake):**
+- Mid-market teams are most price-sensitive around onboarding + analytics bundles.
+- A “starter + guided setup” package is likely to outperform feature-only messaging.
+- Differentiation opportunity: transparent audit trail + no vendor lock-in for workflow data.
 
 ---
 
