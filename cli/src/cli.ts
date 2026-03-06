@@ -240,9 +240,50 @@ workflowCmd
 
 workflowCmd
   .command("templates")
-  .description("List built-in practical workflow templates")
-  .action(async () => {
-    console.log(JSON.stringify(listWorkflowTemplates(), null, 2));
+  .description("Interactive template picker/apply (TTY). Use --list for JSON listing.")
+  .option("--list", "Print templates JSON instead of interactive picker")
+  .action(async (opts: { list?: boolean }) => {
+    const cwd = process.cwd();
+    await requireWorkspace(cwd);
+
+    if (opts.list || !process.stdin.isTTY) {
+      console.log(JSON.stringify(listWorkflowTemplates(), null, 2));
+      return;
+    }
+
+    const templates = listWorkflowTemplatesForPicker();
+    const picked = await p.select({
+      message: "Pick a workflow template",
+      options: templates.map((t) => ({
+        value: t.id,
+        label: t.name,
+        hint: `${t.category} · ${t.node_count} nodes`,
+      })),
+    });
+
+    if (p.isCancel(picked)) {
+      p.cancel("Template selection cancelled.");
+      process.exit(0);
+    }
+
+    const templateId = picked as string;
+    const result = await applyWorkflowTemplateToWorkspace({ cwd, templateId });
+    p.note(
+      `Applied template \"${result.template.name}\"\nWorkflow: ${result.workflow.workflow_id}\nNow current: ${result.workflow.workflow_id}`,
+      "Template applied"
+    );
+    console.log(
+      JSON.stringify(
+        {
+          template_id: result.template.id,
+          workflow_id: result.workflow.workflow_id,
+          current_workflow_id: result.workflow.workflow_id,
+          version_id: result.version.version_id,
+        },
+        null,
+        2
+      )
+    );
   });
 
 workflowCmd
