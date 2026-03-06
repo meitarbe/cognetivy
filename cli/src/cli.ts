@@ -34,7 +34,7 @@ import { getMergedConfig } from "./config.js";
 import { validateWorkflowVersion } from "./validate.js";
 import { getNextStep, formatNextStepLine } from "./run-engine.js";
 import { mergeKindTemplate } from "./kind-templates.js";
-import { listWorkflowTemplates, materializeWorkflowTemplate } from "./workflow-templates.js";
+import { listWorkflowTemplates, listWorkflowTemplatesForPicker, materializeWorkflowTemplate } from "./workflow-templates.js";
 import { applyWorkflowTemplateToWorkspace } from "./workflow-template-apply.js";
 import type { RunRecord, EventPayload, CollectionSchemaConfig } from "./models.js";
 import { NodeResultStatus, type NodeResultRecord, type WorkflowRecord } from "./models.js";
@@ -275,7 +275,7 @@ workflowCmd
         console.error("Error: --id is required in non-interactive mode.");
         process.exit(1);
       }
-      const templates = listWorkflowTemplates();
+      const templates = listWorkflowTemplatesForPicker();
       const picked = await p.select({
         message: "Pick a workflow template",
         options: templates.map((t) => ({

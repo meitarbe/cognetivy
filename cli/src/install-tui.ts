@@ -16,7 +16,7 @@ import { getMergedConfig } from "./config.js";
 import { installSkillsFromDirectory, installCognetivySkill } from "./skills.js";
 import { renderPngFileToAnsi } from "./terminal-png.js";
 import { getCurrentVersionSync, writeInstalledSkillsVersion } from "./skills-version.js";
-import { listWorkflowTemplates } from "./workflow-templates.js";
+import { listWorkflowTemplatesForPicker } from "./workflow-templates.js";
 import { applyWorkflowTemplateToWorkspace } from "./workflow-template-apply.js";
 
 function getSkillsConfigFromMerged(config: Awaited<ReturnType<typeof getMergedConfig>>): SkillsConfig | undefined {
@@ -203,13 +203,11 @@ export async function runInstallTUI(options: InstallTUIOptions): Promise<void> {
 
   await writeInstalledSkillsVersion(cwd, getCurrentVersionSync());
 
-  const templates = listWorkflowTemplates();
+  const templates = listWorkflowTemplatesForPicker();
+
   const templateSelection = await p.select({
     message: "Pick a workflow template to apply now",
-    options: [
-      { value: "__skip__", label: "Skip for now", hint: "Keep current default workflow" },
-      ...templates.map((t) => ({ value: t.id, label: t.name, hint: `${t.category} · ${t.node_count} nodes` })),
-    ],
+    options: templates.map((t) => ({ value: t.id, label: t.name, hint: `${t.category} · ${t.node_count} nodes` })),
   });
 
   if (p.isCancel(templateSelection)) {
@@ -217,20 +215,18 @@ export async function runInstallTUI(options: InstallTUIOptions): Promise<void> {
     process.exit(0);
   }
 
-  if (templateSelection !== "__skip__") {
-    const templateId = templateSelection as string;
-    try {
-      const result = await applyWorkflowTemplateToWorkspace({ cwd, templateId });
-      p.note(
-        `Applied template \"${result.template.name}\"\nWorkflow: ${result.workflow.workflow_id}\nNow current: ${result.workflow.workflow_id}`,
-        "Template applied"
-      );
-    } catch (err) {
-      p.note(
-        err instanceof Error ? err.message : String(err),
-        "Template apply skipped"
-      );
-    }
+  const templateId = templateSelection as string;
+  try {
+    const result = await applyWorkflowTemplateToWorkspace({ cwd, templateId });
+    p.note(
+      `Applied template \"${result.template.name}\"\nWorkflow: ${result.workflow.workflow_id}\nNow current: ${result.workflow.workflow_id}`,
+      "Template applied"
+    );
+  } catch (err) {
+    p.note(
+      err instanceof Error ? err.message : String(err),
+      "Template apply failed"
+    );
   }
 
   p.outro("Done! Installed to:");

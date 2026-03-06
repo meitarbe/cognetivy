@@ -170,6 +170,19 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
   },
 ];
 
+const NON_DEVELOPER_FIRST_CATEGORY_ORDER = [
+  "Operations",
+  "People Ops",
+  "Marketing",
+  "Sales",
+  "Product & Growth",
+  "Research",
+  "Ops & Reliability",
+  "Product & Engineering",
+  "Engineering",
+  "Developer Experience",
+];
+
 export function listWorkflowTemplates() {
   return WORKFLOW_TEMPLATES.map((template) => ({
     id: template.id,
@@ -179,6 +192,16 @@ export function listWorkflowTemplates() {
     use_cases: template.use_cases,
     node_count: template.workflow.nodes.length,
   }));
+}
+
+export function listWorkflowTemplatesForPicker() {
+  const categoryRank = new Map(NON_DEVELOPER_FIRST_CATEGORY_ORDER.map((c, i) => [c, i]));
+  return listWorkflowTemplates().sort((a, b) => {
+    const ra = categoryRank.get(a.category) ?? 999;
+    const rb = categoryRank.get(b.category) ?? 999;
+    if (ra !== rb) return ra - rb;
+    return a.name.localeCompare(b.name);
+  });
 }
 
 export function getWorkflowTemplateById(templateId: string): WorkflowTemplate | null {
