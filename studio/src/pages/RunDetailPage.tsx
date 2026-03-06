@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams, Link } from "react-router-dom";
 import { api, type RunRecord, type EventPayload, type CollectionStore, type WorkflowVersion, type NodeResultRecord } from "@/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -56,6 +56,17 @@ function getEventTypeBadgeVariant(type: string): string {
   }
 }
 
+function getRunLagState(runStatus: string | undefined, lastEventTs: string | undefined) {
+  if (runStatus === "completed") return { label: "Settled", className: "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/40" };
+  if (!lastEventTs) return { label: "No signal", className: "bg-muted text-muted-foreground border-border" };
+  const ts = Date.parse(lastEventTs);
+  if (Number.isNaN(ts)) return { label: "No signal", className: "bg-muted text-muted-foreground border-border" };
+  const lagMs = Date.now() - ts;
+  if (lagMs <= POLL_MS * 2.5) return { label: "Live", className: "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/40" };
+  if (lagMs <= POLL_MS * 6) return { label: "Delayed", className: "bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/40" };
+  return { label: "Stale", className: "bg-rose-500/20 text-rose-700 dark:text-rose-300 border-rose-500/40" };
+}
+
 export function RunDetailPage() {
   const { runId } = useParams<{ runId: string }>();
   const [searchParams] = useSearchParams();
@@ -71,10 +82,40 @@ export function RunDetailPage() {
   const [selectedCollectionTab, setSelectedCollectionTab] = useState<string | null>(null);
   const [collectionStepFilter, setCollectionStepFilter] = useState<string | null>(null);
   const [eventsDrawerOpen, setEventsDrawerOpen] = useState(false);
+  const [eventViewMode, setEventViewMode] = useState<"all" | "steps" | "system">("all");
   const eventsScrollRef = useRef<HTMLDivElement>(null);
 
   const effectiveCollectionTab =
     selectedCollectionTab ?? (tabParam && kinds.includes(tabParam) ? tabParam : kinds[0]) ?? "";
+
+  const lastEventTs = events.length > 0 ? events[events.length - 1]?.ts : undefined;
+  const lagState = getRunLagState(run?.status, lastEventTs);
+
+  const filteredEvents = useMemo(() => {
+    if (eventViewMode === "all") return events;
+    if (eventViewMode === "steps") return events.filter((ev) => ev.type === "step_started" || ev.type === "step_completed");
+    return events.filter((ev) => ev.type !== "step_started" && ev.type !== "step_completed");
+  }, [eventViewMode, events]);
+
+  const nodeStatusCounts = useMemo(() => {
+    const nodes = workflow?.nodes ?? [];
+    if (nodes.length === 0) return { total: 0, completed: 0, running: 0, pending: 0, failed: 0 };
+    const latestByNode = new Map<string, NodeResultRecord>();
+    for (const nr of nodeResults) latestByNode.set(nr.node_id, nr);
+    let completed = 0;
+    let running = 0;
+    let failed = 0;
+    let pending = 0;
+    for (const n of nodes) {
+      const nr = latestByNode.get(n.id);
+      const status = nr?.status;
+      if (status === "completed") completed += 1;
+      else if (status === "started") running += 1;
+      else if (status === "failed" || status === "needs_human") failed += 1;
+      else pending += 1;
+    }
+    return { total: nodes.length, completed, running, pending, failed };
+  }, [workflow, nodeResults]);
 
   function handleDownloadEventsCsv() {
     const rows = events.map((ev) => ({
@@ -100,6 +141,17 @@ export function RunDetailPage() {
     );
     const headers = columnKeys.map((k) => k.replace(/_/g, " "));
     downloadTableCsv(items, columnKeys, headers, `${kind}.csv`);
+  }
+
+  function scrollToCollectedData() {
+    const el = document.querySelector('[data-collected-section="true"]');
+    el?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function scrollToLatestEvent() {
+    const list = eventsScrollRef.current;
+    if (!list) return;
+    list.scrollTo({ top: list.scrollHeight, behavior: "smooth" });
   }
 
   const load = useCallback(async () => {
@@ -225,8 +277,7 @@ export function RunDetailPage() {
           collectedKinds={kinds.filter((k) => (collections[k]?.items?.length ?? 0) > 0)}
           onCollectionClick={(kind) => {
             setSelectedCollectionTab(kind);
-            const el = document.querySelector('[data-collected-section="true"]');
-            el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            scrollToCollectedData();
           }}
           readOnly
           nodesDraggable
@@ -259,6 +310,9 @@ export function RunDetailPage() {
             >
               {run?.status}
             </Badge>
+            <Badge variant="outline" className={cn("text-[10px] shrink-0", lagState.className)}>
+              Signal: {lagState.label}
+            </Badge>
             {run?.workflow_version_id && (
               <Link
                 to={`/workflow?workflow_id=${encodeURIComponent(run.workflow_id)}&version_id=${encodeURIComponent(run.workflow_version_id)}`}
@@ -267,12 +321,29 @@ export function RunDetailPage() {
                 Workflow version: {run.workflow_version_id}
               </Link>
             )}
+            {nodeStatusCounts.total > 0 && (
+              <div className="flex items-center gap-1 text-[10px]">
+                <Badge variant="outline" className="bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/40">✓ {nodeStatusCounts.completed}</Badge>
+                <Badge variant="outline" className="bg-blue-500/20 text-blue-700 dark:text-blue-300 border-blue-500/40">▶ {nodeStatusCounts.running}</Badge>
+                <Badge variant="outline" className="bg-muted text-muted-foreground border-border">○ {nodeStatusCounts.pending}</Badge>
+                {nodeStatusCounts.failed > 0 && (
+                  <Badge variant="outline" className="bg-rose-500/20 text-rose-700 dark:text-rose-300 border-rose-500/40">! {nodeStatusCounts.failed}</Badge>
+                )}
+              </div>
+            )}
             <div className="flex items-center gap-2 ml-auto shrink-0">
               <CopyableId
                 value={runId}
                 truncateLength={20}
                 className="text-[11px] text-muted-foreground font-normal"
               />
+              <button
+                type="button"
+                onClick={scrollToCollectedData}
+                className="text-xs px-2 py-1 rounded-md border border-border bg-background hover:bg-muted"
+              >
+                Jump to data
+              </button>
               <button
                 type="button"
                 onClick={() => setEventsDrawerOpen(true)}
@@ -328,18 +399,37 @@ export function RunDetailPage() {
           <Sheet open={eventsDrawerOpen} onOpenChange={setEventsDrawerOpen}>
             <SheetContent side="right" className="w-full max-w-2xl">
               <SheetHeader>
-                <SheetTitle>Events ({events.length})</SheetTitle>
+                <SheetTitle>Events ({filteredEvents.length}/{events.length})</SheetTitle>
               </SheetHeader>
               <div className="flex flex-col gap-2 mt-2">
-                {events.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    value={eventViewMode}
+                    onChange={(e) => setEventViewMode(e.target.value as "all" | "steps" | "system")}
+                    className="text-xs px-2 py-1.5 rounded-md border border-border bg-background hover:bg-muted"
+                    aria-label="Event timeline mode"
+                  >
+                    <option value="all">All events</option>
+                    <option value="steps">Step events</option>
+                    <option value="system">System events</option>
+                  </select>
                   <button
                     type="button"
-                    onClick={handleDownloadEventsCsv}
-                    className="text-xs px-2 py-1.5 rounded-md border border-border bg-background hover:bg-muted w-fit"
+                    onClick={scrollToLatestEvent}
+                    className="text-xs px-2 py-1.5 rounded-md border border-border bg-background hover:bg-muted"
                   >
-                    Download CSV
+                    Jump latest
                   </button>
-                )}
+                  {events.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleDownloadEventsCsv}
+                      className="text-xs px-2 py-1.5 rounded-md border border-border bg-background hover:bg-muted"
+                    >
+                      Download CSV
+                    </button>
+                  )}
+                </div>
                 <ScrollArea className="flex-1 -mx-2">
                   <div className="pr-2" ref={eventsScrollRef}>
                     <Table>
@@ -353,10 +443,22 @@ export function RunDetailPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {events.map((ev, i) => (
-                          <TableRow key={i} data-event-index={i} className="cursor-default">
+                        {filteredEvents.map((ev, i) => (
+                          <TableRow
+                            key={i}
+                            data-event-index={i}
+                            className={cn("cursor-default", typeof (ev.data as { step?: unknown } | undefined)?.step === "string" && "cursor-pointer hover:bg-muted/40")}
+                            onClick={() => {
+                              const step = (ev.data as { step?: unknown } | undefined)?.step;
+                              if (typeof step === "string") {
+                                setCollectionStepFilter(step);
+                                setEventsDrawerOpen(false);
+                                scrollToCollectedData();
+                              }
+                            }}
+                          >
                             <TableCell className="text-[11px] text-muted-foreground py-1 font-mono">
-                              {formatEventDelta(ev.ts, i > 0 ? events[i - 1].ts : null)}
+                              {formatEventDelta(ev.ts, i > 0 ? filteredEvents[i - 1].ts : null)}
                             </TableCell>
                             <TableCell className="text-[11px] text-muted-foreground py-1">{ev.ts ?? "-"}</TableCell>
                             <TableCell className="py-1">

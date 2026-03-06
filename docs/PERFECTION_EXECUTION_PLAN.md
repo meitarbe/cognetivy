@@ -22,7 +22,7 @@ Build a highly polished, understandable, realtime, token-efficient open-source p
 - [ ] End-to-end realtime consistency (server events + UI state reconciliation)
 - [ ] Workflow run page: collection node turns green when collected
 - [ ] Workflow run page click behavior: show collected data inline, no drawer hijack
-- [ ] Better run observability: filters, event timeline modes, node-state chips, lag indicator
+- [x] Better run observability: filters, event timeline modes, node-state chips, lag indicator _(ticket 4fa36a43-6069-40ae-805e-3facbf304777 · run run_2026-03-06T10-42-18-339Z_l7o3w9)_
 - [ ] React Flow auto-zoom improvements for dataset size and viewport
 
 ### C. UX and Interaction
