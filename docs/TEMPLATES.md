@@ -8,8 +8,10 @@ Templates help teams launch repeatable workflows quickly, without starting from 
 
 Each template includes:
 - node structure (`input_collections` → `output_collections`)
+- at least one parallel analysis layer (2 runnable nodes on the same DAG level)
 - prompts oriented to real-world outcomes
 - skill guardrails (`required_skills: ["cognetivy"]`)
+- richer use-case tags for quicker picker scanning
 
 ## Browse templates
 
