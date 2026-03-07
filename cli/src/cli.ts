@@ -1131,7 +1131,7 @@ nodeCmd
 program
   .command("install [target]")
   .description(
-    "Set up cognetivy in this project (if needed) and install skills. Target: claude | cursor | openclaw | workspace | all (default: all). Use with no target or --interactive for TUI."
+    "Set up cognetivy in this project (if needed) and install skills. Target: claude | cursor | agents | gemini | qwen | factory | opencode | openclaw | workspace | all (default: all). Use with no target or --interactive for TUI."
   )
   .option("--force", "Overwrite if skill already exists")
   .option("--no-init", "Skip cognetivy workspace init; only install skills")
@@ -1151,47 +1151,40 @@ program
     const targetMap: Record<string, SkillInstallTarget | "all"> = {
       claude: "agent",
       cursor: "cursor",
+      agents: "agents",
+      factory: "factory",
+      gemini: "gemini",
       openclaw: "openclaw",
+      opencode: "opencode",
+      qwen: "qwen",
       workspace: "workspace",
       all: "all",
     };
     const resolved = targetMap[normalized];
     if (!resolved) {
-      console.error("Target must be: claude, cursor, openclaw, workspace, or all.");
+      console.error(
+        "Target must be: claude, cursor, agents, gemini, qwen, factory, opencode, openclaw, workspace, or all."
+      );
       process.exit(1);
     }
     const config = await getMergedConfig(cwd);
     const skillsConfig = getSkillsConfigFromMerged(config);
     const targetsToInstall: SkillInstallTarget[] =
       resolved === "all"
-        ? (["agent", "cursor", "openclaw", "workspace"] as SkillInstallTarget[])
+        ? (["agent", "agents", "cursor", "factory", "gemini", "openclaw", "opencode", "qwen", "workspace"] as SkillInstallTarget[])
         : [resolved];
     const optsCommon = { force: opts.force, cwd, config: skillsConfig };
     try {
       for (const internalTarget of targetsToInstall) {
         const { results } = await installSkillsFromDirectory(cwd, internalTarget, optsCommon);
-        const label =
-          internalTarget === "agent"
-            ? "claude"
-            : internalTarget === "cursor"
-              ? "cursor"
-            : internalTarget === "openclaw"
-              ? "openclaw"
-              : "workspace";
+        const label = targetToLabel(internalTarget);
         for (const r of results) {
           console.log(`[${label}] Installed to ${r.path}`);
         }
       }
       for (const internalTarget of targetsToInstall) {
         const cognetivyPath = await installCognetivySkill(internalTarget, cwd, skillsConfig);
-        const label =
-          internalTarget === "agent"
-            ? "claude"
-            : internalTarget === "cursor"
-              ? "cursor"
-            : internalTarget === "openclaw"
-              ? "openclaw"
-              : "workspace";
+        const label = targetToLabel(internalTarget);
         console.log(`[${label}] Cognetivy skill at ${cognetivyPath}`);
       }
       await writeInstalledSkillsVersion(cwd, getCurrentVersionSync());
@@ -1200,6 +1193,31 @@ program
       process.exit(1);
     }
   });
+
+function targetToLabel(target: SkillInstallTarget): string {
+  switch (target) {
+    case "agent":
+      return "claude";
+    case "agents":
+      return "agents";
+    case "cursor":
+      return "cursor";
+    case "factory":
+      return "factory";
+    case "gemini":
+      return "gemini";
+    case "openclaw":
+      return "openclaw";
+    case "opencode":
+      return "opencode";
+    case "qwen":
+      return "qwen";
+    case "workspace":
+      return "workspace";
+    default:
+      return String(target);
+  }
+}
 
 function getSkillsConfigFromMerged(
   config: Awaited<ReturnType<typeof getMergedConfig>>
@@ -1216,15 +1234,29 @@ const skillsCmd = program
 skillsCmd
   .command("list")
   .description("List skills from configured sources")
-  .option("--source <source>", "Filter by source: agent, openclaw, workspace")
+  .option(
+    "--source <source>",
+    "Filter by source: agent, agents, cursor, factory, gemini, openclaw, opencode, qwen, workspace"
+  )
   .option("--eligible", "Only list skills that pass validation")
   .action(async (opts: { source?: string; eligible?: boolean }) => {
     const cwd = process.cwd();
     const config = await getMergedConfig(cwd);
     const skillsConfig = getSkillsConfigFromMerged(config);
+    const defaultListSources: SkillSource[] = [
+      "agent",
+      "agents",
+      "cursor",
+      "factory",
+      "gemini",
+      "openclaw",
+      "opencode",
+      "qwen",
+      "workspace",
+    ];
     const sources = opts.source
       ? ([opts.source] as SkillSource[])
-      : skillsConfig.sources ?? (["agent", "openclaw", "workspace"] as SkillSource[]);
+      : skillsConfig.sources ?? defaultListSources;
     let skills = await listSkills(cwd, { sources, extraDirs: skillsConfig.extraDirs }, skillsConfig);
     if (opts.eligible) {
       const valid: typeof skills = [];
@@ -1305,7 +1337,17 @@ skillsCmd
     const cwd = process.cwd();
     const config = await getMergedConfig(cwd);
     const skillsConfig = getSkillsConfigFromMerged(config);
-    const sources: SkillSource[] = skillsConfig.sources ?? ["agent", "openclaw", "workspace"];
+    const sources: SkillSource[] = skillsConfig.sources ?? [
+      "agent",
+      "agents",
+      "cursor",
+      "factory",
+      "gemini",
+      "openclaw",
+      "opencode",
+      "qwen",
+      "workspace",
+    ];
     const out: Record<string, string[]> = {};
     for (const source of sources) {
       out[source] = await getSkillDirectories(source, cwd, skillsConfig);
@@ -1315,15 +1357,31 @@ skillsCmd
 skillsCmd
   .command("install [source]")
   .description("Install a skill from current directory (or path/URL) into project or target (default: workspace = .cognetivy/skills)")
-  .option("--target <target>", "Install target: agent, cursor, openclaw, workspace (default: workspace)")
+  .option(
+    "--target <target>",
+    "Install target: agent, agents, cursor, factory, gemini, openclaw, opencode, qwen, workspace (default: workspace)"
+  )
   .option("--force", "Overwrite if skill already exists")
   .action(async (source: string | undefined, opts: { target?: string; force?: boolean }) => {
     const cwd = process.cwd();
     const config = await getMergedConfig(cwd);
     const skillsConfig = getSkillsConfigFromMerged(config);
     const target = (opts.target ?? skillsConfig.default_install_target ?? "workspace") as SkillInstallTarget;
-    if (!["agent", "cursor", "openclaw", "workspace"].includes(target)) {
-      console.error("--target must be agent, cursor, openclaw, or workspace.");
+    const validTargets: SkillInstallTarget[] = [
+      "agent",
+      "agents",
+      "cursor",
+      "factory",
+      "gemini",
+      "openclaw",
+      "opencode",
+      "qwen",
+      "workspace",
+    ];
+    if (!validTargets.includes(target)) {
+      console.error(
+        "--target must be agent, agents, cursor, factory, gemini, openclaw, opencode, qwen, or workspace."
+      );
       process.exit(1);
     }
     const installSource = (source?.trim() || ".") as string;
@@ -1355,7 +1413,10 @@ skillsCmd
 skillsCmd
   .command("update [name]")
   .description("Update skill(s) from recorded origin; use --all to update all for target")
-  .option("--target <target>", "Target: agent, cursor, openclaw, workspace")
+  .option(
+    "--target <target>",
+    "Target: agent, agents, cursor, factory, gemini, openclaw, opencode, qwen, workspace"
+  )
   .option("--all", "Update all skills for the target")
   .option("--dry-run", "Do not write changes")
   .action(async (name: string | undefined, opts: { target?: string; all?: boolean; dryRun?: boolean }) => {

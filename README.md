@@ -164,7 +164,7 @@ See full gallery and usage in [docs/TEMPLATES.md](docs/TEMPLATES.md).
 | `cognetivy run start --input <file>` | Start a run |
 | `cognetivy studio` | Open Studio in the browser |
 | `cognetivy mcp` | Start MCP server (for your editor) |
-| `cognetivy install cursor` | Install skills into Cursor (`claude`, `openclaw`, `workspace` also supported) |
+| `cognetivy install cursor` | Install skills into Cursor (`claude`, `agents`, `gemini`, `qwen`, `factory`, `opencode`, `openclaw`, `workspace` also supported) |
 
 ---
 

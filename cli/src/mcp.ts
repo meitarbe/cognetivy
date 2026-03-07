@@ -264,14 +264,15 @@ const TOOLS: Array<{ name: string; description: string; inputSchema: { type: "ob
   {
     name: "skills_list",
     description:
-      "List available Agent skills and OpenClaw skills (SKILL.md) from configured sources (agent, openclaw, workspace). Returns name, description, path, source for discovery.",
+      "List available Agent skills (SKILL.md) from configured sources (agent, agents, cursor, factory, gemini, openclaw, opencode, qwen, workspace). Returns name, description, path, source for discovery.",
     inputSchema: {
       type: "object",
       properties: {
         sources: {
           type: "array",
           items: { type: "string" },
-          description: "Optional: filter by source (agent, openclaw, workspace)",
+          description:
+            "Optional: filter by source (agent, agents, cursor, factory, gemini, openclaw, opencode, qwen, workspace)",
         },
       },
     },
@@ -860,7 +861,7 @@ async function handleToolsCall(
         const sourcesArg = args.sources as string[] | undefined;
         const sources = sourcesArg?.length
           ? (sourcesArg as SkillSource[])
-          : (["agent", "openclaw", "workspace"] as SkillSource[]);
+          : (["agent", "agents", "cursor", "factory", "gemini", "openclaw", "opencode", "qwen", "workspace"] as SkillSource[]);
         const skillsConfig = await getSkillsConfig(cwd);
         const skills = await listSkills(cwd, { sources, extraDirs: skillsConfig.extraDirs }, skillsConfig);
         return JSON.stringify(

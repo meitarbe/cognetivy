@@ -48,16 +48,16 @@ interface ClientOption {
 const CLIENT_OPTIONS: ClientOption[] = [
   { value: InstallerClient.ClaudeCode, label: "Claude Code", hint: "Installs into .claude/skills" },
   { value: InstallerClient.Cursor, label: "Cursor", hint: "Installs into .cursor/skills" },
-  { value: InstallerClient.OpenClaw, label: "OpenClaw", hint: "Installs Agent Skills bundle into skills/" },
-  { value: InstallerClient.OpenAICodex, label: "OpenAI Codex", hint: "Agent Skills bundle (SKILL.md) into skills/" },
-  { value: InstallerClient.GitHubCopilot, label: "GitHub Copilot", hint: "Agent Skills bundle (SKILL.md) into skills/" },
-  { value: InstallerClient.GeminiCli, label: "Gemini CLI", hint: "Agent Skills bundle (SKILL.md) into skills/" },
-  { value: InstallerClient.Amp, label: "Amp", hint: "Agent Skills bundle (SKILL.md) into skills/" },
-  { value: InstallerClient.CursorAgentCli, label: "Cursor Agent CLI", hint: "Agent Skills bundle (SKILL.md) into skills/" },
-  { value: InstallerClient.OpenCode, label: "OpenCode", hint: "Agent Skills bundle (SKILL.md) into skills/" },
-  { value: InstallerClient.FactoryDroid, label: "Factory Droid", hint: "Agent Skills bundle (SKILL.md) into skills/" },
-  { value: InstallerClient.CCR, label: "CCR (Claude Code Router)", hint: "Agent Skills bundle (SKILL.md) into skills/" },
-  { value: InstallerClient.QwenCode, label: "Qwen Code", hint: "Agent Skills bundle (SKILL.md) into skills/" },
+  { value: InstallerClient.OpenClaw, label: "OpenClaw", hint: "Installs into skills/ (workspace)" },
+  { value: InstallerClient.OpenAICodex, label: "OpenAI Codex", hint: "Installs into .agents/skills" },
+  { value: InstallerClient.GitHubCopilot, label: "GitHub Copilot", hint: "Installs into .agents/skills" },
+  { value: InstallerClient.GeminiCli, label: "Gemini CLI", hint: "Installs into .gemini/skills" },
+  { value: InstallerClient.Amp, label: "Amp", hint: "Installs into .agents/skills" },
+  { value: InstallerClient.CursorAgentCli, label: "Cursor Agent CLI", hint: "Installs into .agents/skills" },
+  { value: InstallerClient.OpenCode, label: "OpenCode", hint: "Installs into .opencode/skills" },
+  { value: InstallerClient.FactoryDroid, label: "Factory Droid", hint: "Installs into .factory/skills" },
+  { value: InstallerClient.CCR, label: "CCR (Claude Code Router)", hint: "Installs into .claude/skills" },
+  { value: InstallerClient.QwenCode, label: "Qwen Code", hint: "Installs into .qwen/skills" },
 ];
 
 function clientToTargets(clients: InstallerClient[]): SkillInstallTarget[] {
@@ -73,8 +73,23 @@ function clientToTargets(clients: InstallerClient[]): SkillInstallTarget[] {
       case InstallerClient.OpenClaw:
         targets.add("openclaw");
         break;
+      case InstallerClient.CCR:
+        targets.add("agent");
+        break;
+      case InstallerClient.FactoryDroid:
+        targets.add("factory");
+        break;
+      case InstallerClient.GeminiCli:
+        targets.add("gemini");
+        break;
+      case InstallerClient.OpenCode:
+        targets.add("opencode");
+        break;
+      case InstallerClient.QwenCode:
+        targets.add("qwen");
+        break;
       default:
-        targets.add("openclaw");
+        targets.add("agents");
         break;
     }
   }
@@ -85,10 +100,20 @@ function targetToInstallPathHint(target: SkillInstallTarget): string {
   switch (target) {
     case "agent":
       return ".claude/skills";
+    case "agents":
+      return ".agents/skills";
     case "cursor":
       return ".cursor/skills";
+    case "factory":
+      return ".factory/skills";
+    case "gemini":
+      return ".gemini/skills";
     case "openclaw":
       return "skills/";
+    case "opencode":
+      return ".opencode/skills";
+    case "qwen":
+      return ".qwen/skills";
     case "workspace":
       return ".cognetivy/skills";
     default:

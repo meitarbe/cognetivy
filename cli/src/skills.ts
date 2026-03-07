@@ -16,8 +16,26 @@ function parseFrontMatter(content: string): FrontMatterResult {
   return fn(content);
 }
 
-export type SkillInstallTarget = "agent" | "cursor" | "openclaw" | "workspace";
-export type SkillSource = "agent" | "openclaw" | "workspace";
+export type SkillInstallTarget =
+  | "agent"
+  | "agents"
+  | "cursor"
+  | "factory"
+  | "gemini"
+  | "openclaw"
+  | "opencode"
+  | "qwen"
+  | "workspace";
+export type SkillSource =
+  | "agent"
+  | "agents"
+  | "cursor"
+  | "factory"
+  | "gemini"
+  | "openclaw"
+  | "opencode"
+  | "qwen"
+  | "workspace";
 
 export interface SkillMetadata {
   name: string;
@@ -218,9 +236,43 @@ export async function getSkillDirectories(
       dirs.push(path.resolve(cwd, ".claude", "skills"));
       break;
     }
+    case "agents": {
+      dirs.push(path.resolve(cwd, ".agents", "skills"));
+      dirs.push(path.join(home, ".agents", "skills"));
+      break;
+    }
+    case "cursor": {
+      dirs.push(path.resolve(cwd, ".cursor", "skills"));
+      dirs.push(path.join(home, ".cursor", "skills"));
+      break;
+    }
+    case "factory": {
+      dirs.push(path.resolve(cwd, ".factory", "skills"));
+      dirs.push(path.join(home, ".factory", "skills"));
+      break;
+    }
+    case "gemini": {
+      dirs.push(path.resolve(cwd, ".gemini", "skills"));
+      dirs.push(path.join(home, ".gemini", "skills"));
+      dirs.push(path.resolve(cwd, ".agents", "skills"));
+      dirs.push(path.join(home, ".agents", "skills"));
+      break;
+    }
     case "openclaw": {
       dirs.push(path.join(home, ".openclaw", "workspace", "skills"));
       dirs.push(...(await getOpenClawExtraDirs()));
+      break;
+    }
+    case "opencode": {
+      dirs.push(path.resolve(cwd, ".opencode", "skills"));
+      dirs.push(path.resolve(cwd, ".agents", "skills"));
+      dirs.push(path.join(home, ".config", "opencode", "skills"));
+      dirs.push(path.join(home, ".agents", "skills"));
+      break;
+    }
+    case "qwen": {
+      dirs.push(path.resolve(cwd, ".qwen", "skills"));
+      dirs.push(path.join(home, ".qwen", "skills"));
       break;
     }
     case "workspace": {
@@ -252,7 +304,18 @@ export async function listSkills(
   options?: ListSkillsOptions,
   config?: SkillsConfig
 ): Promise<Skill[]> {
-  const sources = options?.sources ?? config?.sources ?? (["agent", "openclaw", "workspace"] as SkillSource[]);
+  const defaultSources: SkillSource[] = [
+    "agent",
+    "agents",
+    "cursor",
+    "factory",
+    "gemini",
+    "openclaw",
+    "opencode",
+    "qwen",
+    "workspace",
+  ];
+  const sources = options?.sources ?? config?.sources ?? defaultSources;
   const seen = new Set<string>();
   const results: Skill[] = [];
   for (const source of sources) {
@@ -305,10 +368,20 @@ export async function getInstallPath(
   switch (target) {
     case "agent":
       return path.resolve(cwd, ".claude", "skills", skillName);
+    case "agents":
+      return path.resolve(cwd, ".agents", "skills", skillName);
     case "cursor":
       return path.resolve(cwd, ".cursor", "skills", skillName);
+    case "factory":
+      return path.resolve(cwd, ".factory", "skills", skillName);
+    case "gemini":
+      return path.resolve(cwd, ".gemini", "skills", skillName);
     case "openclaw":
       return path.resolve(cwd, "skills", skillName);
+    case "opencode":
+      return path.resolve(cwd, ".opencode", "skills", skillName);
+    case "qwen":
+      return path.resolve(cwd, ".qwen", "skills", skillName);
     case "workspace":
       return path.resolve(cwd, ".cognetivy", "skills", skillName);
     default:
