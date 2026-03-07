@@ -44,18 +44,13 @@ export function OnboardingModal({ open, onOpenChange, onClose }: OnboardingModal
           </DialogTitle>
           <DialogDescription className="text-muted-foreground text-sm">
             This Studio shows your workflows and runs. To see data here, talk to the AI that
-            already lives in your editor - Cursor, Claude Code, or another AI assistant - and ask it
+            already lives in your editor - Claude Code, Cursor, OpenClaw, or another AI assistant - and ask it
             to create workflows and start runs.
           </DialogDescription>
           <p className="text-xs text-foreground font-medium pl-2.5 py-1 mt-2">
           </p>
         </DialogHeader>
         <div className="space-y-6">
-          <p className="text-sm text-foreground/90">
-            In your editor&apos;s chat, ask <strong>your</strong> AI (Claude Code, Cursor, OpenClaw, etc.) to
-            create a workflow, then start a run. Once it does, you&apos;ll see the workflow and
-            runs here.
-          </p>
           <CliSimulator />
         </div>
         <DialogFooter className="flex flex-col-reverse gap-4 sm:flex-row sm:justify-between sm:items-center pt-2">
