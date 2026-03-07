@@ -217,7 +217,7 @@ export function WorkflowPage() {
           </div>
         )}
       </div>
-      <div className="px-3 pt-2 pb-1 border-b border-border bg-muted/10">
+      <div className="p-3 border-b border-border bg-muted/10">
         <div className="text-sm font-semibold">{workflowRecord?.name ?? selectedWorkflow?.name ?? "Workflow"}</div>
         {workflowRecord?.description && (
           <div className="text-xs text-muted-foreground mt-0.5">{workflowRecord.description}</div>

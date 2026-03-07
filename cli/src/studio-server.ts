@@ -49,7 +49,11 @@ async function handleApiWorkspace(cwd: string): Promise<{ path: string; exists: 
 async function handleApiWorkflows(cwd: string): Promise<unknown[]> {
   const index = await readWorkflowIndex(cwd);
   const workflows = index.workflows ?? [];
-  return workflows.map((w) => ({ ...w, current: w.workflow_id === index.current_workflow_id }));
+  const currentId =
+    index.current_workflow_id && workflows.some((w) => w.workflow_id === index.current_workflow_id)
+      ? index.current_workflow_id
+      : workflows[0]?.workflow_id ?? null;
+  return workflows.map((w) => ({ ...w, current: w.workflow_id === currentId }));
 }
 
 async function handleApiWorkflowRecord(cwd: string, workflowId: string): Promise<unknown> {

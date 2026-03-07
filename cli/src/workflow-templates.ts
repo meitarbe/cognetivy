@@ -14,6 +14,21 @@ const SKILLS = ["cognetivy"];
 
 export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
   {
+    id: "competitor-analysis",
+    name: "Competitor analysis",
+    category: "Business",
+    description: "Research competitors, map strengths and positioning, and derive strategic implications.",
+    use_cases: ["Market positioning", "Competitive intelligence", "Strategy planning", "Go-to-market", "Product differentiation"],
+    workflow: {
+      nodes: [
+        { id: "competitor_landscape", type: WorkflowNodeType.Prompt, input_collections: ["run_input"], output_collections: ["competitor_landscape"], required_skills: SKILLS, prompt: "Identify and profile key competitors from the run input: name, offering, target segment, and key differentiators. Use only verified sources; do not invent data." },
+        { id: "strengths_weaknesses", type: WorkflowNodeType.Prompt, input_collections: ["competitor_landscape"], output_collections: ["strengths_weaknesses"], minimum_rows: 3, required_skills: SKILLS, prompt: "For each competitor, document strengths and weaknesses with evidence. Be specific and cite sources where possible." },
+        { id: "positioning_map", type: WorkflowNodeType.Prompt, input_collections: ["competitor_landscape"], output_collections: ["positioning_map"], required_skills: SKILLS, prompt: "Build a positioning map: dimensions (e.g. price vs quality, segment), where each competitor sits, and white-space opportunities." },
+        { id: "strategic_implications", type: WorkflowNodeType.Prompt, input_collections: ["strengths_weaknesses", "positioning_map"], output_collections: ["strategic_implications"], required_skills: SKILLS, prompt: "Synthesize strategic implications: where we can win, threats to watch, and recommended moves (positioning, feature focus, messaging)." },
+      ],
+    },
+  },
+  {
     id: "product-prd-to-release",
     name: "Product PRD to release",
     category: "Product & Engineering",
@@ -106,6 +121,36 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
     },
   },
   {
+    id: "campaign-brief-to-creative",
+    name: "Campaign brief to creative",
+    category: "Marketing",
+    description: "Turn a campaign brief into creative briefs, channel plan, and deliverable specs.",
+    use_cases: ["Campaign launch", "Creative production", "Multi-channel campaigns", "Brand campaigns", "Demand gen creative"],
+    workflow: {
+      nodes: [
+        { id: "campaign_brief_parse", type: WorkflowNodeType.Prompt, input_collections: ["run_input"], output_collections: ["campaign_brief"], required_skills: SKILLS, prompt: "Parse the run input into a structured campaign brief: objectives, audience, key message, tone, channels, timeline, and constraints." },
+        { id: "creative_briefs", type: WorkflowNodeType.Prompt, input_collections: ["campaign_brief"], output_collections: ["creative_briefs"], required_skills: SKILLS, prompt: "Create creative briefs per asset type or channel: format, copy direction, visual direction, CTA, and specs." },
+        { id: "channel_plan", type: WorkflowNodeType.Prompt, input_collections: ["campaign_brief"], output_collections: ["channel_plan"], required_skills: SKILLS, prompt: "Produce channel plan: channel, role in funnel, format, placement, budget allocation, and sequencing." },
+        { id: "deliverables_spec", type: WorkflowNodeType.Prompt, input_collections: ["creative_briefs", "channel_plan"], output_collections: ["deliverables"], required_skills: SKILLS, prompt: "List deliverables with specs: asset name, channel, format, dimensions/copy length, due date, and owner handoff notes." },
+      ],
+    },
+  },
+  {
+    id: "brand-voice-messaging",
+    name: "Brand voice & messaging",
+    category: "Marketing",
+    description: "Define brand voice guidelines, messaging pillars, and a reusable messaging toolkit.",
+    use_cases: ["Brand refresh", "Messaging framework", "Content guidelines", "Launch messaging", "Sales enablement"],
+    workflow: {
+      nodes: [
+        { id: "brand_inputs", type: WorkflowNodeType.Prompt, input_collections: ["run_input"], output_collections: ["brand_inputs"], required_skills: SKILLS, prompt: "Extract and structure brand inputs from run input: positioning, values, audience, differentiators, and any existing voice or messaging." },
+        { id: "voice_guidelines", type: WorkflowNodeType.Prompt, input_collections: ["brand_inputs"], output_collections: ["voice_guidelines"], required_skills: SKILLS, prompt: "Write brand voice guidelines: tone (do/don't), vocabulary, sentence rhythm, and examples that bring the voice to life." },
+        { id: "messaging_pillars", type: WorkflowNodeType.Prompt, input_collections: ["brand_inputs"], output_collections: ["messaging_pillars"], minimum_rows: 3, required_skills: SKILLS, prompt: "Define messaging pillars: pillar name, key message, proof points, and one-liner. Align to positioning and audience." },
+        { id: "messaging_toolkit", type: WorkflowNodeType.Prompt, input_collections: ["voice_guidelines", "messaging_pillars"], output_collections: ["messaging_toolkit"], required_skills: SKILLS, prompt: "Produce messaging toolkit: elevator pitch, tagline options, key phrases, FAQ-style Q&A, and usage notes for sales and marketing." },
+      ],
+    },
+  },
+  {
     id: "sales-discovery-to-proposal",
     name: "Sales discovery to proposal",
     category: "Sales",
@@ -180,20 +225,54 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
       ],
     },
   },
+  {
+    id: "contract-review",
+    name: "Contract review",
+    category: "Legal",
+    description: "Extract clauses, flag risks and redlines, and produce a legal review summary.",
+    use_cases: ["Vendor contracts", "MSA review", "NDA review", "Renewal review", "Legal due diligence"],
+    workflow: {
+      nodes: [
+        { id: "extract_clauses", type: WorkflowNodeType.Prompt, input_collections: ["run_input"], output_collections: ["contract_clauses"], required_skills: SKILLS, prompt: "Extract and structure key contract clauses from the run input: parties, term, liability, indemnity, IP, termination, and other material terms." },
+        { id: "risk_flags", type: WorkflowNodeType.Prompt, input_collections: ["contract_clauses"], output_collections: ["risk_flags"], required_skills: SKILLS, prompt: "Flag risks: clause, risk level (high/medium/low), issue description, and suggested fallback or negotiation point." },
+        { id: "redlines", type: WorkflowNodeType.Prompt, input_collections: ["contract_clauses"], output_collections: ["redlines"], required_skills: SKILLS, prompt: "Propose redlines: original language, suggested change, and rationale. Focus on liability, indemnity, and termination." },
+        { id: "legal_summary", type: WorkflowNodeType.Prompt, input_collections: ["risk_flags", "redlines"], output_collections: ["legal_summary"], required_skills: SKILLS, prompt: "Write a legal review summary: overall risk assessment, must-fix items, nice-to-have changes, and recommended next steps (negotiate, accept, or escalate)." },
+      ],
+    },
+  },
+  {
+    id: "compliance-checklist",
+    name: "Compliance checklist",
+    category: "Legal",
+    description: "Map requirements to controls, identify gaps, and produce an action plan.",
+    use_cases: ["Audit prep", "SOC 2", "GDPR readiness", "Vendor compliance", "Policy alignment"],
+    workflow: {
+      nodes: [
+        { id: "requirements_parse", type: WorkflowNodeType.Prompt, input_collections: ["run_input"], output_collections: ["compliance_requirements"], required_skills: SKILLS, prompt: "Parse run input into structured compliance requirements: framework/standard, control ID, requirement text, and scope." },
+        { id: "control_mapping", type: WorkflowNodeType.Prompt, input_collections: ["compliance_requirements"], output_collections: ["control_mapping"], required_skills: SKILLS, prompt: "Map each requirement to existing controls: control name, evidence type, owner, and status (in place, partial, missing)." },
+        { id: "gap_analysis", type: WorkflowNodeType.Prompt, input_collections: ["compliance_requirements"], output_collections: ["gap_analysis"], required_skills: SKILLS, prompt: "Identify gaps: requirement, gap description, risk if unaddressed, and recommended remediation." },
+        { id: "action_plan", type: WorkflowNodeType.Prompt, input_collections: ["control_mapping", "gap_analysis"], output_collections: ["compliance_action_plan"], required_skills: SKILLS, prompt: "Produce compliance action plan: prioritized actions, owner, due date, evidence needed, and dependency on other controls." },
+      ],
+    },
+  },
 ];
 
-const NON_DEVELOPER_FIRST_CATEGORY_ORDER = [
+const TEMPLATE_CATEGORY_ORDER = [
+  "Business",
+  "Engineering",
+  "Developer Experience",
+  "Product & Engineering",
+  "Marketing",
   "Operations",
   "People Ops",
-  "Marketing",
   "Sales",
   "Product & Growth",
   "Research",
   "Ops & Reliability",
-  "Product & Engineering",
-  "Engineering",
-  "Developer Experience",
+  "Legal",
 ];
+
+const NON_DEVELOPER_FIRST_CATEGORY_ORDER = TEMPLATE_CATEGORY_ORDER;
 
 export function listWorkflowTemplates() {
   return WORKFLOW_TEMPLATES.map((template) => ({

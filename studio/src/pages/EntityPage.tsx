@@ -228,7 +228,7 @@ export function EntityPage() {
           {filteredItems.length === 0 ? (
             <p className="p-4 text-sm text-muted-foreground text-center">
               {items.length === 0
-                ? "No data yet. Agent defines and populates entities via collection_schema_set and collection_set."
+                ? "No data yet. Ask your agent to run the current workflow."
                 : runFilterId
                   ? "No items for the selected run."
                   : "No data yet."}

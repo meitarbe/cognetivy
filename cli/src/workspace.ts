@@ -99,11 +99,12 @@ export async function ensureWorkspace(
   await fs.mkdir(p.nodeResultsDir, { recursive: true });
 
   const indexExists = await fileExists(p.workflowsIndexPath);
-  if (!indexExists || options.force) {
+  if (!indexExists) {
     const index = createDefaultWorkflowIndex();
     await fs.writeFile(p.workflowsIndexPath, JSON.stringify(index, null, 2), "utf-8");
   }
-
+  // When force is true we only refresh default workflow files (wf_default); we never overwrite
+  // workflows/index.json so the user's workflows and current selection are preserved.
   await ensureDefaultWorkflowFiles(cwd, { force: options.force });
 
   return p;

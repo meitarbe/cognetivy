@@ -206,34 +206,36 @@ function WorkflowCanvasInner({
           </div>
         </SheetHeader>
         <div className="space-y-4 pt-4">
-          <div>
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Node result</p>
-            {nodeResult ? (
-              <div className="mt-1 rounded-md border border-border bg-muted/20 p-2 space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs text-muted-foreground">Status</span>
-                  <span className="text-xs font-medium">{nodeResult.status}</span>
-                </div>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs text-muted-foreground">Started</span>
-                  <span className="text-xs">{formatTimestamp(nodeResult.started_at)}</span>
-                </div>
-                {nodeResult.completed_at && (
+          {nodeResults !== undefined && (
+            <div>
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Node result</p>
+              {nodeResult ? (
+                <div className="mt-1 rounded-md border border-border bg-muted/20 p-2 space-y-2">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs text-muted-foreground">Completed</span>
-                    <span className="text-xs">{formatTimestamp(nodeResult.completed_at)}</span>
+                    <span className="text-xs text-muted-foreground">Status</span>
+                    <span className="text-xs font-medium">{nodeResult.status}</span>
                   </div>
-                )}
-                {nodeResult.output && (
-                  <div className="pt-2 border-t border-border">
-                    <RichText content={nodeResult.output} className="prose prose-sm dark:prose-invert max-w-none" />
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs text-muted-foreground">Started</span>
+                    <span className="text-xs">{formatTimestamp(nodeResult.started_at)}</span>
                   </div>
-                )}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground mt-1">No node result yet.</p>
-            )}
-          </div>
+                  {nodeResult.completed_at && (
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs text-muted-foreground">Completed</span>
+                      <span className="text-xs">{formatTimestamp(nodeResult.completed_at)}</span>
+                    </div>
+                  )}
+                  {nodeResult.output && (
+                    <div className="pt-2 border-t border-border">
+                      <RichText content={nodeResult.output} className="prose prose-sm dark:prose-invert max-w-none" />
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground mt-1">No node result yet.</p>
+              )}
+            </div>
+          )}
           {(() => {
             const promptText =
               (workflowId && versionId && nodePromptCache[d.nodeId]?.prompt) ??

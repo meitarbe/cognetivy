@@ -209,7 +209,7 @@ export function RunsPage() {
               {filteredRuns.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center text-muted-foreground">
-                    {runs.length === 0 ? "No runs yet" : "No runs match filter"}
+                    {runs.length === 0 ? <p className="mt-6">No runs yet, Ask your agent to run the current workflow.</p> : "No runs match filter"}
                   </TableCell>
                 </TableRow>
               )}

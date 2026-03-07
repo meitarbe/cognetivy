@@ -1,8 +1,39 @@
 import type { CollectionSchemaConfig } from "./models.js";
+import { DEFAULT_WORKFLOW_ID } from "./default-workflow.js";
 import { TRACEABILITY_PROPERTIES } from "./traceability-schema.js";
 
+const DEFAULT_SUMMARY_KIND = {
+  name: "Summary",
+  description: "Synthesized summary derived from sources. Use Markdown for content.",
+  item_schema: {
+    type: "object",
+    required: ["summary"],
+    properties: {
+      summary: { type: "string", description: "Main content (Markdown)." },
+      title: { type: "string", description: "Optional short title." },
+      ...TRACEABILITY_PROPERTIES,
+    },
+    additionalProperties: true,
+  },
+} as const;
+
+const DEFAULT_APPROVED_SUMMARY_KIND = {
+  name: "Approved summary",
+  description: "Human-approved summary. Use Markdown for content.",
+  item_schema: {
+    type: "object",
+    required: ["summary"],
+    properties: {
+      summary: { type: "string", description: "Approved content (Markdown)." },
+      title: { type: "string", description: "Optional short title." },
+      ...TRACEABILITY_PROPERTIES,
+    },
+    additionalProperties: true,
+  },
+} as const;
+
 export function createDefaultCollectionSchema(workflowId: string): CollectionSchemaConfig {
-  return {
+  const base: CollectionSchemaConfig = {
     workflow_id: workflowId,
     kinds: {
       run_input: {
@@ -31,4 +62,11 @@ export function createDefaultCollectionSchema(workflowId: string): CollectionSch
       },
     },
   };
+
+  if (workflowId === DEFAULT_WORKFLOW_ID) {
+    base.kinds.summary = { ...DEFAULT_SUMMARY_KIND };
+    base.kinds.approved_summary = { ...DEFAULT_APPROVED_SUMMARY_KIND };
+  }
+
+  return base;
 }

@@ -284,6 +284,8 @@ workflowCmd
         2
       )
     );
+    const studioUrl = `http://127.0.0.1:${STUDIO_DEFAULT_PORT}`;
+    open(studioUrl).catch(() => {});
   });
 
 workflowCmd
@@ -1127,6 +1129,57 @@ nodeCmd
       console.log(`COGNETIVY_NODE_RESULT_ID=${nodeResultId}`);
     }
   );
+
+program
+  .command("templates")
+  .description("List workflow templates (--list) or interactively pick one to install and set as current workflow.")
+  .option("--list", "Print templates as JSON (no picker)")
+  .action(async (opts: { list?: boolean }) => {
+    const cwd = process.cwd();
+    if (opts.list || !process.stdin.isTTY) {
+      console.log(JSON.stringify(listWorkflowTemplates(), null, 2));
+      return;
+    }
+    await requireWorkspace(cwd);
+    const templates = listWorkflowTemplatesForPicker();
+    const picked = await p.select({
+      message: "Pick a workflow template to install and set as current",
+      options: templates.map((t) => ({
+        value: t.id,
+        label: t.name,
+        hint: `${t.category} · ${t.node_count} nodes`,
+      })),
+    });
+    if (p.isCancel(picked)) {
+      p.cancel("Template selection cancelled.");
+      process.exit(0);
+    }
+    const templateId = picked as string;
+    try {
+      const result = await applyWorkflowTemplateToWorkspace({ cwd, templateId });
+      p.note(
+        `Applied template \"${result.template.name}\"\nWorkflow: ${result.workflow.workflow_id}\nNow current: ${result.workflow.workflow_id}`,
+        "Template applied"
+      );
+      console.log(
+        JSON.stringify(
+          {
+            template_id: result.template.id,
+            workflow_id: result.workflow.workflow_id,
+            current_workflow_id: result.workflow.workflow_id,
+            version_id: result.version.version_id,
+          },
+          null,
+          2
+        )
+      );
+      const studioUrl = `http://127.0.0.1:${STUDIO_DEFAULT_PORT}`;
+      open(studioUrl).catch(() => {});
+    } catch (err) {
+      console.error(err instanceof Error ? `Error: ${err.message}` : String(err));
+      process.exit(1);
+    }
+  });
 
 program
   .command("install [target]")
