@@ -54,7 +54,7 @@ export function AppLayout() {
   const location = useLocation();
   const { theme, setTheme } = useTheme();
   const { open: onboardingOpen, closeForSession, dismissPermanently } = useOnboardingVisibility();
-  const { workflows, selectedWorkflowId, setSelectedWorkflowId, selectedWorkflow } = useWorkflowSelection();
+  const { workflows, selectedWorkflowId, setSelectedWorkflowId } = useWorkflowSelection();
   const [schema, setSchema] = useState<CollectionSchemaConfig | null>(null);
   const [runs, setRuns] = useState<RunRecord[]>([]);
   const [workspace, setWorkspace] = useState<WorkspaceInfo | null>(null);

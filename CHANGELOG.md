@@ -15,6 +15,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - (none)
 
+### Removed
+
+- (none)
+
+### Fixed
+
+- (none)
+
+## [0.1.33] - 2025-03-08
+
+### Added
+
+- **CLI: expanded skill install targets.** `cognetivy install` and skills commands now support `agents`, `gemini`, `qwen`, `factory`, and `opencode` in addition to `claude`, `cursor`, `openclaw`, and `workspace`. README and CLI README updated.
+- **CLI: top-level `cognetivy templates` command.** List templates as JSON with `--list`, or in TTY interactively pick a template to install and set as current workflow; on success opens Studio in the browser.
+- **CLI: open Studio after template apply.** `workflow apply-template` and the templates picker open Studio at the default URL after a successful apply.
+- **CLI: default collection schema.** Default workflow now gets `summary` and `approved_summary` collection kinds (in addition to existing kinds).
+- **CLI: template apply and collection presets.** Applying a template auto-creates collection schema from all node input/output kinds. Added presets for many domain kinds (e.g. requirements, user_lens, solution_options, implementation_plan, release_notes, bug_scope, hypotheses, diagnostics, fix_plan, qa_report) with traceability fields.
+- **CLI: new workflow templates.** Competitor analysis, Campaign brief to creative, Brand voice & messaging, Contract review, Compliance checklist. Template picker includes "Default workflow" as first option. Category order updated (Business, Engineering, Developer Experience, Product & Engineering, Marketing, Operations, etc., Legal).
+- **CLI: Studio API current workflow fallback.** When `workflows/index.json` has no or invalid `current_workflow_id`, API returns the first workflow as current so the UI always has a valid selection.
+- **CLI: workspace helpers.** `workspaceExists`; `ensureWorkspace` with `force` only refreshes default workflow files and no longer overwrites `workflows/index.json`. Removed automatic `.gitignore` snippet appending.
+- **Studio: Workflow page.** "Go to runs of version X" link in header; schema drawer hides repeated traceability fields (citations, derived_from, reasoning) and shows a short note.
+- **Studio: Entity page.** Empty state copy "Ask your agent to run the current workflow."; table shows a single empty row when there are no display columns and no data.
+- **Studio: Runs page.** Empty state message: "No runs yet. Ask your agent to run the current workflow."
+
+### Changed
+
+- **CLI: install TUI.** Template picker is shown only on first-time init (when workspace did not exist before); for existing workspaces, install only updates skills and shows "Skills updated." Force is default true for skill install in TUI. Clearer error when skill already exists (tip to use `--force`). Client option hints show install paths (e.g. `.agents/skills`, `.gemini/skills`). Each installer client maps to the correct target (e.g. CCR→agent, Factory→factory, default→agents).
+- **Studio: AppLayout sidebar.** Workflow selector label "Select a workflow"; removed workflow description below the selector.
+- **Studio: Onboarding modal.** Shortened copy; editor order "Claude Code, Cursor, OpenClaw"; removed redundant paragraph about asking the AI to create a workflow.
+- **Studio: Workflow canvas node drawer.** "Node result" section is only shown when node results are available (run context), avoiding "No node result yet" before a run.
+- **Studio: Workflow selection context.** When loading workflows, prefer the server’s current workflow and persist it so CLI actions (e.g. `cognetivy templates`) are reflected in the UI; fallback when no current is set.
+- **Studio: Workflow page layout.** Header padding and "Go to runs of version" moved into the same row as the version selector.
+
+### Removed
+
+- **Docs.** Removed `docs/ARCHITECTURE.md`, `docs/EXECUTION_STATE.md`, `docs/PERFECTION_EXECUTION_PLAN.md`, `docs/RELEASING.md`, and `docs/TEMPLATES.md`.
+
 ### Fixed
 
 - (none)
@@ -113,7 +150,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Studio: read-only UI for workflow DAG, runs, events, and collections.
 - Skills installation for Cursor, Claude Code, OpenClaw, and workspace.
 
-[Unreleased]: https://github.com/meitarbe/cognetivy/compare/v0.1.31...HEAD
+[Unreleased]: https://github.com/meitarbe/cognetivy/compare/v0.1.33...HEAD
+[0.1.33]: https://github.com/meitarbe/cognetivy/compare/v0.1.31...v0.1.33
 [0.1.31]: https://github.com/meitarbe/cognetivy/compare/v0.1.30...v0.1.31
 [0.1.30]: https://github.com/meitarbe/cognetivy/compare/v0.1.23...v0.1.30
 [0.1.23]: https://github.com/meitarbe/cognetivy/compare/v0.1.10...v0.1.23
