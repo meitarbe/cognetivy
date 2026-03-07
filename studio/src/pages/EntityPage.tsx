@@ -225,7 +225,7 @@ export function EntityPage() {
           )}
         </CardHeader>
         <CardContent className="p-0">
-          {filteredItems.length === 0 ? (
+          {displayColumns.length === 0 && filteredItems.length === 0 ? (
             <p className="p-4 text-sm text-muted-foreground text-center">
               {items.length === 0
                 ? "No data yet. Ask your agent to run the current workflow."
@@ -249,7 +249,21 @@ export function EntityPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredItems.map((item, i) => {
+                {filteredItems.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={4 + displayColumns.length}
+                      className="p-4 text-sm text-muted-foreground text-center"
+                    >
+                      {items.length === 0
+                        ? "No data yet. Ask your agent to run the current workflow."
+                        : runFilterId
+                          ? "No items for the selected run."
+                          : "No data yet."}
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                filteredItems.map((item, i) => {
                   const itemPath = getItemPagePath(item, i);
                   const rowKey = (item.id as string) ?? `row-${i}`;
                   const isExpanded = expandedRowKey === rowKey;
@@ -348,7 +362,8 @@ export function EntityPage() {
                       })}
                     </TableRow>
                   );
-                })}
+                })
+                )}
               </TableBody>
             </Table>
           )}

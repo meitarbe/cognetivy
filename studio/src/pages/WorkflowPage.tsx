@@ -174,7 +174,7 @@ export function WorkflowPage() {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="px-3 py-1.5 border-b border-border flex flex-wrap items-center gap-2 text-sm">
+      <div className="p-3 border-b border-border flex flex-wrap items-center gap-2 text-sm">
         <Breadcrumbs items={[{ label: "Workflow" }]} />
         {selectedWorkflow?.name && (
           <span className="text-xs text-muted-foreground">
@@ -182,6 +182,15 @@ export function WorkflowPage() {
           </span>
         )}
         {versionItems.length > 0 && (
+          <div className="ml-auto flex items-center gap-4">
+          {selectedVersionId && (
+            <Link
+              to={`/runs?version=${encodeURIComponent(selectedVersionId)}`}
+              className={`ml-auto text-xs font-medium ${TABLE_LINK_CLASS}`}
+            >
+              Go to runs of version {selectedVersionId}
+            </Link>
+          )}
           <Select value={selectedVersionId ?? currentVersionId ?? ""} onValueChange={handleVersionChange}>
             <SelectTrigger className="w-[140px] h-8 text-xs rounded-md border bg-background">
               <SelectValue placeholder="Version" />
@@ -190,14 +199,7 @@ export function WorkflowPage() {
               {versions.map(renderVersionSelectItem)}
             </SelectContent>
           </Select>
-        )}
-        {selectedVersionId && (
-          <Link
-            to={`/runs?version=${encodeURIComponent(selectedVersionId)}`}
-            className={`text-xs font-medium ${TABLE_LINK_CLASS}`}
-          >
-            Runs ({selectedVersionId})
-          </Link>
+          </div>
         )}
         {diff && (
           <div className="flex items-center gap-2">
@@ -223,6 +225,7 @@ export function WorkflowPage() {
           <div className="text-xs text-muted-foreground mt-0.5">{workflowRecord.description}</div>
         )}
       </div>
+
       <div className="flex-1 min-h-0">
         {workflowVersion ? (
           <WorkflowCanvas
