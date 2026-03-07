@@ -38,9 +38,19 @@ export function WorkflowSelectionProvider({ children }: { children: React.ReactN
     const list = await api.getWorkflows();
     setWorkflows(list);
     setSelectedWorkflowIdState((prev) => {
-      if (prev && list.some((w) => w.workflow_id === prev)) return prev;
       const current = (list as Array<WorkflowSummary & { current?: boolean }>).find((w) => w.current);
-      const fallback = current?.workflow_id ?? list[0]?.workflow_id ?? null;
+      const currentId = current?.workflow_id ?? null;
+
+      if (prev && list.some((w) => w.workflow_id === prev)) {
+        if (prev === "wf_default" && currentId && currentId !== prev) {
+          writeStoredWorkflowId(currentId);
+          return currentId;
+        }
+        return prev;
+      }
+
+      const fallback = currentId ?? list[0]?.workflow_id ?? null;
+      if (fallback) writeStoredWorkflowId(fallback);
       return fallback;
     });
   }, []);

@@ -257,7 +257,8 @@ export function WorkflowPage() {
               const itemSchema = (schema?.item_schema ?? {}) as Record<string, unknown>;
               const properties = (itemSchema.properties ?? {}) as Record<string, Record<string, unknown>>;
               const required = new Set(((itemSchema.required as string[] | undefined) ?? []));
-              const rows = Object.entries(properties);
+              const hiddenRepeatedFields = new Set(["citations", "derived_from", "reasoning"]);
+              const rows = Object.entries(properties).filter(([field]) => !hiddenRepeatedFields.has(field));
 
               return (
                 <>
@@ -295,6 +296,11 @@ export function WorkflowPage() {
                         </div>
                       </div>
                     )}
+                    {properties.citations || properties.derived_from || properties.reasoning ? (
+                      <div className="mt-2 rounded-md border border-dashed border-border bg-muted/20 p-2 text-[11px] text-muted-foreground">
+                        Shared traceability fields are hidden here to reduce noise: <code>citations</code>, <code>derived_from</code>, <code>reasoning</code>.
+                      </div>
+                    ) : null}
                   </div>
                 </>
               );

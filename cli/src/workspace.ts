@@ -34,13 +34,6 @@ export const EVENTS_DIR = "events";
 export const COLLECTIONS_DIR = "collections";
 export const NODE_RESULTS_DIR = "node-results";
 
-const GITIGNORE_SNIPPET = `
-# cognetivy - ignore runtime data; commit workflows/*/versions/
-.cognetivy/runs/
-.cognetivy/events/
-.cognetivy/collections/
-.cognetivy/node-results/
-`.trim();
 
 export interface WorkspacePaths {
   root: string;
@@ -113,11 +106,6 @@ export async function ensureWorkspace(
 
   await ensureDefaultWorkflowFiles(cwd, { force: options.force });
 
-  if (!options.noGitignore) {
-    const gitignorePath = path.resolve(cwd, ".gitignore");
-    await appendGitignoreSnippet(gitignorePath, GITIGNORE_SNIPPET);
-  }
-
   return p;
 }
 
@@ -161,22 +149,6 @@ async function fileExists(filePath: string): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-async function appendGitignoreSnippet(
-  gitignorePath: string,
-  snippet: string
-): Promise<void> {
-  let content = "";
-  try {
-    content = await fs.readFile(gitignorePath, "utf-8");
-  } catch {
-    // .gitignore does not exist
-  }
-  const marker = "# cognetivy";
-  if (content.includes(marker)) return;
-  const toAppend = "\n\n" + snippet + "\n";
-  await fs.appendFile(gitignorePath, toAppend, "utf-8");
 }
 
 /**

@@ -1,4 +1,5 @@
 import { WorkflowNodeType, type WorkflowVersionRecord } from "./models.js";
+import { DEFAULT_WORKFLOW_ID } from "./default-workflow.js";
 
 export interface WorkflowTemplate {
   id: string;
@@ -207,12 +208,24 @@ export function listWorkflowTemplates() {
 
 export function listWorkflowTemplatesForPicker() {
   const categoryRank = new Map(NON_DEVELOPER_FIRST_CATEGORY_ORDER.map((c, i) => [c, i]));
-  return listWorkflowTemplates().sort((a, b) => {
+  const sorted = listWorkflowTemplates().sort((a, b) => {
     const ra = categoryRank.get(a.category) ?? 999;
     const rb = categoryRank.get(b.category) ?? 999;
     if (ra !== rb) return ra - rb;
     return a.name.localeCompare(b.name);
   });
+
+  return [
+    {
+      id: DEFAULT_WORKFLOW_ID,
+      name: "Default workflow",
+      category: "Getting started",
+      description: "Starter workflow demonstrating collection→node→collection flow.",
+      use_cases: ["Onboarding", "Quick start"],
+      node_count: 3,
+    },
+    ...sorted,
+  ];
 }
 
 export function getWorkflowTemplateById(templateId: string): WorkflowTemplate | null {
