@@ -10,7 +10,7 @@
 
 ### Demo
 
-![Cognetivy demo](https://storage.googleapis.com/public-stack-studio/Cognetivy%20(1).gif)
+![Cognetivy demo](cli/cognetivy_demo.gif)
 
 ![Cognetivy Studio: workflow canvas, run details, and data collected](cli/studio_example.jpg)
 
