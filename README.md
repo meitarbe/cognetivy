@@ -8,9 +8,6 @@
 
 **Website:** [cognetivy.com](https://cognetivy.com)
 
-### Demo
-
-![Cognetivy demo](cli/cognetivy_demo.gif)
 
 ![Cognetivy Studio: workflow canvas, run details, and data collected](cli/studio_example.jpg)
 
@@ -28,6 +25,11 @@ Cognetivy gives your agent an operational layer so you can:
 - **Re-run and compare outcomes** with a persistent local workspace
 
 In short: Cognetivy turns powerful-but-chaotic agent sessions into structured, auditable workflows.
+
+### Demo
+
+![Cognetivy demo](cli/cognetivy_demo.gif)
+
 
 ## Explain it like I'm new to this
 
