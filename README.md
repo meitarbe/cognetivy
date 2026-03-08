@@ -8,11 +8,9 @@
 
 **Website:** [cognetivy.com](https://cognetivy.com)
 
-<p align="center">
-  <video src="https://storage.googleapis.com/public-stack-studio/cognetivy_demo3.mp4" controls width="100%" style="border-radius: 8px; max-width: 100%;">
-    Your browser does not support the video tag. <a href="https://storage.googleapis.com/public-stack-studio/cognetivy_demo3.mp4">Watch the demo</a>.
-  </video>
-</p>
+### Demo
+
+**[Watch the demo video](https://storage.googleapis.com/public-stack-studio/cognetivy_demo3.mp4)** (opens in a new tab)
 
 ![Cognetivy Studio: workflow canvas, run details, and data collected](cli/studio_example.jpg)
 
