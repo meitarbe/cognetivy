@@ -8,6 +8,12 @@
 
 **Website:** [cognetivy.com](https://cognetivy.com)
 
+<p align="center">
+  <video src="https://storage.googleapis.com/public-stack-studio/cognetivy_demo3.mp4" controls width="100%" style="border-radius: 8px; max-width: 100%;">
+    Your browser does not support the video tag. <a href="https://storage.googleapis.com/public-stack-studio/cognetivy_demo3.mp4">Watch the demo</a>.
+  </video>
+</p>
+
 ![Cognetivy Studio: workflow canvas, run details, and data collected](cli/studio_example.jpg)
 
 Cognetivy is an open-source state layer for AI-assistants like Claude Code, Cursor, OpenClaw, etc. It helps you define workflows, track runs and events, and store structured collections in a local `.cognetivy/` workspace. No LLMs inside - just the data and tools your editor's agent uses via [Skills](https://agentskills.io/) and [MCP](https://agentskills.io/). Works with **Claude Code**, **Cursor**, **OpenClaw**, and other Skills and MCP-compatible clients.
