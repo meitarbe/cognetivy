@@ -23,6 +23,7 @@ Cognetivy is an open-source state layer for AI-assistants like Claude Code, Curs
  </picture>
 </a>
 
+
 ## Why Cognetivy
 
 AI coding agents are great at producing output, but their process is usually hard to inspect and hard to repeat.
