@@ -17,9 +17,9 @@ Cognetivy is an open-source state layer for AI-assistants like Claude Code, Curs
 
 <a href="https://www.star-history.com/?repos=meitarbe%2Fcognetivy&type=date&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/image?repos=meitarbe/cognetivy&type=date&theme=dark&legend=top-left&v=2" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/image?repos=meitarbe/cognetivy&type=date&legend=top-left&v=2" />
-   <img alt="Star History Chart" src="https://api.star-history.com/image?repos=meitarbe/cognetivy&type=date&legend=top-left&v=2" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/image?repos=meitarbe/cognetivy&type=date&theme=dark&legend=top-left&v=2&new=2" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/image?repos=meitarbe/cognetivy&type=date&legend=top-left&v=2&new=2" />
+   <img alt="Star History Chart" src="https://api.star-history.com/image?repos=meitarbe/cognetivy&type=date&legend=top-left&v=2&new=2" />
  </picture>
 </a>
 
