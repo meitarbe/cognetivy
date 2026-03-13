@@ -39,6 +39,7 @@
   "dependencies": {
     "@clack/prompts": "^1.0.1",
     "ajv": "^8.18.0",
+    "chokidar": "^4.0.1",
     "ajv-formats": "^3.0.1",
     "commander": "^12.1.0",
     "env-paths": "^3.0.0",

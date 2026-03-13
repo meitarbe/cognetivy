@@ -1,19 +1,39 @@
 /**
- * Cloud API client for Cognetivy backend. Use with COGNETIVY_API_URL and COGNETIVY_API_KEY.
+ * Cloud API client for Cognetivy backend. Use COGNETIVY_API_URL and API key (env or stored file).
  */
+
+import type { NextStepAction } from "./run-engine.js";
+import { readStoredApiKey } from "./credentials.js";
 
 const getBaseUrl = (): string => {
   const url = process.env.COGNETIVY_API_URL ?? "http://localhost:3000";
   return url.replace(/\/$/, "");
 };
 
+/** Cloud API base URL (for display only; does not require API key). */
+export function getCloudApiUrl(): string {
+  return getBaseUrl();
+}
+
+/** Resolve API key: env COGNETIVY_API_KEY first, then stored credentials file. */
+function resolveApiKey(): string | null {
+  const fromEnv = process.env.COGNETIVY_API_KEY;
+  if (fromEnv && fromEnv.trim()) return fromEnv.trim();
+  return readStoredApiKey();
+}
+
 const getApiKey = (): string => {
-  const key = process.env.COGNETIVY_API_KEY;
+  const key = resolveApiKey();
   if (!key) {
-    throw new Error("COGNETIVY_API_KEY is required for cloud mode. Create one at the app: POST /auth/api-key.");
+    throw new Error("COGNETIVY_API_KEY is required for cloud mode. Run `cognetivy auth login` to sign in.");
   }
   return key;
 };
+
+/** True when CLI should use the backend API (key in env or stored file). */
+export function isCloudMode(): boolean {
+  return Boolean(resolveApiKey());
+}
 
 async function cloudFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
   const baseUrl = getBaseUrl();
@@ -114,13 +134,134 @@ export async function cloudAppendEvents(runId: string, body: CloudAppendEventsBo
   });
 }
 
-/** Map backend action names to CLI next_step action for display. */
-export function mapCloudActionToLocal(action: string): string {
-  const map: Record<string, string> = {
+export interface CloudCurrentUser {
+  id: string;
+  email?: string;
+  displayName?: string | null;
+  /** From backend: either { id, name }[] or { organization: { id, name } }[] */
+  organizations?: Array<{ id?: string; name?: string | null; organization?: { id: string; name?: string } }>;
+}
+
+/** Get current user and organizations (requires COGNETIVY_API_KEY). */
+export async function cloudGetCurrentUser(): Promise<CloudCurrentUser> {
+  return cloudFetch<CloudCurrentUser>("/users/me");
+}
+
+/** Resolve organization ID: env COGNETIVY_ORGANIZATION_ID or first org from whoami. */
+export async function resolveCloudOrganizationId(): Promise<string> {
+  const fromEnv = process.env.COGNETIVY_ORGANIZATION_ID?.trim();
+  if (fromEnv) return fromEnv;
+  const user = await cloudGetCurrentUser();
+  const orgs = user.organizations ?? [];
+  const first = orgs[0];
+  const id = first?.organization?.id ?? (first as { id?: string })?.id;
+  if (!id) throw new Error("No organization. Set COGNETIVY_ORGANIZATION_ID or use an account with an organization.");
+  return id;
+}
+
+// --- Workflows (cloud API) ---
+
+export interface CloudWorkflowListItem {
+  id: string;
+  name: string;
+  description?: string | null;
+  currentVersionId?: string | null;
+  organizationId?: string;
+}
+
+export async function cloudListWorkflows(organizationId: string): Promise<CloudWorkflowListItem[]> {
+  const list = await cloudFetch<CloudWorkflowListItem[]>(
+    `/workflows?organizationId=${encodeURIComponent(organizationId)}`
+  );
+  return Array.isArray(list) ? list : [];
+}
+
+export interface CloudCreateWorkflowInput {
+  organizationId: string;
+  name: string;
+  description?: string;
+}
+
+export interface CloudWorkflow {
+  id: string;
+  name: string;
+  description?: string | null;
+  currentVersionId?: string | null;
+  organizationId: string;
+}
+
+export async function cloudCreateWorkflow(input: CloudCreateWorkflowInput): Promise<CloudWorkflow> {
+  return cloudFetch<CloudWorkflow>("/workflows", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export interface CloudCreateWorkflowFullInput {
+  organizationId: string;
+  name: string;
+  description?: string;
+  nodes?: unknown[];
+  kinds?: Record<string, { name?: string; description: string; item_schema: Record<string, unknown> }>;
+}
+
+export interface CloudCreateWorkflowFullResult extends CloudWorkflow {
+  versionId: string | null;
+}
+
+/** Create workflow + first version (nodes) + collection schema in one API call. */
+export async function cloudCreateWorkflowFull(
+  input: CloudCreateWorkflowFullInput
+): Promise<CloudCreateWorkflowFullResult> {
+  return cloudFetch<CloudCreateWorkflowFullResult>("/workflows/full", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function cloudCreateWorkflowVersion(
+  workflowId: string,
+  nodes: unknown[] = []
+): Promise<CloudWorkflowVersion> {
+  return cloudFetch<CloudWorkflowVersion>(`/workflows/${encodeURIComponent(workflowId)}/versions`, {
+    method: "POST",
+    body: JSON.stringify({ nodes }),
+  });
+}
+
+export async function cloudGetWorkflow(workflowId: string): Promise<CloudWorkflow> {
+  return cloudFetch<CloudWorkflow>(`/workflows/${encodeURIComponent(workflowId)}`);
+}
+
+export interface CloudWorkflowVersion {
+  id: string;
+  workflowId: string;
+  nodes: unknown[];
+  name?: string;
+}
+
+export async function cloudGetWorkflowVersions(workflowId: string): Promise<{ id: string }[]> {
+  const list = await cloudFetch<{ id: string }[]>(`/workflows/${encodeURIComponent(workflowId)}/versions`);
+  return Array.isArray(list) ? list : [];
+}
+
+export async function cloudGetWorkflowVersion(
+  workflowId: string,
+  versionId: string
+): Promise<CloudWorkflowVersion> {
+  return cloudFetch<CloudWorkflowVersion>(
+    `/workflows/${encodeURIComponent(workflowId)}/versions/${encodeURIComponent(versionId)}`
+  );
+}
+
+/** Map backend action names to CLI NextStepAction for display. */
+export function mapCloudActionToLocal(action: string): NextStepAction {
+  const map: Record<string, NextStepAction> = {
     execute_node: "run_node",
     execute_nodes_parallel: "run_nodes_parallel",
     complete_run: "complete_run",
+    complete_node: "complete_node",
     wait: "done",
   };
-  return map[action] ?? action;
+  return map[action] ?? "done";
 }

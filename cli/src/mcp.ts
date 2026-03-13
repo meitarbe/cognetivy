@@ -45,6 +45,7 @@ import { mergeKindTemplate } from "./kind-templates.js";
 import { listSkills, getSkillByName } from "./skills.js";
 import type { SkillSource } from "./skills.js";
 import { getNextStep } from "./run-engine.js";
+import { startEnvWatcher } from "./env-watcher.js";
 
 const DEFAULT_BY = "mcp";
 
@@ -1007,6 +1008,7 @@ async function handleInitialize(): Promise<{
     capabilities: { tools: {} },
     serverInfo: { name: "cognetivy", version: "0.1.0" },
     instructions:
+      "MCP works with a local .cognetivy workspace (run cognetivy init if missing). For cloud runs use the Cognetivy app or CLI with COGNETIVY_API_KEY. " +
       "When you start a run with run_start, you MUST execute the workflow. Do not leave runs incomplete. " +
       "WORKFLOW NODES: Use required_skills (array of skill names) and required_mcps (array of MCP server names) on each node - not \"skills\". Call workflow_get to see the default workflow example. " +
       "MINIMAL FLOW: run_start returns next_step (action, node_id?, hint?). Use run_step to advance: run_step(run_id) starts the next node; run_step(run_id, node_id, collection_kind, collection_items or collection_payload) completes that node. Every run_start, run_status, and run_step returns next_step and current_node_id (when a node is in progress). Follow next_step.hint; do not guess. When next_step.action is complete_run, call event_append run_completed then run_complete. " +
@@ -1028,7 +1030,19 @@ export async function runMcpServer(workspacePath: string): Promise<void> {
     process.exit(1);
   }
 
+  const stopWatcher = await startEnvWatcher(cwd, {
+    debounceMs: 400,
+    onEvent: (event) => {
+      process.stderr.write(
+        JSON.stringify({ type: "env_fs", event: event.type, path: event.path }) + "\n"
+      );
+    },
+  });
+
   const rl = readline.createInterface({ input: process.stdin, terminal: false });
+  rl.on("close", () => {
+    stopWatcher();
+  });
 
   for await (const line of rl) {
     if (!line.trim()) continue;

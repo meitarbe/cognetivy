@@ -217,12 +217,25 @@ export function getWorkflowCollectionSchemaPath(workflowId: string, cwd: string 
 }
 
 /**
- * Read workflow index (workflows/index.json).
+ * Read workflow index (workflows/index.json). Throws if workspace or file missing.
  */
 export async function readWorkflowIndex(cwd: string = process.cwd()): Promise<WorkflowIndexRecord> {
   const p = await requireWorkspace(cwd);
   const raw = await fs.readFile(p.workflowsIndexPath, "utf-8");
   return JSON.parse(raw) as WorkflowIndexRecord;
+}
+
+/**
+ * Read workflow index if it exists (e.g. for resolving cloud_current_workflow_id without requiring full workspace).
+ */
+export async function readWorkflowIndexOptional(cwd: string = process.cwd()): Promise<WorkflowIndexRecord | null> {
+  const p = getWorkspacePaths(cwd);
+  try {
+    const raw = await fs.readFile(p.workflowsIndexPath, "utf-8");
+    return JSON.parse(raw) as WorkflowIndexRecord;
+  } catch {
+    return null;
+  }
 }
 
 /**

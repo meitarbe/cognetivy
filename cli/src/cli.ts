@@ -8,6 +8,7 @@ import {
   requireWorkspace,
   workspaceExists,
   readWorkflowIndex,
+  readWorkflowIndexOptional,
   writeWorkflowIndex,
   listWorkflows,
   readWorkflowRecord,
@@ -32,11 +33,11 @@ import {
 } from "./workspace.js";
 import { getMergedConfig } from "./config.js";
 import { validateWorkflowVersion } from "./validate.js";
-import { getNextStep, formatNextStepLine } from "./run-engine.js";
+import { getNextStep, formatNextStepLine, type NextStep } from "./run-engine.js";
 import { mergeKindTemplate } from "./kind-templates.js";
 import { listWorkflowTemplates, listWorkflowTemplatesForPicker, materializeWorkflowTemplate } from "./workflow-templates.js";
 import { applyWorkflowTemplateToWorkspace } from "./workflow-template-apply.js";
-import type { RunRecord, EventPayload, CollectionSchemaConfig } from "./models.js";
+import type { RunRecord, EventPayload, CollectionSchemaConfig, WorkflowNode } from "./models.js";
 import { NodeResultStatus, type NodeResultRecord, type WorkflowRecord } from "./models.js";
 import { runMcpServer } from "./mcp.js";
 import { startStudioServer, STUDIO_DEFAULT_PORT } from "./studio-server.js";
@@ -48,7 +49,20 @@ import {
   cloudCompleteNode,
   cloudAppendEvents,
   mapCloudActionToLocal,
+  isCloudMode,
+  getCloudApiUrl,
+  cloudGetCurrentUser,
+  resolveCloudOrganizationId,
+  cloudListWorkflows,
+  cloudCreateWorkflow,
+  cloudCreateWorkflowFull,
+  cloudCreateWorkflowVersion,
+  cloudGetWorkflow,
+  cloudGetWorkflowVersions,
+  cloudGetWorkflowVersion,
 } from "./cloud-client.js";
+import { writeStoredApiKey, removeStoredApiKey, getApiKeyPath } from "./credentials.js";
+import { runLoginFlow } from "./auth-login-server.js";
 import open from "open";
 import {
   listSkills,
@@ -86,6 +100,31 @@ async function resolveBy(cwd: string): Promise<string> {
   return (config.default_by as string) ?? DEFAULT_BY;
 }
 
+/** Resolve default workflow ID for cloud: opts.workflow ?? env ?? index.cloud_current_workflow_id. */
+async function resolveCloudWorkflowId(cwd: string, optsWorkflow: string | undefined): Promise<string | null> {
+  if (optsWorkflow) return optsWorkflow;
+  if (process.env.COGNETIVY_WORKFLOW_ID) return process.env.COGNETIVY_WORKFLOW_ID;
+  const index = await readWorkflowIndexOptional(cwd);
+  return index?.cloud_current_workflow_id ?? null;
+}
+
+/** Extract all unique collection names from nodes (input_collections + output_collections). */
+function getCollectionNamesFromNodes(nodes: unknown[]): string[] {
+  const set = new Set<string>();
+  for (const n of nodes) {
+    if (n != null && typeof n === "object") {
+      const node = n as { input_collections?: string[]; output_collections?: string[] };
+      for (const c of node.input_collections ?? []) {
+        if (typeof c === "string" && c) set.add(c);
+      }
+      for (const c of node.output_collections ?? []) {
+        if (typeof c === "string" && c) set.add(c);
+      }
+    }
+  }
+  return Array.from(set);
+}
+
 /** Read JSON payload from file or stdin. If filePath is omitted, reads from stdin. */
 async function readPayloadFromFileOrStdin(filePath: string | undefined, cwd: string): Promise<string> {
   if (filePath) {
@@ -107,21 +146,198 @@ async function readPayloadFromFileOrStdin(filePath: string | undefined, cwd: str
   return raw;
 }
 
-/** Launch Studio server and open in browser. Reused by default command and after init. Tries port, then port+1, ... if in use. */
-async function launchStudio(workspacePath: string, port: number = STUDIO_DEFAULT_PORT): Promise<void> {
+const DEFAULT_LOCAL_APP_PORT = 5173;
+
+/** Cloud app URL (Cognetivy in browser). Use COGNETIVY_APP_URL, or localhost when in dev, else production. */
+function getCloudAppUrl(): string {
+  if (process.env.COGNETIVY_APP_URL) {
+    return process.env.COGNETIVY_APP_URL.replace(/\/$/, "");
+  }
+  const isLocalDev =
+    process.env.NODE_ENV === "development" ||
+    process.env.COGNETIVY_DEV === "true" ||
+    process.env.COGNETIVY_DEV === "1";
+  if (isLocalDev) {
+    const port = process.env.COGNETIVY_APP_PORT ?? String(DEFAULT_LOCAL_APP_PORT);
+    return `http://localhost:${port}`;
+  }
+  return "https://app.cognetivy.com";
+}
+
+/** Launch local Studio server and open in browser (for local .cognetivy workspace). */
+async function launchLocalStudio(workspacePath: string, port: number = STUDIO_DEFAULT_PORT): Promise<void> {
   await requireWorkspace(workspacePath);
   const { port: actualPort } = await startStudioServer(workspacePath, port, { apiOnly: false });
   const url = `http://127.0.0.1:${actualPort}`;
   await open(url);
-  console.log(`Studio at ${url} (workspace: ${workspacePath}). Press Ctrl+C to stop.`);
+  console.log(`Local Studio at ${url} (workspace: ${workspacePath}). Press Ctrl+C to stop.`);
 }
 
 program
   .name("cognetivy")
   .description(
-    "Reasoning orchestration state - workflow, runs, events, collections (no LLMs). Run with no command: init workspace if missing, then open Studio."
+    "Cognetivy – workflows, runs, and collections. Default: open the app in your browser. Use `cognetivy auth status` to check API key; `cognetivy auth login` to sign in and get an API key."
   )
-  .version(getCurrentVersionSync());
+  .version(getCurrentVersionSync())
+  .addHelpText(
+    "after",
+    `
+Environment (cloud):
+  COGNETIVY_API_KEY    API key for cloud run/event (create at app → Settings). When set, run/event use cloud by default.
+  COGNETIVY_APP_URL    URL opened by default command (default: https://app.cognetivy.com).
+  COGNETIVY_API_URL    Cloud API base URL (default: http://localhost:3000). Use for local backend or custom deployment.
+
+Use \`cognetivy auth status\` to see current auth and URLs. Use \`--local\` on run/event to force local workspace when API key is set.
+`
+  );
+
+const authCmd = program
+  .command("auth")
+  .description("Authentication and API key: status, login, logout, current user");
+
+authCmd
+  .command("status")
+  .description("Show whether cloud API key is set and which app/API URLs are used")
+  .option("--json", "Output machine-readable JSON")
+  .action(async (opts: { json?: boolean }) => {
+    const apiKeySet = isCloudMode();
+    const appUrl = getCloudAppUrl();
+    const apiUrl = getCloudApiUrl();
+    if (opts.json) {
+      console.log(
+        JSON.stringify({
+          apiKeySet,
+          appUrl,
+          apiUrl,
+        })
+      );
+      return;
+    }
+    console.log("Cognetivy auth status");
+    console.log("─────────────────────");
+    console.log(`  Cloud API key:  ${apiKeySet ? "set" : "not set"}`);
+    console.log(`  App URL:        ${appUrl}`);
+    console.log(`  Cloud API URL:  ${apiUrl}`);
+    if (!apiKeySet) {
+      console.log("");
+      console.log("To use cloud run/event: run `cognetivy auth login` to sign in in the browser and save an API key.");
+    } else {
+      console.log("");
+      console.log("To use in Cursor (skills + MCP): run `cognetivy install cursor` in your project.");
+    }
+  });
+
+authCmd
+  .command("login")
+  .description("Open the app in browser to sign in and authorize the CLI (saves API key locally)")
+  .action(async () => {
+    const appUrl = getCloudAppUrl();
+    console.log("Opening browser to sign in and authorize the CLI…");
+    const result = await runLoginFlow({ appUrl });
+    if (result.error) {
+      console.error(result.error);
+      process.exit(1);
+    }
+    if (!result.code) {
+      console.error("No authorization code received.");
+      process.exit(1);
+    }
+    const apiUrl = getCloudApiUrl();
+    let apiKey: string;
+    try {
+      const res = await fetch(`${apiUrl}/auth/cli/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: result.code }),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || res.statusText);
+      }
+      const data = (await res.json()) as { api_key?: string };
+      apiKey = data?.api_key ?? "";
+      if (!apiKey) throw new Error("No API key in response");
+    } catch (err) {
+      console.error("Failed to exchange code for API key:", err instanceof Error ? err.message : err);
+      process.exit(1);
+    }
+    writeStoredApiKey(apiKey);
+    const keyPath = getApiKeyPath();
+    console.log("");
+    console.log("Logged in successfully. API key saved to:");
+    console.log(`  ${keyPath}`);
+    console.log("");
+    console.log("Next:");
+    console.log("  • Run `cognetivy auth whoami` to see your user.");
+    console.log("  • Run `cognetivy` to open the app, or use `run start` / `run status` with cloud.");
+    console.log("  • To use Cognetivy in Cursor (skills + MCP): run `cognetivy install cursor` in your project.");
+  });
+
+authCmd
+  .command("logout")
+  .description("Clear cloud authentication (remove stored API key and unset env)")
+  .option("--json", "Output machine-readable JSON")
+  .action(async (opts: { json?: boolean }) => {
+    const removed = removeStoredApiKey();
+    if (opts.json) {
+      console.log(JSON.stringify({ storedKeyRemoved: removed, message: removed ? "Stored API key removed." : "No stored key found. Unset COGNETIVY_API_KEY in your shell if set." }));
+      return;
+    }
+    if (removed) {
+      console.log("Stored API key removed.");
+    } else {
+      console.log("No stored API key found.");
+    }
+    console.log("");
+    console.log("If you set COGNETIVY_API_KEY in your shell or .env, unset it there too:");
+    console.log("  unset COGNETIVY_API_KEY    # bash/zsh");
+    console.log("");
+    console.log("Run `cognetivy auth status` to confirm.");
+  });
+
+authCmd
+  .command("whoami")
+  .description("Show current cloud user and organizations (requires COGNETIVY_API_KEY)")
+  .option("--json", "Output machine-readable JSON")
+  .action(async (opts: { json?: boolean }) => {
+    if (!isCloudMode()) {
+      if (opts.json) {
+        console.log(JSON.stringify({ authenticated: false, error: "COGNETIVY_API_KEY is not set" }));
+      } else {
+        console.error("Not authenticated. Set COGNETIVY_API_KEY or run `cognetivy auth login`.");
+      }
+      process.exit(1);
+    }
+    try {
+      const user = await cloudGetCurrentUser();
+      if (opts.json) {
+        console.log(JSON.stringify({ authenticated: true, ...user }));
+        return;
+      }
+      console.log("Current user");
+      console.log("────────────");
+      console.log(`  ID:    ${user.id}`);
+      if (user.email) console.log(`  Email: ${user.email}`);
+      if (user.displayName) console.log(`  Name:  ${user.displayName}`);
+      if (user.organizations?.length) {
+        console.log("  Organizations:");
+        for (const item of user.organizations) {
+          const org = item.organization ?? item;
+          const id = org.id ?? (item as { id?: string }).id ?? "—";
+          const name = org.name ?? (item as { name?: string }).name ?? id;
+          console.log(`    - ${name} (${id})`);
+        }
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (opts.json) {
+        console.log(JSON.stringify({ authenticated: false, error: message }));
+      } else {
+        console.error("Not authenticated or API key invalid:", message);
+      }
+      process.exit(1);
+    }
+  });
 
 program
   .command("init")
@@ -139,7 +355,7 @@ program
       const { runInstallTUI } = await import("./install-tui.js");
       await runInstallTUI({ cwd, force: opts.force, init: true, noGitignore });
     }
-    await launchStudio(cwd);
+    await launchLocalStudio(cwd);
   });
 
 const workflowCmd = program
@@ -148,8 +364,25 @@ const workflowCmd = program
 
 workflowCmd
   .command("list")
-  .description("List workflows")
-  .action(async () => {
+  .description("List workflows (from cloud when authenticated, or local .cognetivy)")
+  .option("--cloud", "Use Cognetivy cloud API (default when API key is set)")
+  .option("--local", "Use local .cognetivy workspace only")
+  .action(async (opts: { cloud?: boolean; local?: boolean }) => {
+    const useCloud = opts.local ? false : (opts.cloud ?? isCloudMode());
+    if (useCloud) {
+      const orgId = await resolveCloudOrganizationId();
+      const list = await cloudListWorkflows(orgId);
+      const out = list.map((w) => ({
+        workflow_id: w.id,
+        id: w.id,
+        name: w.name,
+        description: w.description ?? undefined,
+        current_version_id: w.currentVersionId ?? (w as { versions?: { id: string }[] }).versions?.[0]?.id,
+        current: false,
+      }));
+      console.log(JSON.stringify(out, null, 2));
+      return;
+    }
     const cwd = process.cwd();
     await requireWorkspace(cwd);
     const index = await readWorkflowIndex(cwd);
@@ -160,54 +393,184 @@ workflowCmd
 
 workflowCmd
   .command("create")
-  .description("Create a new workflow (creates workflow record + v1 version + empty schema)")
-  .requiredOption("--name <string>", "Workflow name")
-  .option("--id <string>", "Workflow id (default: generated)")
-  .option("--description <string>", "Workflow description")
-  .action(async (opts: { id?: string; name: string; description?: string }) => {
-    const cwd = process.cwd();
-    await requireWorkspace(cwd);
-    const id = opts.id ?? generateId("wf");
-    const now = new Date().toISOString();
+  .description("Create a new workflow (optionally with nodes + collection schema from --file in one call)")
+  .option("--name <string>", "Workflow name (required if no --file; overrides file name if both)")
+  .option("--file <path>", "Path to JSON with name, description?, nodes?, kinds? (one-call create + version + schema)")
+  .option("--id <string>", "Workflow id (local only; default: generated)")
+  .option("--description <string>", "Workflow description (overrides file if both)")
+  .option("--cloud", "Use Cognetivy cloud API (default when API key is set)")
+  .option("--local", "Use local .cognetivy workspace only")
+  .action(
+    async (opts: {
+      name?: string;
+      file?: string;
+      id?: string;
+      description?: string;
+      cloud?: boolean;
+      local?: boolean;
+    }) => {
+      const useCloud = opts.local ? false : (opts.cloud ?? isCloudMode());
+      const cwd = process.cwd();
 
-    const wf: WorkflowRecord = {
-      workflow_id: id,
-      name: opts.name,
-      description: opts.description,
-      current_version_id: "v1",
-      created_at: now,
-    };
+      if (opts.file) {
+        const raw = await fs.readFile(path.resolve(cwd, opts.file), "utf-8");
+        const data = JSON.parse(raw) as {
+          name?: string;
+          description?: string;
+          nodes?: unknown[];
+          kinds?: Record<string, { name?: string; description: string; item_schema: Record<string, unknown> }>;
+        };
+        const name = opts.name ?? data.name;
+        if (!name || typeof name !== "string") {
+          console.error("Error: Workflow name is required. Provide --name or include 'name' in the --file JSON.");
+          process.exit(1);
+        }
+        const description = opts.description ?? data.description;
+        const nodes = Array.isArray(data.nodes) ? data.nodes : [];
+        const kinds = data.kinds && typeof data.kinds === "object" ? data.kinds : undefined;
 
-    await writeWorkflowRecord(wf, cwd);
-    await writeWorkflowVersionRecord(
-      {
+        const collectionNames = getCollectionNamesFromNodes(nodes);
+        if (collectionNames.length > 0) {
+          const missing = collectionNames.filter((name) => !kinds || !(name in kinds) || kinds[name] == null);
+          if (missing.length > 0) {
+            console.error(
+              `Error: Collection schema (kinds) is required for all collections referenced in nodes. Missing kinds for: ${missing.join(", ")}. Add a "kinds" object to the JSON with an entry for each (name, description, item_schema).`
+            );
+            process.exit(1);
+          }
+        }
+
+        if (useCloud) {
+          const orgId = await resolveCloudOrganizationId();
+          const result = await cloudCreateWorkflowFull({
+            organizationId: orgId,
+            name,
+            description,
+            nodes: nodes.length > 0 ? nodes : undefined,
+            kinds,
+          });
+          console.log(result.id);
+          if (result.versionId) {
+            console.error(`Version: ${result.versionId}`);
+          }
+          await ensureWorkspace(cwd);
+          const index = await readWorkflowIndex(cwd);
+          await writeWorkflowIndex({ ...index, cloud_current_workflow_id: result.id }, cwd);
+          return;
+        }
+
+        await requireWorkspace(cwd);
+        const id = opts.id ?? generateId("wf");
+        const now = new Date().toISOString();
+        const wf: WorkflowRecord = {
+          workflow_id: id,
+          name,
+          description,
+          current_version_id: "v1",
+          created_at: now,
+        };
+        await writeWorkflowRecord(wf, cwd);
+        await writeWorkflowVersionRecord(
+          {
+            workflow_id: id,
+            version_id: "v1",
+            name: "v1",
+            created_at: now,
+            nodes: nodes as WorkflowNode[],
+          },
+          cwd
+        );
+        if (kinds && Object.keys(kinds).length > 0) {
+          const merged: CollectionSchemaConfig = { workflow_id: id, kinds: {} };
+          for (const [k, v] of Object.entries(kinds)) {
+            merged.kinds[k] = mergeKindTemplate(k, v);
+          }
+          await writeCollectionSchema(id, merged, cwd);
+        } else {
+          const { createDefaultCollectionSchema } = await import("./default-collection-schema.js");
+          await writeCollectionSchema(id, createDefaultCollectionSchema(id), cwd);
+        }
+        const index = await readWorkflowIndex(cwd);
+        const next = {
+          ...index,
+          workflows: [...(index.workflows ?? []), { workflow_id: id, name: wf.name, description: wf.description, current_version_id: wf.current_version_id }],
+        };
+        await writeWorkflowIndex(next, cwd);
+        console.log(id);
+        return;
+      }
+
+      const name = opts.name;
+      if (!name) {
+        console.error("Error: --name <string> is required when not using --file.");
+        process.exit(1);
+      }
+      if (useCloud) {
+        const orgId = await resolveCloudOrganizationId();
+        const workflow = await cloudCreateWorkflow({
+          organizationId: orgId,
+          name,
+          description: opts.description,
+        });
+        await cloudCreateWorkflowVersion(workflow.id, []);
+        console.log(workflow.id);
+        return;
+      }
+      await requireWorkspace(cwd);
+      const id = opts.id ?? generateId("wf");
+      const now = new Date().toISOString();
+      const wf: WorkflowRecord = {
         workflow_id: id,
-        version_id: "v1",
-        name: "v1",
+        name,
+        description: opts.description,
+        current_version_id: "v1",
         created_at: now,
-        nodes: [],
-      },
-      cwd
-    );
-
-    const { createDefaultCollectionSchema } = await import("./default-collection-schema.js");
-    await writeCollectionSchema(id, createDefaultCollectionSchema(id), cwd);
-
-    const index = await readWorkflowIndex(cwd);
-    const next = {
-      ...index,
-      workflows: [...(index.workflows ?? []), { workflow_id: id, name: wf.name, description: wf.description, current_version_id: wf.current_version_id }],
-    };
-    await writeWorkflowIndex(next, cwd);
-    console.log(id);
-  });
+      };
+      await writeWorkflowRecord(wf, cwd);
+      await writeWorkflowVersionRecord(
+        {
+          workflow_id: id,
+          version_id: "v1",
+          name: "v1",
+          created_at: now,
+          nodes: [],
+        },
+        cwd
+      );
+      const { createDefaultCollectionSchema } = await import("./default-collection-schema.js");
+      await writeCollectionSchema(id, createDefaultCollectionSchema(id), cwd);
+      const index = await readWorkflowIndex(cwd);
+      const next = {
+        ...index,
+        workflows: [...(index.workflows ?? []), { workflow_id: id, name: wf.name, description: wf.description, current_version_id: wf.current_version_id }],
+      };
+      await writeWorkflowIndex(next, cwd);
+      console.log(id);
+    }
+  );
 
 workflowCmd
   .command("select")
-  .description("Select current workflow (updates workflows/index.json)")
+  .description("Select current workflow (updates workflows/index.json; use --cloud to set default for cloud)")
   .requiredOption("--workflow <workflow_id>", "Workflow ID")
-  .action(async (opts: { workflow: string }) => {
+  .option("--cloud", "Set as default workflow for cloud (persisted in index; workflow must exist on server)")
+  .option("--local", "Select from local workspace only (default if neither --cloud nor --local)")
+  .action(async (opts: { workflow: string; cloud?: boolean; local?: boolean }) => {
     const cwd = process.cwd();
+    const useCloud = opts.cloud === true;
+    if (useCloud) {
+      try {
+        await cloudGetWorkflow(opts.workflow);
+      } catch {
+        console.error(`Error: workflow "${opts.workflow}" not found on server.`);
+        process.exit(1);
+      }
+      await ensureWorkspace(cwd);
+      const index = await readWorkflowIndex(cwd);
+      await writeWorkflowIndex({ ...index, cloud_current_workflow_id: opts.workflow }, cwd);
+      console.log(opts.workflow);
+      return;
+    }
     await requireWorkspace(cwd);
     const index = await readWorkflowIndex(cwd);
     if (!(index.workflows ?? []).some((w) => w.workflow_id === opts.workflow)) {
@@ -220,11 +583,33 @@ workflowCmd
 
 workflowCmd
   .command("get")
-  .description("Print a workflow version JSON to stdout")
+  .description("Print a workflow version JSON (cloud when authenticated, or local .cognetivy)")
   .option("--workflow <workflow_id>", "Workflow ID (default: current from workflows/index.json)")
-  .option("--version <version_id>", "Version ID (default: workflow.current_version_id)")
-  .action(async (opts: { workflow?: string; version?: string }) => {
+  .option("--version <version_id>", "Version ID (default: latest; cloud uses version uuid)")
+  .option("--cloud", "Use Cognetivy cloud API (default when API key is set)")
+  .option("--local", "Use local .cognetivy workspace only")
+  .action(async (opts: { workflow?: string; version?: string; cloud?: boolean; local?: boolean }) => {
     const cwd = process.cwd();
+    const useCloud = opts.local ? false : (opts.cloud ?? isCloudMode());
+    if (useCloud) {
+      const workflowId = await resolveCloudWorkflowId(cwd, opts.workflow);
+      if (!workflowId) {
+        console.error("Error: In cloud mode --workflow <id>, COGNETIVY_WORKFLOW_ID, or run `cognetivy workflow select --workflow <id> --cloud` is required.");
+        process.exit(1);
+      }
+      let versionId = opts.version;
+      if (!versionId) {
+        const versions = await cloudGetWorkflowVersions(workflowId);
+        versionId = versions[0]?.id;
+        if (!versionId) {
+          console.error("No versions found for workflow.");
+          process.exit(1);
+        }
+      }
+      const version = await cloudGetWorkflowVersion(workflowId, versionId);
+      console.log(JSON.stringify(version, null, 2));
+      return;
+    }
     await requireWorkspace(cwd);
     const index = await readWorkflowIndex(cwd);
     const workflowId = opts.workflow ?? index.current_workflow_id;
@@ -236,10 +621,23 @@ workflowCmd
 
 workflowCmd
   .command("versions")
-  .description("List versions for a workflow")
-  .option("--workflow <workflow_id>", "Workflow ID (default: current from workflows/index.json)")
-  .action(async (opts: { workflow?: string }) => {
+  .description("List versions for a workflow (cloud when authenticated, or local)")
+  .option("--workflow <workflow_id>", "Workflow ID (default: current or COGNETIVY_WORKFLOW_ID)")
+  .option("--cloud", "Use Cognetivy cloud API (default when API key is set)")
+  .option("--local", "Use local .cognetivy workspace only")
+  .action(async (opts: { workflow?: string; cloud?: boolean; local?: boolean }) => {
     const cwd = process.cwd();
+    const useCloud = opts.local ? false : (opts.cloud ?? isCloudMode());
+    if (useCloud) {
+      const workflowId = await resolveCloudWorkflowId(cwd, opts.workflow);
+      if (!workflowId) {
+        console.error("Error: In cloud mode --workflow <id>, COGNETIVY_WORKFLOW_ID, or run `cognetivy workflow select --workflow <id> --cloud` is required.");
+        process.exit(1);
+      }
+      const versions = await cloudGetWorkflowVersions(workflowId);
+      console.log(JSON.stringify(versions, null, 2));
+      return;
+    }
     await requireWorkspace(cwd);
     const index = await readWorkflowIndex(cwd);
     const workflowId = opts.workflow ?? index.current_workflow_id;
@@ -371,15 +769,31 @@ workflowCmd
 
 workflowCmd
   .command("set")
-  .description("Set workflow version from file (creates new version and sets it current)")
-  .requiredOption("--file <path>", "Path to workflow JSON file")
-  .option("--workflow <workflow_id>", "Workflow ID (default: current from workflows/index.json)")
-  .option("--name <string>", "Optional version name")
-  .action(async (opts: { file: string; workflow?: string; name?: string }) => {
+  .description("Set workflow version from file (creates new version; cloud when authenticated)")
+  .requiredOption("--file <path>", "Path to workflow JSON file (must contain 'nodes' array)")
+  .option("--workflow <workflow_id>", "Workflow ID (default: current or COGNETIVY_WORKFLOW_ID)")
+  .option("--name <string>", "Optional version name (local only)")
+  .option("--cloud", "Use Cognetivy cloud API (default when API key is set)")
+  .option("--local", "Use local .cognetivy workspace only")
+  .action(async (opts: { file: string; workflow?: string; name?: string; cloud?: boolean; local?: boolean }) => {
     const cwd = process.cwd();
-    await requireWorkspace(cwd);
     const raw = await fs.readFile(path.resolve(cwd, opts.file), "utf-8");
-    const data = JSON.parse(raw) as unknown;
+    const data = JSON.parse(raw) as { nodes?: unknown[] };
+
+    const useCloud = opts.local ? false : (opts.cloud ?? isCloudMode());
+    if (useCloud) {
+      const workflowId = await resolveCloudWorkflowId(cwd, opts.workflow);
+      if (!workflowId) {
+        console.error("Error: In cloud mode --workflow <id>, COGNETIVY_WORKFLOW_ID, or run `cognetivy workflow select --workflow <id> --cloud` is required.");
+        process.exit(1);
+      }
+      const nodes = Array.isArray(data?.nodes) ? data.nodes : [];
+      const version = await cloudCreateWorkflowVersion(workflowId, nodes);
+      console.log(version.id);
+      return;
+    }
+
+    await requireWorkspace(cwd);
     const index = await readWorkflowIndex(cwd);
     const workflowId = opts.workflow ?? index.current_workflow_id;
     const wf = await readWorkflowRecord(workflowId, cwd);
@@ -418,13 +832,15 @@ runCmd
   .option("--by <string>", "Actor (e.g. agent:cursor); defaults to config or 'cli'")
   .option("--workflow <workflow_id>", "Workflow ID (default: current from workflows/index.json)")
   .option("--version <version_id>", "Workflow version ID (default: workflow.current_version_id)")
-  .option("--cloud", "Use Cognetivy cloud API (requires COGNETIVY_API_URL and COGNETIVY_API_KEY)")
-  .action(async (opts: { input: string; name?: string; by?: string; workflow?: string; version?: string; cloud?: boolean }) => {
+  .option("--cloud", "Use Cognetivy cloud API (default when COGNETIVY_API_KEY is set; see `cognetivy auth status`)")
+  .option("--local", "Use local .cognetivy workspace (overrides API key)")
+  .action(async (opts: { input: string; name?: string; by?: string; workflow?: string; version?: string; cloud?: boolean; local?: boolean }) => {
     const cwd = process.cwd();
-    if (opts.cloud) {
-      const workflowId = opts.workflow ?? process.env.COGNETIVY_WORKFLOW_ID;
+    const useCloud = opts.local ? false : (opts.cloud ?? isCloudMode());
+    if (useCloud) {
+      const workflowId = await resolveCloudWorkflowId(cwd, opts.workflow);
       if (!workflowId) {
-        console.error("Error: In cloud mode --workflow <id> or COGNETIVY_WORKFLOW_ID is required.");
+        console.error("Error: In cloud mode --workflow <id>, COGNETIVY_WORKFLOW_ID, or run `cognetivy workflow select --workflow <id> --cloud` is required.");
         process.exit(1);
       }
       const inputPath = path.resolve(cwd, opts.input);
@@ -451,7 +867,7 @@ runCmd
         console.log(`COGNETIVY_RUN_ID=${result.run_id}`);
         const next = result.next_step;
         const action = mapCloudActionToLocal(next.action);
-        console.log(formatNextStepLine(result.run_id, "RUNNING", { ...next, action }, result.current_node_id, result.current_node_ids));
+        console.log(formatNextStepLine(result.run_id, "RUNNING", { ...next, action } as NextStep, result.current_node_id, result.current_node_ids));
       } catch (err) {
         console.error(err instanceof Error ? err.message : String(err));
         process.exit(1);
@@ -562,9 +978,11 @@ runCmd
   .description("Show run metadata, each node's completion status, and item count per collection")
   .requiredOption("--run <run_id>", "Run ID")
   .option("--json", "Output as JSON")
-  .option("--cloud", "Use Cognetivy cloud API")
-  .action(async (opts: { run: string; json?: boolean; cloud?: boolean }) => {
-    if (opts.cloud) {
+  .option("--cloud", "Use Cognetivy cloud API (default when COGNETIVY_API_KEY is set; see `cognetivy auth status`)")
+  .option("--local", "Use local .cognetivy workspace (overrides API key)")
+  .action(async (opts: { run: string; json?: boolean; cloud?: boolean; local?: boolean }) => {
+    const useCloud = opts.local ? false : (opts.cloud ?? isCloudMode());
+    if (useCloud) {
       try {
         const [run, nextData] = await Promise.all([cloudGetRun(opts.run), cloudGetNext(opts.run)]);
         const next = nextData.next_step;
@@ -577,7 +995,7 @@ runCmd
         console.log("Run:", run.id, run.status, `(${run.workflowId})`);
         if (nextData.current_node_ids?.length) console.log("Current nodes (in progress):", nextData.current_node_ids.join(", "));
         else if (nextData.current_node_id) console.log("Current node (in progress):", nextData.current_node_id);
-        console.log(formatNextStepLine(run.id, run.status, next_step, nextData.current_node_id, nextData.current_node_ids));
+        console.log(formatNextStepLine(run.id, run.status, next_step as NextStep, nextData.current_node_id, nextData.current_node_ids));
       } catch (err) {
         console.error(err instanceof Error ? err.message : String(err));
         process.exit(1);
@@ -666,10 +1084,12 @@ runCmd
   .option("--collection-kind <kind>", "Collection kind when completing node (payload from stdin)")
   .option("--collection-mode <mode>", "set (array) or append (single object); default: infer", "infer")
   .option("--by <string>", "Actor; defaults to config or 'cli'")
-  .option("--cloud", "Use Cognetivy cloud API")
+  .option("--cloud", "Use Cognetivy cloud API (default when COGNETIVY_API_KEY is set; see `cognetivy auth status`)")
+  .option("--local", "Use local .cognetivy workspace (overrides API key)")
   .action(
-    async (opts: { run: string; node?: string; collectionKind?: string; collectionMode?: string; by?: string; cloud?: boolean }) => {
-      if (opts.cloud) {
+    async (opts: { run: string; node?: string; collectionKind?: string; collectionMode?: string; by?: string; cloud?: boolean; local?: boolean }) => {
+      const useCloud = opts.local ? false : (opts.cloud ?? isCloudMode());
+      if (useCloud) {
         try {
           if (opts.node !== undefined) {
             const body: { output?: string; collectionKind?: string; collectionPayload?: unknown; writes?: Array<{ kind: string; item_ids: string[] }> } = {};
@@ -681,7 +1101,7 @@ runCmd
             const result = await cloudCompleteNode(opts.run, opts.node, body);
             const next = result.next_step;
             const action = mapCloudActionToLocal(next.action);
-            console.log(formatNextStepLine(opts.run, "running", { ...next, action }, result.current_node_id, result.current_node_ids));
+            console.log(formatNextStepLine(opts.run, "running", { ...next, action } as NextStep, result.current_node_id, result.current_node_ids));
           } else {
             const nextData = await cloudGetNext(opts.run);
             const next = nextData.next_step;
@@ -690,9 +1110,9 @@ runCmd
               const result = await cloudStartNode(opts.run, next.node_id);
               const rNext = result.next_step;
               const rAction = mapCloudActionToLocal(rNext.action);
-              console.log(formatNextStepLine(opts.run, "running", { ...rNext, action: rAction }, result.current_node_id, result.current_node_ids));
+              console.log(formatNextStepLine(opts.run, "running", { ...rNext, action: rAction } as NextStep, result.current_node_id, result.current_node_ids));
             } else {
-              console.log(formatNextStepLine(opts.run, "running", { ...next, action }, nextData.current_node_id, nextData.current_node_ids));
+              console.log(formatNextStepLine(opts.run, "running", { ...next, action } as NextStep, nextData.current_node_id, nextData.current_node_ids));
             }
           }
         } catch (err) {
@@ -874,8 +1294,9 @@ eventCmd
   .requiredOption("--run <run_id>", "Run ID")
   .option("--file <path>", "Path to JSON file (omit to read event from stdin)")
   .option("--by <string>", "Actor; defaults to config or 'cli'")
-  .option("--cloud", "Use Cognetivy cloud API")
-  .action(async (opts: { run: string; file?: string; by?: string; cloud?: boolean }) => {
+  .option("--cloud", "Use Cognetivy cloud API (default when COGNETIVY_API_KEY is set; see `cognetivy auth status`)")
+  .option("--local", "Use local .cognetivy workspace (overrides API key)")
+  .action(async (opts: { run: string; file?: string; by?: string; cloud?: boolean; local?: boolean }) => {
     const cwd = process.cwd();
     const raw = await readPayloadFromFileOrStdin(opts.file, cwd);
     const data = JSON.parse(raw) as Record<string, unknown>;
@@ -887,7 +1308,8 @@ eventCmd
       by: (data.by as string) ?? by,
       data: (data.data as Record<string, unknown>) ?? (data as Record<string, unknown>),
     };
-    if (opts.cloud) {
+    const useCloud = opts.local ? false : (opts.cloud ?? isCloudMode());
+    if (useCloud) {
       try {
         const result = await cloudAppendEvents(opts.run, {
           events: [{ type: event.type, by: event.by, data: event.data }],
@@ -1693,14 +2115,14 @@ program.action(async () => {
   const cwd = process.cwd();
   const didReinstall = await runVersionChecks(cwd);
   if (didReinstall) {
-    await launchStudio(cwd);
+    const appUrl = getCloudAppUrl();
+    await open(appUrl);
+    console.log(`Opened ${appUrl}`);
     return;
   }
-  if (!(await workspaceExists(cwd))) {
-    const { runInstallTUI } = await import("./install-tui.js");
-    await runInstallTUI({ cwd, init: true });
-  }
-  await launchStudio(cwd);
+  const appUrl = getCloudAppUrl();
+  await open(appUrl);
+  console.log(`Opened ${appUrl}`);
 });
 
 program.hook("preAction", async () => {

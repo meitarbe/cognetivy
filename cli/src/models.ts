@@ -10,6 +10,8 @@ export enum WorkflowNodeType {
 
 export interface WorkflowIndexRecord {
   current_workflow_id: string;
+  /** When set, cloud commands use this workflow when --workflow and COGNETIVY_WORKFLOW_ID are not set. */
+  cloud_current_workflow_id?: string;
   workflows: WorkflowRecordSummary[];
 }
 
