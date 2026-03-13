@@ -40,6 +40,15 @@ import type { RunRecord, EventPayload, CollectionSchemaConfig } from "./models.j
 import { NodeResultStatus, type NodeResultRecord, type WorkflowRecord } from "./models.js";
 import { runMcpServer } from "./mcp.js";
 import { startStudioServer, STUDIO_DEFAULT_PORT } from "./studio-server.js";
+import {
+  cloudCreateRun,
+  cloudGetRun,
+  cloudGetNext,
+  cloudStartNode,
+  cloudCompleteNode,
+  cloudAppendEvents,
+  mapCloudActionToLocal,
+} from "./cloud-client.js";
 import open from "open";
 import {
   listSkills,
@@ -409,8 +418,46 @@ runCmd
   .option("--by <string>", "Actor (e.g. agent:cursor); defaults to config or 'cli'")
   .option("--workflow <workflow_id>", "Workflow ID (default: current from workflows/index.json)")
   .option("--version <version_id>", "Workflow version ID (default: workflow.current_version_id)")
-  .action(async (opts: { input: string; name?: string; by?: string; workflow?: string; version?: string }) => {
+  .option("--cloud", "Use Cognetivy cloud API (requires COGNETIVY_API_URL and COGNETIVY_API_KEY)")
+  .action(async (opts: { input: string; name?: string; by?: string; workflow?: string; version?: string; cloud?: boolean }) => {
     const cwd = process.cwd();
+    if (opts.cloud) {
+      const workflowId = opts.workflow ?? process.env.COGNETIVY_WORKFLOW_ID;
+      if (!workflowId) {
+        console.error("Error: In cloud mode --workflow <id> or COGNETIVY_WORKFLOW_ID is required.");
+        process.exit(1);
+      }
+      const inputPath = path.resolve(cwd, opts.input);
+      let inputRaw: string;
+      try {
+        inputRaw = await fs.readFile(inputPath, "utf-8");
+      } catch (err) {
+        const code = err && typeof err === "object" && "code" in err ? (err as NodeJS.ErrnoException).code : "";
+        if (code === "ENOENT") {
+          console.error(`Error: Input file not found: ${inputPath}`);
+          process.exit(1);
+        }
+        throw err;
+      }
+      const input = JSON.parse(inputRaw) as Record<string, unknown>;
+      try {
+        const result = await cloudCreateRun({
+          workflowId,
+          workflowVersionId: opts.version,
+          name: opts.name,
+          input,
+        });
+        console.log(result.run_id);
+        console.log(`COGNETIVY_RUN_ID=${result.run_id}`);
+        const next = result.next_step;
+        const action = mapCloudActionToLocal(next.action);
+        console.log(formatNextStepLine(result.run_id, "RUNNING", { ...next, action }, result.current_node_id, result.current_node_ids));
+      } catch (err) {
+        console.error(err instanceof Error ? err.message : String(err));
+        process.exit(1);
+      }
+      return;
+    }
     await requireWorkspace(cwd);
     const index = await readWorkflowIndex(cwd);
     const workflowId = opts.workflow ?? index.current_workflow_id;
@@ -515,7 +562,28 @@ runCmd
   .description("Show run metadata, each node's completion status, and item count per collection")
   .requiredOption("--run <run_id>", "Run ID")
   .option("--json", "Output as JSON")
-  .action(async (opts: { run: string; json?: boolean }) => {
+  .option("--cloud", "Use Cognetivy cloud API")
+  .action(async (opts: { run: string; json?: boolean; cloud?: boolean }) => {
+    if (opts.cloud) {
+      try {
+        const [run, nextData] = await Promise.all([cloudGetRun(opts.run), cloudGetNext(opts.run)]);
+        const next = nextData.next_step;
+        const action = mapCloudActionToLocal(next.action);
+        const next_step = { ...next, action };
+        if (opts.json) {
+          console.log(JSON.stringify({ run: { id: run.id, status: run.status, workflowId: run.workflowId }, next_step, current_node_id: nextData.current_node_id, current_node_ids: nextData.current_node_ids }, null, 2));
+          return;
+        }
+        console.log("Run:", run.id, run.status, `(${run.workflowId})`);
+        if (nextData.current_node_ids?.length) console.log("Current nodes (in progress):", nextData.current_node_ids.join(", "));
+        else if (nextData.current_node_id) console.log("Current node (in progress):", nextData.current_node_id);
+        console.log(formatNextStepLine(run.id, run.status, next_step, nextData.current_node_id, nextData.current_node_ids));
+      } catch (err) {
+        console.error(err instanceof Error ? err.message : String(err));
+        process.exit(1);
+      }
+      return;
+    }
     const cwd = process.cwd();
     const exists = await runExists(opts.run, cwd);
     if (!exists) {
@@ -598,8 +666,41 @@ runCmd
   .option("--collection-kind <kind>", "Collection kind when completing node (payload from stdin)")
   .option("--collection-mode <mode>", "set (array) or append (single object); default: infer", "infer")
   .option("--by <string>", "Actor; defaults to config or 'cli'")
+  .option("--cloud", "Use Cognetivy cloud API")
   .action(
-    async (opts: { run: string; node?: string; collectionKind?: string; collectionMode?: string; by?: string }) => {
+    async (opts: { run: string; node?: string; collectionKind?: string; collectionMode?: string; by?: string; cloud?: boolean }) => {
+      if (opts.cloud) {
+        try {
+          if (opts.node !== undefined) {
+            const body: { output?: string; collectionKind?: string; collectionPayload?: unknown; writes?: Array<{ kind: string; item_ids: string[] }> } = {};
+            if (opts.collectionKind) {
+              const raw = await readPayloadFromFileOrStdin(undefined, process.cwd());
+              body.collectionKind = opts.collectionKind;
+              body.collectionPayload = JSON.parse(raw) as unknown;
+            }
+            const result = await cloudCompleteNode(opts.run, opts.node, body);
+            const next = result.next_step;
+            const action = mapCloudActionToLocal(next.action);
+            console.log(formatNextStepLine(opts.run, "running", { ...next, action }, result.current_node_id, result.current_node_ids));
+          } else {
+            const nextData = await cloudGetNext(opts.run);
+            const next = nextData.next_step;
+            const action = mapCloudActionToLocal(next.action);
+            if (action === "run_node" && next.node_id) {
+              const result = await cloudStartNode(opts.run, next.node_id);
+              const rNext = result.next_step;
+              const rAction = mapCloudActionToLocal(rNext.action);
+              console.log(formatNextStepLine(opts.run, "running", { ...rNext, action: rAction }, result.current_node_id, result.current_node_ids));
+            } else {
+              console.log(formatNextStepLine(opts.run, "running", { ...next, action }, nextData.current_node_id, nextData.current_node_ids));
+            }
+          }
+        } catch (err) {
+          console.error(err instanceof Error ? err.message : String(err));
+          process.exit(1);
+        }
+        return;
+      }
       const cwd = process.cwd();
       const exists = await runExists(opts.run, cwd);
       if (!exists) {
@@ -773,13 +874,9 @@ eventCmd
   .requiredOption("--run <run_id>", "Run ID")
   .option("--file <path>", "Path to JSON file (omit to read event from stdin)")
   .option("--by <string>", "Actor; defaults to config or 'cli'")
-  .action(async (opts: { run: string; file?: string; by?: string }) => {
+  .option("--cloud", "Use Cognetivy cloud API")
+  .action(async (opts: { run: string; file?: string; by?: string; cloud?: boolean }) => {
     const cwd = process.cwd();
-    const exists = await runExists(opts.run, cwd);
-    if (!exists) {
-      console.error(`Error: Run "${opts.run}" not found. Run \`cognetivy run start\` first.`);
-      process.exit(1);
-    }
     const raw = await readPayloadFromFileOrStdin(opts.file, cwd);
     const data = JSON.parse(raw) as Record<string, unknown>;
     const by = opts.by ?? (await resolveBy(cwd));
@@ -790,6 +887,23 @@ eventCmd
       by: (data.by as string) ?? by,
       data: (data.data as Record<string, unknown>) ?? (data as Record<string, unknown>),
     };
+    if (opts.cloud) {
+      try {
+        const result = await cloudAppendEvents(opts.run, {
+          events: [{ type: event.type, by: event.by, data: event.data }],
+        });
+        console.log(`Appended ${result.appended} event(s).`);
+      } catch (err) {
+        console.error(err instanceof Error ? err.message : String(err));
+        process.exit(1);
+      }
+      return;
+    }
+    const exists = await runExists(opts.run, cwd);
+    if (!exists) {
+      console.error(`Error: Run "${opts.run}" not found. Run \`cognetivy run start\` first.`);
+      process.exit(1);
+    }
     await appendEventLine(opts.run, event, cwd);
     if (event.type === "run_completed") {
       await updateRunFile(opts.run, { status: "completed" }, cwd);
