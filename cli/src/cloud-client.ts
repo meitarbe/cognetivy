@@ -47,7 +47,20 @@ async function cloudFetch<T>(path: string, options: RequestInit = {}): Promise<T
   const res = await fetch(url, { ...options, headers });
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`Cloud API ${res.status}: ${body || res.statusText}`);
+    let message = body || res.statusText;
+    if (res.status === 403 && body) {
+      try {
+        const parsed = JSON.parse(body) as { message?: string };
+        if (typeof parsed.message === "string" && parsed.message.trim()) {
+          message = parsed.message;
+        }
+      } catch {
+        // keep message as body
+      }
+    } else {
+      message = `Cloud API ${res.status}: ${message}`;
+    }
+    throw new Error(message);
   }
   if (res.status === 204 || res.headers.get("content-length") === "0") {
     return undefined as T;
@@ -231,6 +244,16 @@ export async function cloudCreateWorkflowFull(
   return cloudFetch<CloudCreateWorkflowFullResult>("/workflows/full", {
     method: "POST",
     body: JSON.stringify(input),
+  });
+}
+
+export async function cloudSetCollectionSchema(
+  workflowId: string,
+  kinds: Record<string, { name?: string; description: string; item_schema: Record<string, unknown> }>
+): Promise<void> {
+  await cloudFetch(`/workflows/${encodeURIComponent(workflowId)}/collections/schema`, {
+    method: "PUT",
+    body: JSON.stringify({ kinds }),
   });
 }
 

@@ -65,6 +65,7 @@ import {
   cloudGetWorkflowVersion,
   cloudListCollectionKinds,
   cloudGetCollectionItems,
+  cloudSetCollectionSchema,
 } from "./cloud-client.js";
 import { writeStoredApiKey, removeStoredApiKey, getApiKeyPath } from "./credentials.js";
 import { runLoginFlow } from "./auth-login-server.js";
@@ -1577,20 +1578,38 @@ collectionSchemaCmd
   });
 collectionSchemaCmd
   .command("set")
-  .description("Set collection schema from JSON file. Requires --file <path>. Default --workflow uses current.")
+  .description("Set collection schema from JSON file. Requires --file <path>. Default --workflow uses current. Cloud when authenticated.")
   .requiredOption("--file <path>", "Path to collection-schema JSON file")
   .option("--workflow <workflow_id>", "Workflow ID (default: current from workflows/index.json)")
-  .action(async (opts: { file: string; workflow?: string }) => {
+  .option("--cloud", "Use Cognetivy cloud API (default when API key is set)")
+  .option("--local", "Use local .cognetivy workspace only")
+  .action(async (opts: { file: string; workflow?: string; cloud?: boolean; local?: boolean }) => {
     const cwd = process.cwd();
-    await requireWorkspace(cwd);
-    const index = await readWorkflowIndex(cwd);
-    const workflowId = opts.workflow ?? index.current_workflow_id;
     const raw = await fs.readFile(path.resolve(cwd, opts.file), "utf-8");
     const schema = parsePayload(raw, formatFromFilePath(opts.file)) as CollectionSchemaConfig;
     if (!schema.kinds || typeof schema.kinds !== "object") {
       console.error("Error: schema must have a 'kinds' object.");
       process.exit(1);
     }
+    const useCloud = await resolveUseCloud(cwd, opts);
+    if (useCloud) {
+      const workflowId = await resolveCloudWorkflowId(cwd, opts.workflow);
+      if (!workflowId) {
+        console.error("Error: In cloud mode --workflow <id>, COGNETIVY_WORKFLOW_ID, or run `cognetivy workflow select --workflow <id> --cloud` is required.");
+        process.exit(1);
+      }
+      const kinds: Record<string, { name?: string; description: string; item_schema: Record<string, unknown> }> = {};
+      for (const [k, v] of Object.entries(schema.kinds)) {
+        const merged = mergeKindTemplate(k, v);
+        kinds[k] = { name: merged.name, description: merged.description, item_schema: merged.item_schema };
+      }
+      await cloudSetCollectionSchema(workflowId, kinds);
+      console.log("Collection schema updated.");
+      return;
+    }
+    await requireWorkspace(cwd);
+    const index = await readWorkflowIndex(cwd);
+    const workflowId = opts.workflow ?? index.current_workflow_id;
     const merged: CollectionSchemaConfig = { workflow_id: workflowId, kinds: {} };
     for (const [k, v] of Object.entries(schema.kinds)) {
       merged.kinds[k] = mergeKindTemplate(k, v);
