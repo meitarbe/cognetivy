@@ -11,7 +11,7 @@ import fs from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import ora from "ora";
 import type { SkillInstallTarget, SkillsConfig } from "./skills.js";
-import { ensureWorkspace, workspaceExists } from "./workspace.js";
+import { ensureMinimalWorkspace, ensureWorkspace, workspaceExists } from "./workspace.js";
 import { getMergedConfig } from "./config.js";
 import { installSkillsFromDirectory, installCognetivySkill } from "./skills.js";
 import { renderPngFileToAnsi } from "./terminal-png.js";
@@ -203,7 +203,11 @@ export async function runInstallTUI(options: InstallTUIOptions): Promise<void> {
   if (init) {
     const initSpinner = ora("Initializing workspace...").start();
     try {
-      await ensureWorkspace(cwd, { force, noGitignore });
+      if (onboardingMode === "cloud") {
+        await ensureMinimalWorkspace(cwd, { noGitignore });
+      } else {
+        await ensureWorkspace(cwd, { force, noGitignore });
+      }
       initSpinner.succeed("Workspace ready");
     } catch (err) {
       initSpinner.fail("Workspace init failed");

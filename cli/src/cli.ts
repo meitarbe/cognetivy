@@ -4,7 +4,9 @@ import { program } from "commander";
 import path from "node:path";
 import fs from "node:fs/promises";
 import {
+  ensureMinimalWorkspace,
   ensureWorkspace,
+  isWorkspaceMinimal,
   requireWorkspace,
   workspaceExists,
   readWorkflowIndex,
@@ -37,7 +39,7 @@ import { getNextStep, formatNextStepLine, type NextStep } from "./run-engine.js"
 import { mergeKindTemplate } from "./kind-templates.js";
 import { listWorkflowTemplates, listWorkflowTemplatesForPicker, materializeWorkflowTemplate } from "./workflow-templates.js";
 import { applyWorkflowTemplateToWorkspace, applyWorkflowTemplateToCloud } from "./workflow-template-apply.js";
-import type { RunRecord, EventPayload, CollectionSchemaConfig, WorkflowNode } from "./models.js";
+import type { RunRecord, EventPayload, CollectionSchemaConfig, WorkflowNode, WorkflowIndexRecord } from "./models.js";
 import { NodeResultStatus, type NodeResultRecord, type WorkflowRecord } from "./models.js";
 import { runMcpServer } from "./mcp.js";
 import { startStudioServer, STUDIO_DEFAULT_PORT } from "./studio-server.js";
@@ -113,6 +115,18 @@ async function resolveCloudWorkflowId(cwd: string, optsWorkflow: string | undefi
   if (process.env.COGNETIVY_WORKFLOW_ID) return process.env.COGNETIVY_WORKFLOW_ID;
   const index = await readWorkflowIndexOptional(cwd);
   return index?.cloud_current_workflow_id ?? null;
+}
+
+/** Resolve whether to use cloud API: --local → false, --cloud → true, else preferred_mode or isCloudMode(). */
+async function resolveUseCloud(
+  cwd: string,
+  opts: { cloud?: boolean; local?: boolean }
+): Promise<boolean> {
+  if (opts.local) return false;
+  if (opts.cloud !== undefined && opts.cloud !== null) return opts.cloud;
+  const index = await readWorkflowIndexOptional(cwd);
+  if (index?.preferred_mode === "local") return false;
+  return isCloudMode();
 }
 
 /** Extract all unique collection names from nodes (input_collections + output_collections). */
@@ -353,6 +367,97 @@ program
     await launchLocalStudio(cwd);
   });
 
+program
+  .command("mode")
+  .description("Set or show default mode: Cloud (app + API) or Local (this machine only). Use with no options to switch interactively; --show for current state.")
+  .option("--show", "Show current mode and workspace type (no prompt)")
+  .option("--json", "Output machine-readable JSON")
+  .action(async (opts: { show?: boolean; json?: boolean }) => {
+    const cwd = process.cwd();
+    const showOnly = opts.show === true || opts.json === true;
+
+    if (!(await workspaceExists(cwd))) {
+      if (showOnly) {
+        if (opts.json) {
+          console.log(JSON.stringify({ preferred_mode: null, workspace: "none", cloud_authenticated: await isCloudAuthenticated() }));
+        } else {
+          console.log("No workspace. Run `cognetivy init` or `cognetivy mode` to create one and set mode.");
+        }
+        return;
+      }
+      await ensureMinimalWorkspace(cwd);
+    }
+
+    const index = await readWorkflowIndexOptional(cwd);
+    const preferredMode = index?.preferred_mode ?? null;
+    const cloudAuthenticated = await isCloudAuthenticated();
+    const minimal = await isWorkspaceMinimal(cwd);
+
+    if (showOnly) {
+      if (opts.json) {
+        console.log(
+          JSON.stringify({
+            preferred_mode: preferredMode,
+            workspace: minimal ? "minimal" : "full",
+            cloud_authenticated: cloudAuthenticated,
+          })
+        );
+      } else {
+        const modeLabel =
+          preferredMode === "local" ? "Local" : preferredMode === "cloud" ? "Cloud" : isCloudMode() ? "Cloud (API key set)" : "Local (no API key)";
+        console.log(`Preferred mode: ${preferredMode ?? "not set"}`);
+        console.log(`Workspace: ${minimal ? "minimal (cloud-only)" : "full"}`);
+        console.log(`Cloud authenticated: ${cloudAuthenticated ? "yes" : "no"}`);
+        console.log(`Effective default: ${modeLabel}`);
+      }
+      return;
+    }
+
+    if (!process.stdin.isTTY) {
+      console.error("Interactive terminal required. Use `cognetivy mode --show` or `cognetivy mode --json` for non-interactive output.");
+      process.exit(1);
+    }
+
+    const currentLabel =
+      preferredMode === "local"
+        ? "Local"
+        : preferredMode === "cloud"
+          ? cloudAuthenticated
+            ? "Cloud (signed in)"
+            : "Cloud (preferred, not signed in)"
+          : isCloudMode()
+            ? "Cloud (API key set)"
+            : "Local";
+    p.intro("cognetivy mode");
+    p.note(`Current: ${currentLabel}. Workspace: ${minimal ? "minimal" : "full"}.`, "Current state");
+
+    const choice = await p.select({
+      message: "Use Cloud or Local?",
+      options: [
+        { value: "cloud" as const, label: "Cloud", hint: "Sign in and sync with app.cognetivy.com" },
+        { value: "local" as const, label: "Local", hint: "Workflows and runs on this machine only" },
+      ],
+    });
+    if (p.isCancel(choice)) {
+      p.cancel("Cancelled.");
+      process.exit(0);
+    }
+
+    const selected = choice as "cloud" | "local";
+    const base: WorkflowIndexRecord = index ?? { current_workflow_id: "wf_default", workflows: [] };
+    await writeWorkflowIndex({ ...base, preferred_mode: selected }, cwd);
+
+    if (selected === "local" && minimal) {
+      await ensureWorkspace(cwd, { force: false });
+      p.note("Full local workspace created (default workflow added).", "Local mode");
+    }
+    if (selected === "cloud" && !cloudAuthenticated) {
+      p.note("Run `cognetivy auth login` to sign in to the cloud.", "Tip");
+    }
+
+    p.outro(`Default mode set to ${selected === "cloud" ? "Cloud" : "Local"}.`);
+  });
+
 const workflowCmd = program
   .command("workflow")
   .description("Workflow operations: search, create, get, set, versions, templates. Run with no subcommand to see all.");
@@ -377,7 +482,7 @@ workflowCmd
   .option("--cloud", "Use Cognetivy cloud API (default when API key is set)")
   .option("--local", "Use local .cognetivy workspace only")
   .action(async (opts: { q?: string; cloud?: boolean; local?: boolean }) => {
-    const useCloud = opts.local ? false : (opts.cloud ?? isCloudMode());
+    const useCloud = await resolveUseCloud(process.cwd(), opts);
     if (useCloud) {
       const orgId = await resolveCloudOrganizationId();
       const list = await cloudListWorkflows(orgId, opts.q);
@@ -400,7 +505,7 @@ workflowCmd
   .option("--cloud", "Use Cognetivy cloud API (default when API key is set)")
   .option("--local", "Use local .cognetivy workspace only")
   .action(async (opts: { q?: string; cloud?: boolean; local?: boolean }) => {
-    const useCloud = opts.local ? false : (opts.cloud ?? isCloudMode());
+    const useCloud = await resolveUseCloud(process.cwd(), opts);
     if (useCloud) {
       const orgId = await resolveCloudOrganizationId();
       const list = await cloudListWorkflows(orgId, opts.q);
@@ -434,7 +539,7 @@ workflowCmd
       cloud?: boolean;
       local?: boolean;
     }) => {
-      const useCloud = opts.local ? false : (opts.cloud ?? isCloudMode());
+      const useCloud = await resolveUseCloud(process.cwd(), opts);
       const cwd = process.cwd();
 
       let raw: string | undefined;
@@ -622,7 +727,7 @@ workflowCmd
   .option("--local", "Use local .cognetivy workspace only")
   .action(async (opts: { workflow?: string; version?: string; outputFormat?: string; cloud?: boolean; local?: boolean }) => {
     const cwd = process.cwd();
-    const useCloud = opts.local ? false : (opts.cloud ?? isCloudMode());
+    const useCloud = await resolveUseCloud(process.cwd(), opts);
     if (useCloud) {
       const workflowId = await resolveCloudWorkflowId(cwd, opts.workflow);
       if (!workflowId) {
@@ -661,7 +766,7 @@ workflowCmd
   .option("--local", "Use local .cognetivy workspace only")
   .action(async (opts: { workflow?: string; cloud?: boolean; local?: boolean }) => {
     const cwd = process.cwd();
-    const useCloud = opts.local ? false : (opts.cloud ?? isCloudMode());
+    const useCloud = await resolveUseCloud(process.cwd(), opts);
     if (useCloud) {
       const workflowId = await resolveCloudWorkflowId(cwd, opts.workflow);
       if (!workflowId) {
@@ -817,7 +922,7 @@ workflowCmd
     const format: PayloadFormat = opts.file ? formatFromFilePath(opts.file) : "auto";
     const data = parsePayload(raw, format) as { nodes?: unknown[] };
 
-    const useCloud = opts.local ? false : (opts.cloud ?? isCloudMode());
+    const useCloud = await resolveUseCloud(process.cwd(), opts);
     if (useCloud) {
       const workflowId = await resolveCloudWorkflowId(cwd, opts.workflow);
       if (!workflowId) {
@@ -896,7 +1001,7 @@ runCmd
       }
     }
     const input = parsePayload(inputRaw, "auto") as Record<string, unknown>;
-    const useCloud = opts.local ? false : (opts.cloud ?? isCloudMode());
+    const useCloud = await resolveUseCloud(process.cwd(), opts);
     if (useCloud) {
       const workflowId = await resolveCloudWorkflowId(cwd, opts.workflow);
       if (!workflowId) {
@@ -1040,7 +1145,7 @@ runCmd
   .option("--cloud", "Use Cognetivy cloud API (default when COGNETIVY_API_KEY is set; see `cognetivy auth status`)")
   .option("--local", "Use local .cognetivy workspace (overrides API key)")
   .action(async (opts: { run: string; json?: boolean; cloud?: boolean; local?: boolean }) => {
-    const useCloud = opts.local ? false : (opts.cloud ?? isCloudMode());
+    const useCloud = await resolveUseCloud(process.cwd(), opts);
     if (useCloud) {
       try {
         const [run, nextData] = await Promise.all([cloudGetRun(opts.run), cloudGetNext(opts.run)]);
@@ -1157,7 +1262,7 @@ runCmd
       cloud?: boolean;
       local?: boolean;
     }) => {
-      const useCloud = opts.local ? false : (opts.cloud ?? isCloudMode());
+      const useCloud = await resolveUseCloud(process.cwd(), opts);
       if (useCloud) {
         try {
           if (opts.node !== undefined) {
@@ -1387,7 +1492,7 @@ eventCmd
       by: (data.by as string) ?? by,
       data: (data.data as Record<string, unknown>) ?? (data as Record<string, unknown>),
     };
-    const useCloud = opts.local ? false : (opts.cloud ?? isCloudMode());
+    const useCloud = await resolveUseCloud(process.cwd(), opts);
     if (useCloud) {
       try {
         const result = await cloudAppendEvents(opts.run, {
@@ -1483,7 +1588,7 @@ collectionCmd
   .option("--local", "Use local .cognetivy workspace only")
   .action(async (opts: { run: string; cloud?: boolean; local?: boolean }) => {
     const cwd = process.cwd();
-    const useCloud = opts.local ? false : (opts.cloud ?? isCloudMode());
+    const useCloud = await resolveUseCloud(process.cwd(), opts);
     if (useCloud) {
       try {
         const result = await cloudListCollectionKinds(opts.run);
@@ -1512,7 +1617,7 @@ collectionCmd
       process.exit(1);
     }
     const cwd = process.cwd();
-    const useCloud = opts.local ? false : (opts.cloud ?? isCloudMode());
+    const useCloud = await resolveUseCloud(process.cwd(), opts);
     if (useCloud) {
       try {
         const result = await cloudGetCollectionItems(opts.run, kind);
@@ -1664,7 +1769,7 @@ nodeCmd
   .option("--cloud", "Use Cognetivy cloud API (default when API key is set)")
   .option("--local", "Use local .cognetivy workspace only")
   .action(async (opts: { run: string; node: string; by?: string; cloud?: boolean; local?: boolean }) => {
-    const useCloud = opts.local ? false : (opts.cloud ?? isCloudMode());
+    const useCloud = await resolveUseCloud(process.cwd(), opts);
     if (useCloud) {
       try {
         await cloudStartNode(opts.run, opts.node);
@@ -2308,7 +2413,8 @@ async function runDefaultOnboardingFlow(cwd: string): Promise<void> {
       console.log("Logged in. API key saved.");
     }
   } else {
-    mode = "cloud";
+    const index = await readWorkflowIndexOptional(cwd);
+    mode = index?.preferred_mode === "local" ? "local" : "cloud";
   }
 
   const { runInstallTUI } = await import("./install-tui.js");
@@ -2329,8 +2435,15 @@ async function runDefaultOnboardingFlow(cwd: string): Promise<void> {
     }
   }
 
-  await ensureWorkspace(cwd, { force: false });
+  if (mode === "cloud") {
+    await ensureMinimalWorkspace(cwd);
+  } else {
+    await ensureWorkspace(cwd, { force: false });
+  }
   const index = await readWorkflowIndexOptional(cwd);
+  if (index && index.preferred_mode !== mode) {
+    await writeWorkflowIndex({ ...index, preferred_mode: mode }, cwd);
+  }
 
   let hasWorkflow = false;
   let cloudWorkflowList: { id: string }[] = [];

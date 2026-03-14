@@ -16,6 +16,7 @@ import {
   createDefaultWorkflowIndex,
   createDefaultWorkflowRecord,
   createDefaultWorkflowVersionRecord,
+  createMinimalWorkflowIndex,
   DEFAULT_WORKFLOW_ID,
 } from "./default-workflow.js";
 import { validateCollectionItemPayload, validateCollectionItemsPayload } from "./validate-collection.js";
@@ -110,6 +111,31 @@ export async function ensureWorkspace(
   return p;
 }
 
+/**
+ * Create minimal workspace structure (no default workflow).
+ * Use for cloud-only: .cognetivy/, dirs, workflows/index.json only.
+ * Idempotent; does not overwrite existing index.
+ */
+export async function ensureMinimalWorkspace(
+  cwd: string = process.cwd(),
+  _options: { noGitignore?: boolean } = {}
+): Promise<WorkspacePaths> {
+  const p = getWorkspacePaths(cwd);
+  await fs.mkdir(p.root, { recursive: true });
+  await fs.mkdir(p.workflowsDir, { recursive: true });
+  await fs.mkdir(p.runsDir, { recursive: true });
+  await fs.mkdir(p.eventsDir, { recursive: true });
+  await fs.mkdir(p.collectionsDir, { recursive: true });
+  await fs.mkdir(p.nodeResultsDir, { recursive: true });
+
+  const indexExists = await fileExists(p.workflowsIndexPath);
+  if (!indexExists) {
+    const index = createMinimalWorkflowIndex();
+    await fs.writeFile(p.workflowsIndexPath, JSON.stringify(index, null, 2), "utf-8");
+  }
+  return p;
+}
+
 async function ensureDefaultWorkflowFiles(
   cwd: string,
   options: { force?: boolean } = {}
@@ -178,6 +204,21 @@ export function getWorkflowDirPath(workflowId: string, cwd: string = process.cwd
  */
 export function getWorkflowRecordPath(workflowId: string, cwd: string = process.cwd()): string {
   return path.join(getWorkflowDirPath(workflowId, cwd), WORKFLOW_JSON);
+}
+
+/**
+ * True if workspace exists but default workflow (wf_default) is not present (cloud-only minimal workspace).
+ */
+export async function isWorkspaceMinimal(cwd: string = process.cwd()): Promise<boolean> {
+  const exists = await workspaceExists(cwd);
+  if (!exists) return false;
+  const defaultWfPath = getWorkflowRecordPath(DEFAULT_WORKFLOW_ID, cwd);
+  try {
+    await fs.access(defaultWfPath);
+    return false;
+  } catch {
+    return true;
+  }
 }
 
 /**

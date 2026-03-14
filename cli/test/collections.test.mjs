@@ -64,13 +64,14 @@ describe("collection schema and storage", () => {
     const item = await appendCollection(
       runId,
       "sources",
-      { url: "https://example.com", title: "Example" },
+      { name: "Example", url: "https://example.com", title: "Example" },
       { created_by_node_id: "retrieve_sources", created_by_node_result_id: "nr_1" },
       cwd
     );
     assert.ok(item.id);
     assert.ok(item.created_at);
     assert.strictEqual(item.created_by_node_id, "retrieve_sources");
+    assert.strictEqual(item.name, "Example");
     assert.strictEqual(item.url, "https://example.com");
     assert.strictEqual(item.title, "Example");
 
@@ -79,6 +80,7 @@ describe("collection schema and storage", () => {
     assert.strictEqual(store.kind, "sources");
     assert.ok(store.updated_at);
     assert.strictEqual(store.items.length, 1);
+    assert.strictEqual(store.items[0].name, "Example");
     assert.strictEqual(store.items[0].url, "https://example.com");
   });
 

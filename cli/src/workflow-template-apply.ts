@@ -9,7 +9,7 @@ import {
   writeWorkflowRecord,
   writeWorkflowVersionRecord,
   writeCollectionSchema,
-  ensureWorkspace,
+  ensureMinimalWorkspace,
 } from "./workspace.js";
 import { getWorkflowTemplateById, materializeWorkflowTemplate, type WorkflowTemplate } from "./workflow-templates.js";
 import { cloudCreateWorkflowFull } from "./cloud-client.js";
@@ -1054,7 +1054,7 @@ export async function applyWorkflowTemplateToCloud(
   });
 
   if (options.cwd) {
-    await ensureWorkspace(options.cwd, { force: false });
+    await ensureMinimalWorkspace(options.cwd);
     const index = await readWorkflowIndexOptional(options.cwd);
     if (index) {
       await writeWorkflowIndex({ ...index, cloud_current_workflow_id: result.id }, options.cwd);

@@ -12,6 +12,8 @@ export interface WorkflowIndexRecord {
   current_workflow_id: string;
   /** When set, cloud commands use this workflow when --workflow and COGNETIVY_WORKFLOW_ID are not set. */
   cloud_current_workflow_id?: string;
+  /** When set, commands default to cloud or local when both are possible (e.g. API key set but user prefers local). */
+  preferred_mode?: "cloud" | "local";
   workflows: WorkflowRecordSummary[];
 }
 
