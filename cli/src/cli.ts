@@ -370,10 +370,10 @@ program
     if (opts.workspaceOnly) {
       await ensureWorkspace(cwd, { force: opts.force, noGitignore });
       console.log("Initialized cognetivy workspace at .cognetivy/");
-    } else {
-      const { runInstallTUI } = await import("./install-tui.js");
-      await runInstallTUI({ cwd, force: opts.force, init: true, noGitignore });
+      return;
     }
+    const { runInstallTUI } = await import("./install-tui.js");
+    await runInstallTUI({ cwd, force: opts.force, init: true, noGitignore });
     await launchLocalStudio(cwd);
   });
 

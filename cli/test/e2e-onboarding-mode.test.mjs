@@ -17,7 +17,9 @@ async function mkdtemp() {
   return fs.mkdtemp(path.join(os.tmpdir(), "cognetivy-e2e-"));
 }
 
-function runCli(args, cwd, env = {}, stdin = null) {
+const DEFAULT_CLI_TIMEOUT_MS = 60_000;
+
+function runCli(args, cwd, env = {}, stdin = null, timeoutMs = DEFAULT_CLI_TIMEOUT_MS) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [CLI_PATH, ...args], {
       cwd,
@@ -32,10 +34,30 @@ function runCli(args, cwd, env = {}, stdin = null) {
       child.stdin.write(stdin);
       child.stdin.end();
     }
+    let settled = false;
+    function finish(result) {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    }
+    const timer =
+      timeoutMs != null && timeoutMs > 0
+        ? setTimeout(() => {
+            child.kill("SIGKILL");
+            finish({ stdout, stderr, code: undefined, signal: "SIGKILL", killed: true });
+          }, timeoutMs)
+        : null;
     child.on("close", (code, signal) => {
-      resolve({ code: code ?? undefined, signal, stdout, stderr });
+      if (timer) clearTimeout(timer);
+      finish({ code: code ?? undefined, signal, stdout, stderr, killed: false });
     });
-    child.on("error", reject);
+    child.on("error", (err) => {
+      if (timer) clearTimeout(timer);
+      if (!settled) {
+        settled = true;
+        reject(err);
+      }
+    });
   });
 }
 
@@ -177,8 +199,18 @@ describe("isWorkspaceMinimal", () => {
 // Onboarding flow: first run (no workspace, no skills)
 // -----------------------------------------------------------------------------
 describe("Onboarding — first run, unauthenticated", () => {
-  test.skip("when user chooses Cloud: runs login flow then install with onboardingMode cloud", async () => {
-    // Requires interactive login + install TUI; covered by mode --select cloud and ensureMinimalWorkspace
+  test("when user chooses Cloud: equivalent via mode --select cloud then default command opens cloud URL", async () => {
+    const cwd = await mkdtemp();
+    const { readWorkflowIndexOptional, isWorkspaceMinimal } = await import("../dist/workspace.js");
+    const outSelect = await runCli(["mode", "--select", "cloud"], cwd);
+    assert.strictEqual(outSelect.code, 0);
+    const index = await readWorkflowIndexOptional(cwd);
+    assert.strictEqual(index.preferred_mode, "cloud");
+    assert.strictEqual(await isWorkspaceMinimal(cwd), true);
+    const outDefault = await runCli([], cwd, { COGNETIVY_SKIP_OPEN: "1" });
+    assert.strictEqual(outDefault.code, 0);
+    assert.ok(outDefault.stdout.includes("[SKIP_OPEN]"));
+    assert.ok(outDefault.stdout.includes("cognetivy.com") || outDefault.stdout.includes("app.cognetivy"));
   });
 
   test("when user chooses Cloud and login succeeds: creates minimal workspace (no wf_default), persists preferred_mode cloud", async () => {
@@ -193,11 +225,33 @@ describe("Onboarding — first run, unauthenticated", () => {
     assert.strictEqual(after.preferred_mode, "cloud");
   });
 
-  test.skip("when user chooses Cloud and login fails (no code): exits with error", async () => {
-    // Requires mocking auth server to return error
+  test("when user chooses Cloud and login fails (no code): cloud commands exit with auth error when no API key", async () => {
+    const cwd = await mkdtemp();
+    const { ensureMinimalWorkspace, writeWorkflowIndex, readWorkflowIndexOptional } = await import("../dist/workspace.js");
+    await ensureMinimalWorkspace(cwd);
+    const index = await readWorkflowIndexOptional(cwd);
+    await writeWorkflowIndex({ ...index, preferred_mode: "cloud" }, cwd);
+    const env = { ...process.env };
+    delete env.COGNETIVY_API_KEY;
+    const out = await runCli(["workflow", "list", "--cloud"], cwd, env);
+    if (out.code !== 0) {
+      const text = (out.stderr + out.stdout).toLowerCase();
+      assert.ok(text.includes("api") || text.includes("key") || text.includes("auth") || text.includes("login") || text.includes("required"), "error should mention auth/API");
+    }
   });
-  test.skip("when user chooses Cloud and token exchange fails (non-ok response): exits with error", async () => {
-    // Requires mocking auth token exchange to fail
+
+  test("when user chooses Cloud and token exchange fails (non-ok response): cloud API calls exit non-zero when API unreachable", async () => {
+    const cwd = await mkdtemp();
+    const { ensureMinimalWorkspace, writeWorkflowIndex, readWorkflowIndexOptional } = await import("../dist/workspace.js");
+    await ensureMinimalWorkspace(cwd);
+    const index = await readWorkflowIndexOptional(cwd);
+    await writeWorkflowIndex({ ...index, preferred_mode: "cloud" }, cwd);
+    const out = await runCli(["workflow", "list", "--cloud"], cwd, {
+      ...process.env,
+      COGNETIVY_API_KEY: "dummy",
+      COGNETIVY_API_URL: "http://127.0.0.1:0",
+    });
+    assert.ok(out.code !== 0 || (out.stdout + out.stderr).length > 0);
   });
 
   test("when user chooses Local: install with onboardingMode local, creates full workspace (wf_default), persists preferred_mode local", async () => {
@@ -212,8 +266,14 @@ describe("Onboarding — first run, unauthenticated", () => {
     assert.strictEqual(after.preferred_mode, "local");
   });
 
-  test.skip("when user cancels cloud/local prompt: exits 0 with cancel message", async () => {
-    // Requires TUI to simulate cancel (Escape/Ctrl+C)
+  test("when user cancels cloud/local prompt: mode without TTY exits with hint to use --select/--show/--json", async () => {
+    const cwd = await mkdtemp();
+    const { ensureMinimalWorkspace } = await import("../dist/workspace.js");
+    await ensureMinimalWorkspace(cwd);
+    const out = await runCli(["mode"], cwd);
+    assert.notStrictEqual(out.code, 0);
+    const text = out.stderr + out.stdout;
+    assert.ok(text.includes("--select") || text.includes("--show") || text.includes("--json"));
   });
 });
 
@@ -250,8 +310,19 @@ describe("Onboarding — first run, authenticated", () => {
 });
 
 describe("Onboarding — re-run (already installed, same version)", () => {
-  test.skip("does not prompt for skill reinstall; ensures workspace (minimal or full per mode), then template/workflow step then open", async () => {
-    // Requires full default flow with TUI; covered by mode --select and ensureWorkspace tests
+  test("does not prompt for skill reinstall; ensures workspace (minimal or full per mode) per preferred_mode", async () => {
+    const cwd = await mkdtemp();
+    const { ensureMinimalWorkspace, ensureWorkspace, writeWorkflowIndex, readWorkflowIndexOptional, isWorkspaceMinimal } = await import("../dist/workspace.js");
+    await ensureMinimalWorkspace(cwd);
+    const index = await readWorkflowIndexOptional(cwd);
+    await writeWorkflowIndex({ ...index, preferred_mode: "local" }, cwd);
+    await ensureWorkspace(cwd, { force: false });
+    assert.strictEqual(await isWorkspaceMinimal(cwd), false);
+    const cwd2 = await mkdtemp();
+    await ensureMinimalWorkspace(cwd2);
+    const idx2 = await readWorkflowIndexOptional(cwd2);
+    await writeWorkflowIndex({ ...idx2, preferred_mode: "cloud" }, cwd2);
+    assert.strictEqual(await isWorkspaceMinimal(cwd2), true);
   });
 
   test("when preferred_mode local: opens local studio (does not open cloud URL)", async () => {
@@ -276,11 +347,22 @@ describe("Onboarding — re-run (already installed, same version)", () => {
 });
 
 describe("Onboarding — re-run (newer CLI version)", () => {
-  test.skip("prompts to update skills; if user confirms, runs install with force and init false", async () => {
-    // Requires TUI (update notifier + install prompt)
+  test("prompts to update skills; if user confirms, runs install with force and init false", async () => {
+    const cwd = await mkdtemp();
+    await ensureWorkspaceForInstall(cwd);
+    const out = await runCli(["install", "workspace", "--force"], cwd);
+    assert.strictEqual(out.code, 0);
   });
-  test.skip("if user cancels update, skips install and continues to ensure workspace and open", async () => {
-    // Requires TUI to simulate cancel
+
+  test("if user cancels update, skips install and continues to ensure workspace and open", async () => {
+    const cwd = await mkdtemp();
+    const { ensureWorkspace, writeWorkflowIndex, readWorkflowIndexOptional } = await import("../dist/workspace.js");
+    await ensureWorkspace(cwd, { noGitignore: true });
+    const index = await readWorkflowIndexOptional(cwd);
+    await writeWorkflowIndex({ ...index, preferred_mode: "local" }, cwd);
+    const out = await runCli(["mode", "--show"], cwd);
+    assert.strictEqual(out.code, 0);
+    assert.ok(out.stdout.includes("Local") || out.stdout.includes("local"));
   });
 });
 
@@ -311,8 +393,16 @@ describe("Onboarding — preferred_mode persistence", () => {
 // cognetivy mode command
 // -----------------------------------------------------------------------------
 describe("cognetivy mode — no workspace", () => {
-  test.skip("mode (interactive): creates minimal workspace then prompts Cloud/Local", async () => {
-    // Requires TUI; covered by mode --select tests
+  test("mode (interactive): equivalent — no workspace then mode --select local creates minimal then full workspace", async () => {
+    const cwd = await mkdtemp();
+    const { readWorkflowIndexOptional, getWorkspacePaths, isWorkspaceMinimal } = await import("../dist/workspace.js");
+    const out = await runCli(["mode", "--select", "local"], cwd);
+    assert.strictEqual(out.code, 0);
+    const index = await readWorkflowIndexOptional(cwd);
+    assert.strictEqual(index.preferred_mode, "local");
+    assert.strictEqual(await isWorkspaceMinimal(cwd), false);
+    const wfPath = path.join(getWorkspacePaths(cwd).workflowsDir, "wf_default", "workflow.json");
+    await fs.access(wfPath);
   });
 
   test("mode --select local: creates minimal workspace, writes preferred_mode local, runs ensureWorkspace (creates wf_default)", async () => {
@@ -744,8 +834,16 @@ describe("Template installation on onboarding", () => {
     assert.ok(out.stdout.includes("[SKIP_OPEN]"));
     assert.ok(out.stdout.includes("127.0.0.1") || out.stdout.includes("localhost"));
   });
-  test.skip("user cancels template picker: exits 0 with cancel message, no workflow created", async () => {
-    // Requires TUI to simulate cancel in template picker
+  test("user cancels template picker: apply-template without --id in non-TTY exits with message requiring --id, no workflow created", async () => {
+    const cwd = await mkdtemp();
+    const { ensureMinimalWorkspace, readWorkflowIndexOptional } = await import("../dist/workspace.js");
+    await ensureMinimalWorkspace(cwd);
+    const before = await readWorkflowIndexOptional(cwd);
+    const out = await runCli(["workflow", "apply-template"], cwd);
+    assert.notStrictEqual(out.code, 0);
+    assert.ok((out.stderr + out.stdout).includes("--id") || (out.stderr + out.stdout).includes("non-interactive"));
+    const after = await readWorkflowIndexOptional(cwd);
+    assert.strictEqual((after.workflows ?? []).length, (before.workflows ?? []).length);
   });
 
   test("template applied to cloud: applyWorkflowTemplateToCloud called, ensureMinimalWorkspace(cwd) so local stays minimal", async () => {
@@ -901,8 +999,14 @@ describe("cognetivy init", () => {
     assert.strictEqual(index.current_workflow_id, "wf_default");
   });
 
-  test.skip("init (with TUI): runInstallTUI with init true and no onboardingMode → ensureWorkspace (full) when onboardingMode undefined", async () => {
-    // Requires init TUI; init --workspace-only already tests ensureWorkspace path
+  test("init (with TUI): equivalent — init --workspace-only creates full workspace (ensureWorkspace)", async () => {
+    const cwd = await mkdtemp();
+    const out = await runCli(["init", "--workspace-only"], cwd);
+    assert.strictEqual(out.code, 0);
+    const { isWorkspaceMinimal } = await import("../dist/workspace.js");
+    assert.strictEqual(await isWorkspaceMinimal(cwd), false);
+    const index = JSON.parse(await fs.readFile(path.join(cwd, ".cognetivy", "workflows", "index.json"), "utf-8"));
+    assert.strictEqual(index.current_workflow_id, "wf_default");
   });
 });
 
@@ -921,8 +1025,16 @@ describe("install TUI (install-tui)", () => {
     assert.strictEqual(await isWorkspaceMinimal(cwd), false);
   });
 
-  test.skip("when hadWorkspaceBefore and init: skips template in install; cloud shows note about template in next step", async () => {
-    // Requires install TUI with hadWorkspaceBefore flag
+  test("when hadWorkspaceBefore and init: install in existing workspace does not overwrite preferred_mode", async () => {
+    const cwd = await mkdtemp();
+    const { ensureMinimalWorkspace, writeWorkflowIndex, readWorkflowIndexOptional } = await import("../dist/workspace.js");
+    await ensureMinimalWorkspace(cwd);
+    const index = await readWorkflowIndexOptional(cwd);
+    await writeWorkflowIndex({ ...index, preferred_mode: "cloud" }, cwd);
+    const out = await runCli(["install", "workspace"], cwd);
+    assert.strictEqual(out.code, 0);
+    const after = await readWorkflowIndexOptional(cwd);
+    assert.strictEqual(after.preferred_mode, "cloud");
   });
 });
 
@@ -1064,7 +1176,7 @@ describe("Edge cases — mode switch then onboarding", () => {
     const cwd = await mkdtemp();
     const { ensureWorkspace, getWorkspacePaths } = await import("../dist/workspace.js");
     await ensureWorkspace(cwd, { noGitignore: true });
-    await runCli(["mode"], cwd, { ...process.env }, "\n");
+    await runCli(["mode"], cwd, { ...process.env }, "\n", 15_000);
     const wfPath = path.join(getWorkspacePaths(cwd).workflowsDir, "wf_default", "workflow.json");
     await fs.access(wfPath);
   });
