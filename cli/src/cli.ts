@@ -69,6 +69,16 @@ import {
 import { writeStoredApiKey, removeStoredApiKey, getApiKeyPath } from "./credentials.js";
 import { runLoginFlow } from "./auth-login-server.js";
 import open from "open";
+
+/** When COGNETIVY_SKIP_OPEN is set (e.g. in tests), log URL instead of opening browser. */
+async function openUrl(url: string): Promise<void> {
+  if (process.env.COGNETIVY_SKIP_OPEN === "1" || process.env.COGNETIVY_SKIP_OPEN === "true") {
+    console.log(`[SKIP_OPEN] ${url}`);
+    return;
+  }
+  await open(url);
+}
+
 import {
   listSkills,
   getSkillByName,
@@ -177,7 +187,7 @@ async function launchLocalStudio(
   const { port: actualPort } = await startStudioServer(workspacePath, port, { apiOnly: false });
   const base = `http://127.0.0.1:${actualPort}`;
   const url = workflowId ? `${base}/workflow?workflow_id=${encodeURIComponent(workflowId)}` : base;
-  await open(url);
+  await openUrl(url);
   console.log(`Local Studio at ${base} (workspace: ${workspacePath}). Press Ctrl+C to stop.`);
 }
 
@@ -369,12 +379,14 @@ program
 
 program
   .command("mode")
-  .description("Set or show default mode: Cloud (app + API) or Local (this machine only). Use with no options to switch interactively; --show for current state.")
+  .description("Set or show default mode: Cloud (app + API) or Local (this machine only). Use with no options to switch interactively; --show for current state; --select for non-interactive.")
   .option("--show", "Show current mode and workspace type (no prompt)")
   .option("--json", "Output machine-readable JSON")
-  .action(async (opts: { show?: boolean; json?: boolean }) => {
+  .option("--select <mode>", "Set mode without prompt (cloud | local). For scripts and tests.")
+  .action(async (opts: { show?: boolean; json?: boolean; select?: string }) => {
     const cwd = process.cwd();
     const showOnly = opts.show === true || opts.json === true;
+    const selectMode = opts.select === "cloud" || opts.select === "local" ? opts.select : null;
 
     if (!(await workspaceExists(cwd))) {
       if (showOnly) {
@@ -413,8 +425,18 @@ program
       return;
     }
 
+    if (selectMode) {
+      const base: WorkflowIndexRecord = index ?? { current_workflow_id: "wf_default", workflows: [] };
+      await writeWorkflowIndex({ ...base, preferred_mode: selectMode }, cwd);
+      if (selectMode === "local" && minimal) {
+        await ensureWorkspace(cwd, { force: false });
+      }
+      console.log(`Default mode set to ${selectMode === "cloud" ? "Cloud" : "Local"}.`);
+      return;
+    }
+
     if (!process.stdin.isTTY) {
-      console.error("Interactive terminal required. Use `cognetivy mode --show` or `cognetivy mode --json` for non-interactive output.");
+      console.error("Interactive terminal required. Use `cognetivy mode --show`, `cognetivy mode --json`, or `cognetivy mode --select <local|cloud>`.");
       process.exit(1);
     }
 
@@ -831,7 +853,7 @@ workflowCmd
       )
     );
     const studioUrl = `http://127.0.0.1:${STUDIO_DEFAULT_PORT}`;
-    open(studioUrl).catch(() => {});
+    openUrl(studioUrl).catch(() => {});
   });
 
 workflowCmd
@@ -1962,7 +1984,7 @@ program
         )
       );
       const studioUrl = `http://127.0.0.1:${STUDIO_DEFAULT_PORT}`;
-      open(studioUrl).catch(() => {});
+      openUrl(studioUrl).catch(() => {});
     } catch (err) {
       console.error(err instanceof Error ? `Error: ${err.message}` : String(err));
       process.exit(1);
@@ -2315,7 +2337,7 @@ program
     const { port: actualPort } = await startStudioServer(workspacePath, requestedPort, { apiOnly: opts.apiOnly });
     if (!opts.apiOnly) {
       const url = `http://127.0.0.1:${actualPort}`;
-      await open(url);
+      await openUrl(url);
       console.log(`Studio at ${url} (workspace: ${workspacePath}). Press Ctrl+C to stop.`);
     } else {
       console.log(`Studio API at http://127.0.0.1:${actualPort} (workspace: ${workspacePath}).`);
@@ -2501,7 +2523,7 @@ async function runDefaultOnboardingFlow(cwd: string): Promise<void> {
   } else {
     const appUrl = getCloudAppUrl();
     const url = buildCloudOnboardingUrl(appUrl, cloudCurrentWorkflowId);
-    await open(url);
+    await openUrl(url);
     console.log(`Opened ${url}`);
   }
 }
@@ -2515,7 +2537,7 @@ program.action(async () => {
   const cwd = process.cwd();
   if (!process.stdin.isTTY) {
     const appUrl = getCloudAppUrl();
-    await open(appUrl);
+    await openUrl(appUrl);
     console.log(`Opened ${appUrl}`);
     return;
   }
