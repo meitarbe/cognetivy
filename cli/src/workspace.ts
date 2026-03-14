@@ -19,7 +19,7 @@ import {
   DEFAULT_WORKFLOW_ID,
 } from "./default-workflow.js";
 import { validateCollectionItemPayload, validateCollectionItemsPayload } from "./validate-collection.js";
-import { mergeTraceabilityIntoSchema } from "./traceability-schema.js";
+import { mergeTraceabilityIntoSchema, mergeNameRequiredIntoSchema } from "./traceability-schema.js";
 
 export const WORKSPACE_DIR = ".cognetivy";
 export const WORKFLOWS_DIR = "workflows";
@@ -449,7 +449,7 @@ export async function readCollectionSchema(
     await fs.mkdir(path.dirname(schemaPath), { recursive: true });
     await fs.writeFile(schemaPath, JSON.stringify(schema, null, 2), "utf-8");
   }
-  return mergeTraceabilityIntoSchema(schema);
+  return mergeNameRequiredIntoSchema(mergeTraceabilityIntoSchema(schema));
 }
 
 export async function writeCollectionSchema(

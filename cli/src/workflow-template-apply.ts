@@ -3,13 +3,16 @@ import { DEFAULT_WORKFLOW_ID, createDefaultWorkflowVersionRecord } from "./defau
 import type { CollectionSchemaConfig, WorkflowRecord, WorkflowVersionRecord } from "./models.js";
 import {
   readWorkflowIndex,
+  readWorkflowIndexOptional,
   readWorkflowRecord,
   writeWorkflowIndex,
   writeWorkflowRecord,
   writeWorkflowVersionRecord,
   writeCollectionSchema,
+  ensureWorkspace,
 } from "./workspace.js";
 import { getWorkflowTemplateById, materializeWorkflowTemplate, type WorkflowTemplate } from "./workflow-templates.js";
+import { cloudCreateWorkflowFull } from "./cloud-client.js";
 
 type JsonSchemaProperty = Record<string, unknown>;
 
@@ -1001,4 +1004,66 @@ export async function applyWorkflowTemplateToWorkspace(options: ApplyWorkflowTem
   }, cwd);
 
   return { template: templateMeta, workflow, version };
+}
+
+export interface ApplyWorkflowTemplateToCloudOptions {
+  organizationId: string;
+  templateId: string;
+  workflowName?: string;
+  workflowDescription?: string;
+  /** If set, persist cloud_current_workflow_id in this workspace so cloud commands default to the new workflow. */
+  cwd?: string;
+}
+
+export interface ApplyWorkflowTemplateToCloudResult {
+  workflowId: string;
+  versionId: string | null;
+  template: WorkflowTemplate;
+}
+
+/**
+ * Create a workflow from a template in the cloud (organization). Uses the same template
+ * definitions and collection kinds as applyWorkflowTemplateToWorkspace.
+ */
+export async function applyWorkflowTemplateToCloud(
+  options: ApplyWorkflowTemplateToCloudOptions
+): Promise<ApplyWorkflowTemplateToCloudResult> {
+  const { organizationId, templateId, workflowName, workflowDescription } = options;
+  const materialized = materializeTemplateOrDefault(templateId);
+  if (!materialized) {
+    throw new Error(`Unknown template "${templateId}".`);
+  }
+
+  const { template: templateMeta, workflow: version } = materialized;
+  const schema = buildCollectionSchema("wf_template", version);
+  const kinds: Record<string, { name?: string; description: string; item_schema: Record<string, unknown> }> = {};
+  for (const [kind, kindSchema] of Object.entries(schema.kinds)) {
+    kinds[kind] = {
+      name: kindSchema.name,
+      description: kindSchema.description ?? "",
+      item_schema: kindSchema.item_schema ?? { type: "object", properties: {} },
+    };
+  }
+
+  const result = await cloudCreateWorkflowFull({
+    organizationId,
+    name: workflowName ?? templateMeta.name,
+    description: workflowDescription ?? templateMeta.description,
+    nodes: version.nodes ?? [],
+    kinds: Object.keys(kinds).length > 0 ? kinds : undefined,
+  });
+
+  if (options.cwd) {
+    await ensureWorkspace(options.cwd, { force: false });
+    const index = await readWorkflowIndexOptional(options.cwd);
+    if (index) {
+      await writeWorkflowIndex({ ...index, cloud_current_workflow_id: result.id }, options.cwd);
+    }
+  }
+
+  return {
+    workflowId: result.id,
+    versionId: result.versionId ?? null,
+    template: templateMeta,
+  };
 }

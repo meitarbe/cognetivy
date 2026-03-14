@@ -80,6 +80,46 @@ export function mergeTraceabilityIntoItemSchema(
   };
 }
 
+/** Name property required for every collection item (display title in studio). */
+export const NAME_PROPERTY_SCHEMA = { type: "string", description: "Short display name for this item (required)." } as const;
+
+/**
+ * Ensure item_schema has "name" as required and first property. Applied to every kind.
+ */
+export function mergeNameRequiredIntoItemSchema(itemSchema: Record<string, unknown>): Record<string, unknown> {
+  if ((itemSchema.type as string) && itemSchema.type !== "object") return itemSchema;
+  const properties =
+    itemSchema.properties && typeof itemSchema.properties === "object"
+      ? { ...(itemSchema.properties as Record<string, unknown>) }
+      : {};
+  if (!("name" in properties)) properties.name = NAME_PROPERTY_SCHEMA;
+  const required = Array.isArray(itemSchema.required) ? [...itemSchema.required] : [];
+  if (!required.includes("name")) required.unshift("name");
+  return {
+    ...itemSchema,
+    type: "object",
+    required,
+    properties: { name: properties.name, ...Object.fromEntries(Object.entries(properties).filter(([k]) => k !== "name")) },
+  };
+}
+
+/**
+ * Merge "name" required into every kind's item_schema. Call when reading schema so all collection items must have a name.
+ */
+export function mergeNameRequiredIntoSchema(schema: CollectionSchemaConfig): CollectionSchemaConfig {
+  const kinds = { ...schema.kinds };
+  for (const [kind, kindSchema] of Object.entries(kinds)) {
+    const itemSchema = kindSchema.item_schema;
+    if (itemSchema && typeof itemSchema === "object") {
+      kinds[kind] = {
+        ...kindSchema,
+        item_schema: mergeNameRequiredIntoItemSchema(itemSchema as Record<string, unknown>) as Record<string, unknown>,
+      };
+    }
+  }
+  return { ...schema, kinds };
+}
+
 /**
  * Merge traceability fields into every kind's item_schema (except run_input).
  * Call when reading schema so all workflows get citations/derived_from/reasoning available.

@@ -147,6 +147,17 @@ export async function cloudGetCurrentUser(): Promise<CloudCurrentUser> {
   return cloudFetch<CloudCurrentUser>("/users/me");
 }
 
+/** True only if an API key is set and the token is valid (e.g. /users/me succeeds). Use this when you need to treat invalid/expired tokens as not authenticated. */
+export async function isCloudAuthenticated(): Promise<boolean> {
+  if (!resolveApiKey()) return false;
+  try {
+    await cloudGetCurrentUser();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Resolve organization ID: env COGNETIVY_ORGANIZATION_ID or first org from whoami. */
 export async function resolveCloudOrganizationId(): Promise<string> {
   const fromEnv = process.env.COGNETIVY_ORGANIZATION_ID?.trim();
@@ -169,10 +180,14 @@ export interface CloudWorkflowListItem {
   organizationId?: string;
 }
 
-export async function cloudListWorkflows(organizationId: string): Promise<CloudWorkflowListItem[]> {
-  const list = await cloudFetch<CloudWorkflowListItem[]>(
-    `/workflows?organizationId=${encodeURIComponent(organizationId)}`
-  );
+export async function cloudListWorkflows(
+  organizationId: string,
+  q?: string
+): Promise<CloudWorkflowListItem[]> {
+  const url = q?.trim()
+    ? `/workflows?organizationId=${encodeURIComponent(organizationId)}&q=${encodeURIComponent(q.trim())}`
+    : `/workflows?organizationId=${encodeURIComponent(organizationId)}`;
+  const list = await cloudFetch<CloudWorkflowListItem[]>(url);
   return Array.isArray(list) ? list : [];
 }
 
@@ -264,4 +279,21 @@ export function mapCloudActionToLocal(action: string): NextStepAction {
     wait: "done",
   };
   return map[action] ?? "done";
+}
+
+// --- Collections (cloud API) ---
+
+export async function cloudListCollectionKinds(
+  runId: string
+): Promise<{ run_id: string; kinds: string[] }> {
+  return cloudFetch<{ run_id: string; kinds: string[] }>(`/runs/${encodeURIComponent(runId)}/collections/kinds`);
+}
+
+export async function cloudGetCollectionItems(
+  runId: string,
+  kind: string
+): Promise<{ run_id: string; kind: string; items: Array<Record<string, unknown>> }> {
+  return cloudFetch<{ run_id: string; kind: string; items: Array<Record<string, unknown>> }>(
+    `/runs/${encodeURIComponent(runId)}/collections/${encodeURIComponent(kind)}/items`
+  );
 }

@@ -468,7 +468,7 @@ export interface InstallSkillResult {
 
 const COGNETIVY_SKILL_NAME = "cognetivy";
 
-/** Built-in skill: Level 1 metadata (always loaded). Description states what it does and when to use it. */
+/** Built-in skill: what the CLI installs (lean agent surface). Keep in sync with .claude/skills/cognetivy/SKILL.md. */
 function getCognetivySkillContent(): string {
   return `---
 name: ${COGNETIVY_SKILL_NAME}
@@ -492,8 +492,8 @@ Workflows, runs, node results, and schema-backed collections. Run commands from 
 
 **Four commands.** Every response includes \`COGNETIVY_NEXT_STEP=...\` (JSON with \`run_id\`, \`status\`, \`next_step\`, and \`current_node_id\` when a node is in progress). **Do what the hint says**; no guessing. The next node is chosen by DAG (topological) order so dependencies run before consumers.
 
-1. **Start:** \`cognetivy run start --input input.json --name "Short name"\`
-   - Prints \`run_id\` and \`COGNETIVY_NEXT_STEP=...\`. Parse \`next_step\`; usually \`action: "run_node"\`, \`node_id\`, \`hint\` (do work for that node, then run step with payload).
+1. **Start:** \`cognetivy run start --workflow <workflow_id> --input <path>|--input -|--input-inline '{"key":"value"}' --name "Short name"\`
+   - Always pass \`--workflow <id>\` (no "selected" workflow). Input can be file path, \`-\` for stdin, or \`--input-inline\` JSON. Prints \`run_id\` and \`COGNETIVY_NEXT_STEP=...\`. Parse \`next_step\`; usually \`action: "run_node"\`, \`node_id\`, \`hint\` (do work for that node, then run step with payload).
 
 2. **Status (optional):** \`cognetivy run status --run <run_id> [--json]\`
    - Shows run state, \`current_node_id\` (in progress) when a node is started but not completed, and \`next_step\`.
@@ -501,16 +501,16 @@ Workflows, runs, node results, and schema-backed collections. Run commands from 
 3. **Step (repeat until done):**
    - When \`next_step.action\` is \`run_nodes_parallel\` (\`runnable_node_ids\` has more than one node): **you must spawn one sub-agent per node** unless the user says otherwise. First run \`cognetivy run step --run <run_id>\` (no \`--node\`) so the CLI marks all those nodes in progress; then each sub-agent does the work and completes with \`run step --run <id> --node <node_id> --collection-kind <kind>\` and payload (no need to "start" first).
    - **Start next node:** \`cognetivy run step --run <run_id>\` (no \`--node\`). For a single runnable node this starts it; for multiple runnable it starts all (then spawn sub-agents). Then do the work for the node(s).
-   - **Complete node with output:** \`cognetivy run step --run <run_id> --node <node_id> --collection-kind <kind>\` with payload on stdin (single object = append, array = set). Or without \`--collection-kind\` to mark node completed with no collection.
+   - **Complete node with output:** Prefer \`cognetivy run step --run <run_id> --node <node_id> --collection-kind <kind> --collection-file <path>\` (write payload to file first; avoids shell prompts). Or payload on stdin (single object = append, array = set). Or without \`--collection-kind\` to mark node completed with no collection.
    - Each call prints \`COGNETIVY_NEXT_STEP=...\`. When \`action\` is \`complete_run\`, follow the hint (event append run_completed + run complete).
 
-4. **End the run:** When \`next_step.action\` is \`complete_run\`: \`echo '{"type":"run_completed","data":{}}' | cognetivy event append --run <run_id>\`, then \`cognetivy run complete --run <run_id>\`.
+4. **End the run:** When \`next_step.action\` is \`complete_run\`: \`cognetivy run complete --run <run_id>\` (no separate event append).
 
 ---
 
 ## Workflow
 
-\`workflow get\` (and \`workflow list\` / \`select\` / \`versions\` / \`set --file <path>\`). Versions have nodes (collection→node→collection).
+**Get by id:** \`workflow get --workflow <id> [--version <version_id>]\` — always pass \`--workflow\` explicitly (no "selected" workflow for agents). **Create:** \`workflow create\` (--name or --file/stdin). **Update version:** \`workflow set --file <path>\` or stdin. **List/search:** Use \`workflow search [--q <query>]\` or \`workflow list [--q <query>]\` **only when the user explicitly asks to list or search workflows**; output is id, name, description only. Versions have nodes (collection→node→collection).
 
 **Workflow structure (required):**
 - **Single connected graph:** Do not create two or more disconnected subgraphs. All nodes must be part of one dataflow (every node reachable via input/output collections from the rest).
@@ -520,29 +520,18 @@ Workflows, runs, node results, and schema-backed collections. Run commands from 
 
 **Per-node skills and MCPs:** Each node can declare \`required_skills\` (array of skill names, e.g. \`["cognetivy", "tavily"]\`) and \`required_mcps\` (array of MCP server names, e.g. \`["user-context7", "cursor-ide-browser"]\`). Use these field names in workflow JSON - **not** \`skills\` (use \`required_skills\`). Run \`workflow get\` to see the default workflow example.
 
-## Runs (agent surface: 4 commands)
+## Agent surface (minimal)
 
-\`run start\`, \`run status --run <id> [--json]\`, \`run step --run <id> [--node N] [--collection-kind K]\`, \`run complete\`. Every response includes \`COGNETIVY_NEXT_STEP\`; use it to decide the next action. Low-level \`node\` / \`event\` / \`collection\` commands exist for scripts; see REFERENCE.md.
+**Workflow:** \`workflow get --workflow <id>\`, \`workflow create\`, \`workflow set\` (file or stdin), \`workflow search [--q]\` (only when user asks to list/search). **Run:** \`run start\` (with \`--workflow\`, \`--input\` or \`--input-inline\`), \`run status --run <id>\`, \`run step --run <id> [--node N] [--collection-kind K] [--collection-file <path>]\` (payload from file or stdin; prefer file in agents), \`run complete --run <id>\`. Every run response includes \`COGNETIVY_NEXT_STEP\`; follow the hint. Prefer YAML for payloads (fewer tokens); JSON is accepted.
 
-## Events
-
-\`event append --run <run_id> [--file <path>]\` - omit \`--file\` to read from stdin. Event JSON: \`type\`, \`data\` (for step events set \`data.step\` = node id). E.g. \`echo '{"type":"step_completed","data":{"step":"synthesize"}}' | cognetivy event append --run <run_id>\`.
-
-## Node results
-
-Usually covered by \`node complete\`. For inspect or when not using it: \`node-result list\`, \`node-result get\`, \`node-result set\` (prints \`COGNETIVY_NODE_RESULT_ID=...\`).
-
----
-
-## Collections (strict schema-backed)
-
-\`collection-schema get\` / \`set --file\` (kinds + \`item_schema\`). \`collection list --run <id>\`, \`collection get --run <id> --kind <kind>\`. \`collection set\` / \`collection append\` need \`--node\` and \`--node-result\` (or use \`node complete --collection-kind\` which creates the result). Omit \`--file\` to read from stdin.
-- **Many items:** Prefer incremental \`collection append\` or \`node complete\` per item instead of one large \`collection set\`. Use Markdown in long text fields for Studio.
+**Low-level (scripts / debugging only):** \`event append\`, \`collection-schema get/set\`, \`collection list/get/set/append\`, \`node start/complete\`, \`node-result list/get/set\`. Not needed for the main run flow; use \`run step\` to complete nodes with output.
 
 **Traceability (enforced by schema):** Every kind (except \`run_input\`) has optional \`citations\`, \`derived_from\`, and \`reasoning\`. **Always populate these** so outputs are traceable:
 - **citations:** Array of sources: \`{ url?, title?, excerpt? }\` for external URLs (only verified), or \`{ item_ref: { kind, item_id } }\` for another collection item (e.g. a \`sources\` item). Enables "where did this come from?"
 - **derived_from:** Array of \`{ kind, item_id }\`  -  which collection items this was derived from (chain of thinking). Enables "why did we decide this?"
 - **reasoning:** Optional string explaining the conclusion or chain of thought.
+
+**Every collection item must have a \`name\` field (mandatory).** The API and CLI enforce this: payloads without \`name\` are rejected. Use a short, human-readable title (e.g. \`"Q1 competitor overview"\`, \`"Atlassian Jira docs"\`). The Studio shows \`name\` as the item title. For \`run_input\`, omit \`name\` and the system will default it to \`"Run input"\`.
 
 **Payload:** Must match \`item_schema\` for the kind; do not include \`created_at\`, \`created_by_node_id\` - cognetivy adds them. For kinds like \`sources\` that have a \`url\` field: only include URLs you have verified (retrieved or opened); do not invent URLs.
 
@@ -550,15 +539,13 @@ Usually covered by \`node complete\`. For inspect or when not using it: \`node-r
 
 ## Node runner pattern
 
-\`workflow get\` once → for each node: \`collection get\` for that node's inputs only → do work → \`node complete\`. If a node has \`minimum_rows\`, produce at least that many items for its output collection(s). **You must spawn sub-agents when multiple nodes are runnable at the same level** (\`next_step.action === "run_nodes_parallel"\`, \`runnable_node_ids\`): one sub-agent per node, unless the user says otherwise. For a single runnable node, one agent is fine.
+\`workflow get --workflow <id>\` once → then \`run start\` with that workflow id → for each node: do work → \`run step --run <id> --node <node_id> --collection-kind <kind> --collection-file <path>\` (prefer file; or payload on stdin). Omit \`--collection-kind\` to complete with no output. If a node has \`minimum_rows\`, produce at least that many items. **You must spawn sub-agents when** \`next_step.action === "run_nodes_parallel"\` and \`runnable_node_ids\` has multiple nodes: one sub-agent per node, unless the user says otherwise.
 
 ## Important
 
 - **Parallel same-layer:** When \`next_step.action\` is \`run_nodes_parallel\`, you **must** spawn one sub-agent per node in \`runnable_node_ids\` unless the user says otherwise.
-- **Schema first:** \`collection-schema get\` before writing; add kinds if missing.
-- **Step events:** \`data.step\` = workflow node id (for Studio).
-- **Provenance:** When using \`collection set\`/ \`append\` directly (not \`node complete\`), create a node result first and pass \`--node\` + \`--node-result\`.
-- **Always end runs:** \`event append run_completed\` then \`run complete\`.
+- **Always end runs:** \`cognetivy run complete --run <id>\` (no separate event append).
+- **Workflow id:** Pass \`--workflow <id>\` on every command; do not rely on a "selected" workflow.
 - **Version suggestions:** When discussing dependencies, tools, or libraries, proactively check for and suggest newer versions (e.g. via web search or docs) and mention upgrade paths when relevant.
 
 ## Source discipline and traceability
@@ -575,24 +562,25 @@ Usually covered by \`node complete\`. For inspect or when not using it: \`node-r
 `;
 }
 
-/** Level 3 resource: full CLI reference (loaded on demand). */
+/** Level 3 resource: full CLI reference (what the CLI installs). Keep in sync with .claude/skills/cognetivy/REFERENCE.md. */
 function getCognetivyReferenceContent(): string {
   return `# Cognetivy CLI reference
 
 Full command reference. Use from project root (directory containing \`.cognetivy/\`).
 
 ## workflow
-- \`cognetivy workflow list\` - list workflows.
-- \`cognetivy workflow create --name <string> [--id <string>] [--description <string>]\` - create a workflow (creates v1 and default schema).
-- \`cognetivy workflow select --workflow <workflow_id>\` - select current workflow.
+- \`cognetivy workflow search [--q <query>]\` - search workflows (id, name, description only). **Use only when the user asks to list or search workflows.**
+- \`cognetivy workflow list [--q <query>]\` - list workflows (id, name, description only). Same as search; use only when user asks.
+- \`cognetivy workflow create --name <string> [--id <string>] [--description <string>]\` - create a workflow (creates v1 and default schema). Or use --file or stdin with name/description/nodes/kinds.
+- \`cognetivy workflow select --workflow <workflow_id>\` - select current workflow (for human use; agents should pass --workflow on each command).
 - \`cognetivy workflow versions [--workflow <workflow_id>]\` - list versions for a workflow.
-- \`cognetivy workflow get [--workflow <workflow_id>] [--version <version_id>]\` - print a workflow version JSON.
-- \`cognetivy workflow set --file <path> [--workflow <workflow_id>] [--name <string>]\` - set workflow version from JSON file (creates new version and sets it current). **Workflow must be one connected graph with no cycles.**
+- \`cognetivy workflow get --workflow <id> [--version <version_id>] [--output-format yaml]\` - print a workflow version (JSON or YAML). Always pass --workflow for agents.
+- \`cognetivy workflow set [--file <path>] [--workflow <workflow_id>]\` - set workflow version from file or stdin (creates new version). **Workflow must be one connected graph with no cycles.** JSON or YAML.
 
 ## run
-- \`cognetivy run start --input <path> [--name <string>] ...\` - start run; prints run_id and COGNETIVY_NEXT_STEP.
+- \`cognetivy run start --input <path> [--name <string>] ...\` - start run; prints run_id and COGNETIVY_NEXT_STEP. Use --input - for stdin or --input-inline for inline JSON.
 - \`cognetivy run status --run <run_id> [--json]\` - run state, nodes, collections, next_step.
-- \`cognetivy run step --run <run_id> [--node <node_id>] [--collection-kind <kind>]\` - start next node (no --node) or complete node (--node, optional payload via stdin); prints next_step.
+- \`cognetivy run step --run <run_id> [--node <node_id>] [--collection-kind <kind>] [--collection-file <path>]\` - start next node (no --node) or complete node (--node; payload from --collection-file or stdin; prefer file in agents); prints next_step.
 - \`cognetivy run complete --run <run_id>\`, \`run set-name --run <run_id> --name <string>\`.
 
 ## node
@@ -611,6 +599,7 @@ Full command reference. Use from project root (directory containing \`.cognetivy
 - \`cognetivy collection get --run <run_id> --kind <kind>\` - get all items of kind.
 - \`cognetivy collection set --run <run_id> --kind <kind> [--file <path>] --node <node_id> --node-result <node_result_id>\` - replace items (omit --file for stdin).
 - \`cognetivy collection append --run <run_id> --kind <kind> [--file <path>] --node <node_id> --node-result <node_result_id> [--id <id>]\` - append one item (omit --file for stdin).
+- **Mandatory \`name\`:** Every collection item must include a \`name\` field (enforced by API and CLI). Short display title; Studio shows it first. \`run_input\` gets a default name if omitted.
 - Traceability: every kind (except run_input) has \`citations\` (sources: url or item_ref), \`derived_from\` (item refs), \`reasoning\`; populate so outputs are traceable.
 
 ## node-result

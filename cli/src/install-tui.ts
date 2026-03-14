@@ -163,15 +163,19 @@ async function tryPrintFaviconBanner(cwd: string): Promise<void> {
   }
 }
 
+export type OnboardingMode = "cloud" | "local";
+
 export interface InstallTUIOptions {
   cwd: string;
   force?: boolean;
   init?: boolean;
   noGitignore?: boolean;
+  /** When set to "cloud", skip the template picker in install (default flow will apply template to cloud). */
+  onboardingMode?: OnboardingMode;
 }
 
 export async function runInstallTUI(options: InstallTUIOptions): Promise<void> {
-  const { cwd, force = false, init = true, noGitignore = false } = options;
+  const { cwd, force = false, init = true, noGitignore = false, onboardingMode } = options;
 
   await tryPrintFaviconBanner(cwd);
   p.intro("cognetivy install");
@@ -239,8 +243,19 @@ export async function runInstallTUI(options: InstallTUIOptions): Promise<void> {
 
   await writeInstalledSkillsVersion(cwd, getCurrentVersionSync());
 
-  if (hadWorkspaceBefore) {
-    p.note("Workspace already set up; skipping template.", "Skills updated");
+  const skipTemplateInInstall = init && (hadWorkspaceBefore || onboardingMode === "cloud");
+  if (!init || hadWorkspaceBefore) {
+    if (!init) {
+      p.note("Skills updated. Your .cognetivy workflows and runs were not touched.", "Skills updated");
+    } else {
+      p.note("Workspace already set up; skipping template.", "Skills updated");
+    }
+  } else if (skipTemplateInInstall) {
+    if (onboardingMode === "cloud") {
+      p.note("Template will be chosen in the next step (cloud workflow).", "Skills updated");
+    } else {
+      p.note("Workspace already set up; skipping template.", "Skills updated");
+    }
   } else {
     const templates = listWorkflowTemplatesForPicker();
     const templateSelection = await p.select({
