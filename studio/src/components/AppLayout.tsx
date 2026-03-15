@@ -80,8 +80,8 @@ export function AppLayout() {
         .catch(() => setSchema(null));
     }
     loadSchema();
-    const t = setInterval(loadSchema, SCHEMA_POLL_MS);
-    return () => clearInterval(t);
+      // const t = setInterval(loadSchema, SCHEMA_POLL_MS);
+      // return () => clearInterval(t);
   }, [selectedWorkflowId]);
 
   useEffect(() => {
@@ -89,8 +89,8 @@ export function AppLayout() {
       api.getRuns().then(setRuns).catch(() => setRuns([]));
     }
     loadRuns();
-    const t = setInterval(loadRuns, 5000);
-    return () => clearInterval(t);
+    // const t = setInterval(loadRuns, 5000);
+    // return () => clearInterval(t);
   }, []);
 
   function toggleSidebar() {

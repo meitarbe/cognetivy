@@ -25,7 +25,6 @@ import {
 import { cn, downloadTableCsv, getCollectionColor, TABLE_LINK_CLASS } from "@/lib/utils";
 
 const POLL_MS = 5000;
-const COLLECTION_RUN_FILTER_STORAGE_KEY = "cognetivy_collection_run_id";
 
 function formatCellValue(value: unknown): string {
   if (value === undefined || value === null) return "-";
@@ -76,23 +75,9 @@ export function EntityPage() {
 
   useEffect(() => {
     load();
-    const t = setInterval(load, POLL_MS);
-    return () => clearInterval(t);
+    // const t = setInterval(load, POLL_MS);
+    // return () => clearInterval(t);
   }, [load]);
-
-  useEffect(() => {
-    if (!kind || searchParams.get("run_id")) return;
-    try {
-      const saved = localStorage.getItem(COLLECTION_RUN_FILTER_STORAGE_KEY);
-      if (saved) {
-        const next = new URLSearchParams(searchParams);
-        next.set("run_id", saved);
-        setSearchParams(next, { replace: true });
-      }
-    } catch {
-      // ignore localStorage errors
-    }
-  }, [kind, searchParams, setSearchParams]);
 
   if (!kind || error) {
     return (
@@ -146,15 +131,6 @@ export function EntityPage() {
       next.delete("run_id");
     }
     setSearchParams(next, { replace: true });
-    try {
-      if (nextRunId) {
-        localStorage.setItem(COLLECTION_RUN_FILTER_STORAGE_KEY, nextRunId);
-      } else {
-        localStorage.removeItem(COLLECTION_RUN_FILTER_STORAGE_KEY);
-      }
-    } catch {
-      // ignore localStorage errors
-    }
   }
 
   const kindSafe = kind ?? "";
