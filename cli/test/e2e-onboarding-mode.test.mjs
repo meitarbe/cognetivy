@@ -373,7 +373,7 @@ describe("Onboarding — non-TTY", () => {
     await ensureMinimalWorkspace(cwd);
     const out = await runCli([], cwd, {}, "");
     assert.strictEqual(out.code, 0);
-    assert.ok(out.stdout.includes("app.cognetivy.com") || out.stdout.includes("localhost") || out.stdout.includes("http"));
+    assert.ok(out.stdout.includes("alpha.cognetivy.com") || out.stdout.includes("localhost") || out.stdout.includes("http"));
   });
 });
 
@@ -584,7 +584,7 @@ describe("Switching local → cloud", () => {
     const out = await runCli([], cwd, { COGNETIVY_SKIP_OPEN: "1" });
     assert.strictEqual(out.code, 0);
     assert.ok(out.stdout.includes("[SKIP_OPEN]"));
-    assert.ok(out.stdout.includes("app.cognetivy.com") || out.stdout.includes("cognetivy.com"));
+    assert.ok(out.stdout.includes("alpha.cognetivy.com") || out.stdout.includes("cognetivy.com"));
   });
 
   test("after switch to cloud, run start --cloud (or default) requires COGNETIVY_API_KEY or exits with clear error", async () => {

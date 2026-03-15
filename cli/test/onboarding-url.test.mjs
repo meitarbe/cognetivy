@@ -13,21 +13,21 @@ describe("buildCloudOnboardingUrl", () => {
   test("returns workflow deep link when workflowId is set", () => {
     assert.strictEqual(
       buildCloudOnboardingUrl("https://app.example.com", "wf_123"),
-      "https://app.example.com/workflow?workflow_id=wf_123"
+      "https://app.example.com/workflows/wf_123"
     );
   });
 
   test("strips trailing slash from appUrl before appending path", () => {
     assert.strictEqual(
       buildCloudOnboardingUrl("https://app.example.com/", "wf_abc"),
-      "https://app.example.com/workflow?workflow_id=wf_abc"
+      "https://app.example.com/workflows/wf_abc"
     );
   });
 
-  test("encodes workflow_id in query", () => {
+  test("encodes workflow_id in path", () => {
     assert.strictEqual(
       buildCloudOnboardingUrl("https://app.example.com", "wf_foo-bar"),
-      "https://app.example.com/workflow?workflow_id=wf_foo-bar"
+      "https://app.example.com/workflows/wf_foo-bar"
     );
   });
 });
@@ -52,7 +52,7 @@ describe("getCloudAppUrl", () => {
     process.env.NODE_ENV = "production";
     delete process.env.COGNETIVY_DEV;
     try {
-      assert.strictEqual(getCloudAppUrl(), "https://app.cognetivy.com");
+      assert.strictEqual(getCloudAppUrl(), "https://alpha.cognetivy.com");
     } finally {
       if (origApp !== undefined) process.env.COGNETIVY_APP_URL = origApp;
       else delete process.env.COGNETIVY_APP_URL;

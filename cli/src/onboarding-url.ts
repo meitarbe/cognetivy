@@ -17,12 +17,12 @@ export function getCloudAppUrl(): string {
     const port = process.env.COGNETIVY_APP_PORT ?? String(DEFAULT_LOCAL_APP_PORT);
     return `http://localhost:${port}`;
   }
-  return "https://app.cognetivy.com";
+  return "https://alpha.cognetivy.com";
 }
 
 /** Build the app URL to open for cloud onboarding; when workflowId is set, returns workflow deep link. */
 export function buildCloudOnboardingUrl(appUrl: string, workflowId: string | null): string {
   if (workflowId == null) return appUrl;
   const base = appUrl.replace(/\/$/, "");
-  return `${base}/workflow?workflow_id=${encodeURIComponent(workflowId)}`;
+  return `${base}/workflows/${encodeURIComponent(workflowId)}`;
 }

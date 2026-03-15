@@ -80,6 +80,45 @@ async function openUrl(url: string): Promise<void> {
   await open(url);
 }
 
+const ansi = {
+  bold: "\x1b[1m",
+  dim: "\x1b[2m",
+  cyan: "\x1b[36m",
+  green: "\x1b[32m",
+  reset: "\x1b[0m",
+};
+
+function isColorfulTerminal(): boolean {
+  return Boolean(process.stdout.isTTY && process.env.TERM && process.env.TERM !== "dumb");
+}
+
+/** Print engaging "opened URL" message with optional workflow CTA. */
+function printOpenedUrlMessage(url: string, options: { workflow?: boolean } = {}): void {
+  const { workflow = false } = options;
+  const color = isColorfulTerminal();
+  const b = color ? ansi.bold : "";
+  const d = color ? ansi.dim : "";
+  const c = color ? ansi.cyan : "";
+  const g = color ? ansi.green : "";
+  const r = color ? ansi.reset : "";
+
+  if (workflow) {
+    console.log("");
+    console.log(`${g}\u2713${r} ${b}Opened your workflow in the browser${r}`);
+    console.log(`  ${c}${url}${r}`);
+    console.log("");
+    console.log(`${d}Next:${r} ${b}Ask your agent to run this workflow${r} - e.g. in Cursor, say 'run my Competitor analysis workflow' or use the Cognetivy MCP.`);
+    console.log("");
+  } else {
+    console.log("");
+    console.log(`${g}\u2713${r} ${b}Opened Cognetivy${r}`);
+    console.log(`  ${c}${url}${r}`);
+    console.log("");
+    console.log(`${d}Tip:${r} ${b}Ask your agent to run workflows${r} from Cognetivy (e.g. via Cursor + Cognetivy MCP).`);
+    console.log("");
+  }
+}
+
 import {
   listSkills,
   getSkillByName,
@@ -187,7 +226,7 @@ async function launchLocalStudio(
   await requireWorkspace(workspacePath);
   const { port: actualPort } = await startStudioServer(workspacePath, port, { apiOnly: false });
   const base = `http://127.0.0.1:${actualPort}`;
-  const url = workflowId ? `${base}/workflow?workflow_id=${encodeURIComponent(workflowId)}` : base;
+  const url = workflowId ? `${base}/workflows/${encodeURIComponent(workflowId)}` : base;
   await openUrl(url);
   console.log(`Local Studio at ${base} (workspace: ${workspacePath}). Press Ctrl+C to stop.`);
 }
@@ -204,8 +243,8 @@ program
     `
 Environment (cloud):
   COGNETIVY_API_KEY    API key for cloud run/event (create at app → Settings). When set, run/event use cloud by default.
-  COGNETIVY_APP_URL    URL opened by default command (default: https://app.cognetivy.com).
-  COGNETIVY_API_URL    Cloud API base URL (default: http://localhost:3000). Use for local backend or custom deployment.
+  COGNETIVY_APP_URL    URL opened by default command (default: https://alpha.cognetivy.com).
+  COGNETIVY_API_URL    Cloud API base URL (default: http://localhost:3000 in dev, https://bm.cognetivy.com otherwise). Use for local backend or custom deployment.
 
 Use \`cognetivy auth status\` to see current auth and URLs. Use \`--local\` on run/event to force local workspace when API key is set.
 `
@@ -457,7 +496,7 @@ program
     const choice = await p.select({
       message: "Use Cloud or Local?",
       options: [
-        { value: "cloud" as const, label: "Cloud", hint: "Sign in and sync with app.cognetivy.com" },
+        { value: "cloud" as const, label: "Cloud", hint: "Sign in and sync with alpha.cognetivy.com" },
         { value: "local" as const, label: "Local", hint: "Workflows and runs on this machine only" },
       ],
     });
@@ -2411,7 +2450,7 @@ async function runDefaultOnboardingFlow(cwd: string): Promise<void> {
     const choice = await p.select({
       message: "Use cloud (Cognetivy app + API) or local (this machine only)?",
       options: [
-        { value: "cloud" as OnboardingMode, label: "Cloud", hint: "Sign in and sync with app.cognetivy.com" },
+        { value: "cloud" as OnboardingMode, label: "Cloud", hint: "Sign in and sync with alpha.cognetivy.com" },
         { value: "local" as OnboardingMode, label: "Local", hint: "Workflows and runs on this machine only" },
       ],
     });
@@ -2543,7 +2582,7 @@ async function runDefaultOnboardingFlow(cwd: string): Promise<void> {
     const appUrl = getCloudAppUrl();
     const url = buildCloudOnboardingUrl(appUrl, cloudCurrentWorkflowId);
     await openUrl(url);
-    console.log(`Opened ${url}`);
+    printOpenedUrlMessage(url, { workflow: Boolean(cloudCurrentWorkflowId) });
   }
 }
 
@@ -2557,7 +2596,7 @@ program.action(async () => {
   if (!process.stdin.isTTY) {
     const appUrl = getCloudAppUrl();
     await openUrl(appUrl);
-    console.log(`Opened ${appUrl}`);
+    printOpenedUrlMessage(appUrl, { workflow: false });
     return;
   }
   await runDefaultOnboardingFlow(cwd);

@@ -5,9 +5,22 @@
 import type { NextStepAction } from "./run-engine.js";
 import { readStoredApiKey } from "./credentials.js";
 
+/** Default cloud API when not in dev; must match the backend used by the app at alpha.cognetivy.com. */
+const DEFAULT_CLOUD_API_URL = "https://bm.cognetivy.com";
+
+function isLocalDev(): boolean {
+  return (
+    process.env.NODE_ENV === "development" ||
+    process.env.COGNETIVY_DEV === "true" ||
+    process.env.COGNETIVY_DEV === "1"
+  );
+}
+
 const getBaseUrl = (): string => {
-  const url = process.env.COGNETIVY_API_URL ?? "http://localhost:3000";
-  return url.replace(/\/$/, "");
+  if (process.env.COGNETIVY_API_URL) {
+    return process.env.COGNETIVY_API_URL.replace(/\/$/, "");
+  }
+  return isLocalDev() ? "http://localhost:3000" : DEFAULT_CLOUD_API_URL;
 };
 
 /** Cloud API base URL (for display only; does not require API key). */
