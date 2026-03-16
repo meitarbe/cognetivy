@@ -492,12 +492,15 @@ program
             : "Local";
     p.intro("cognetivy mode");
     p.note(`Current: ${currentLabel}. Workspace: ${minimal ? "minimal" : "full"}.`, "Current state");
-
+    p.note(
+      "Local: data stays in .cognetivy/ on this machine—you own it, view in Studio here.\nCloud: sign in once; view run status from anywhere (web or mobile browser) and work from anywhere.",
+      "Local vs Cloud"
+    );
     const choice = await p.select({
-      message: "Use Cloud or Local?",
+      message: "Local or Cloud?",
       options: [
-        { value: "cloud" as const, label: "Cloud", hint: "Sign in and sync with alpha.cognetivy.com" },
-        { value: "local" as const, label: "Local", hint: "Workflows and runs on this machine only" },
+        { value: "local" as const, label: "Local", hint: "Data in .cognetivy/ here; view in Studio on this machine" },
+        { value: "cloud" as const, label: "Cloud", hint: "View run status from anywhere (web or mobile browser)" },
       ],
     });
     if (p.isCancel(choice)) {
@@ -2447,11 +2450,15 @@ async function runDefaultOnboardingFlow(cwd: string): Promise<void> {
   let mode: OnboardingMode;
 
   if (!authenticated) {
+    p.note(
+      "Local: data stays in .cognetivy/ on this machine—you own it, view in Studio here.\nCloud: sign in once; view run status from anywhere (web or mobile browser) and work from anywhere.",
+      "Local vs Cloud"
+    );
     const choice = await p.select({
-      message: "Use cloud (Cognetivy app + API) or local (this machine only)?",
+      message: "Local or Cloud?",
       options: [
-        { value: "cloud" as OnboardingMode, label: "Cloud", hint: "Sign in and sync with alpha.cognetivy.com" },
-        { value: "local" as OnboardingMode, label: "Local", hint: "Workflows and runs on this machine only" },
+        { value: "local" as OnboardingMode, label: "Local", hint: "Data in .cognetivy/ here; view in Studio on this machine" },
+        { value: "cloud" as OnboardingMode, label: "Cloud", hint: "View run status from anywhere (web or mobile browser)" },
       ],
     });
     if (p.isCancel(choice)) {
