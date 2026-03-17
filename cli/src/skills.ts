@@ -468,8 +468,10 @@ export interface InstallSkillResult {
 
 const COGNETIVY_SKILL_NAME = "cognetivy";
 
-/** Built-in skill: what the CLI installs (lean agent surface). Keep in sync with .claude/skills/cognetivy/SKILL.md. */
-function getCognetivySkillContent(): string {
+export type SkillMode = "local" | "cloud";
+
+/** Built-in skill (local mode): uses .cognetivy/ workspace; workflows and runs stored locally. */
+function getCognetivySkillContentLocal(): string {
   return `---
 name: ${COGNETIVY_SKILL_NAME}
 description: Manage workflows, workflow versions, runs, step events, node results, and strict schema-backed collections in this project. Use when the user asks to start/complete a run, execute workflow nodes, log step_started/step_completed events, persist node results, or read/write structured data in collections. All operations run via the cognetivy CLI from the project root that contains .cognetivy/
@@ -562,9 +564,52 @@ Workflows, runs, node results, and schema-backed collections. Run commands from 
 `;
 }
 
-/** Level 3 resource: full CLI reference (what the CLI installs). Keep in sync with .claude/skills/cognetivy/REFERENCE.md. */
-function getCognetivyReferenceContent(): string {
-  return `# Cognetivy CLI reference
+/** Built-in skill (cloud mode): no .cognetivy/ required; workflows and runs on Cognetivy Cloud. Use --cloud on commands. */
+function getCognetivySkillContentCloud(): string {
+  return `---
+name: ${COGNETIVY_SKILL_NAME}
+description: Manage workflows, runs, and collections on Cognetivy Cloud. Use when the user asks to start/complete a run, execute workflow nodes, or read/write structured data. No local .cognetivy/ folder; use --cloud on CLI commands. Sign in with cognetivy login first.
+---
+
+# Cognetivy (Cloud)
+
+Workflows, runs, and collections on **Cognetivy Cloud**. Run commands with \`--cloud\` (or rely on default when authenticated). Full reference: [REFERENCE.md](REFERENCE.md).
+
+---
+
+## When to use this skill
+
+- User asks to start/complete a run, run the workflow, track steps, or persist ideas/sources/collections.
+- User refers to "cognetivy", "workflow", "run", "collections" in a cloud context.
+
+---
+
+## Quick start (cloud run)
+
+1. **Sign in:** \`cognetivy login\` (once per machine).
+2. **Start:** \`cognetivy run start --workflow <workflow_id> --input <path>|--input-inline '{"key":"value"}' --name "Short name" --cloud\`
+3. **Step:** \`cognetivy run step --run <run_id> [--node <id>] [--collection-kind <kind>] --cloud\` (payload via --collection-file or stdin).
+4. **Complete:** \`cognetivy run complete --run <run_id> --cloud\`
+
+Every response includes \`COGNETIVY_NEXT_STEP\`; follow the hint. Use \`workflow get --workflow <id> --cloud\` to load the workflow. Parallel nodes: spawn one sub-agent per node when \`next_step.action === "run_nodes_parallel"\`.
+
+---
+
+## Workflow (cloud)
+
+\`workflow list --cloud\`, \`workflow get --workflow <id> --cloud\`, \`workflow create --cloud\`, \`workflow set --file <path> --cloud\`. Always pass \`--workflow <id>\` on run commands.
+
+---
+
+## Traceability
+
+Every collection kind (except \`run_input\`) has \`citations\`, \`derived_from\`, \`reasoning\`. Populate them. Every item must have a \`name\` field.
+`;
+}
+
+/** Full CLI reference (local mode). Use from project root (directory containing .cognetivy/). */
+function getCognetivyReferenceContentLocal(): string {
+  return `# Cognetivy CLI reference (local)
 
 Full command reference. Use from project root (directory containing \`.cognetivy/\`).
 
@@ -612,32 +657,82 @@ Full command reference. Use from project root (directory containing \`.cognetivy
 `;
 }
 
+/** Full CLI reference (cloud mode). Use --cloud on commands when authenticated. */
+function getCognetivyReferenceContentCloud(): string {
+  return `# Cognetivy CLI reference (cloud)
+
+Use \`--cloud\` on commands (or rely on default when authenticated). No local \`.cognetivy/\` required.
+
+## workflow
+- \`cognetivy workflow list --cloud\`, \`workflow get --workflow <id> --cloud\`, \`workflow create --cloud\`, \`workflow set --file <path> --cloud\`.
+- \`workflow versions --workflow <id> --cloud\`, \`workflow select --workflow <id> --cloud\`.
+
+## run
+- \`cognetivy run start --workflow <id> --input <path> [--name <string>] --cloud\`
+- \`run status --run <id> --cloud\`, \`run step --run <id> [--node <id>] [--collection-kind <kind>] --cloud\`, \`run complete --run <id> --cloud\`.
+
+## collection
+- \`collection list --run <id> --cloud\`, \`collection get --run <id> --kind <kind> --cloud\`, \`collection set\` / \`append\` with \`--cloud\`.
+
+## studio
+- \`cognetivy studio\` - open Cloud Studio in browser (or use app.cognetivy.com).
+`;
+}
+
 const REFERENCE_FILENAME = "REFERENCE.md";
+
+/** All install targets for cognetivy skill (used for per-folder check and version read). */
+const ALL_COGNETIVY_INSTALL_TARGETS: SkillInstallTarget[] = [
+  "agent",
+  "agents",
+  "cursor",
+  "factory",
+  "gemini",
+  "openclaw",
+  "opencode",
+  "qwen",
+  "workspace",
+];
 
 /**
  * Install the built-in cognetivy skill (workflow, runs, events, collections) into the target.
  * Writes SKILL.md, REFERENCE.md, and .cognetivy-version. Idempotent; overwrites.
+ * @param mode - "local" (default): .cognetivy/ workspace; "cloud": cloud-only, no local workspace.
  */
 export async function installCognetivySkill(
   target: SkillInstallTarget,
   cwd: string,
-  config?: SkillsConfig
+  config?: SkillsConfig,
+  mode: SkillMode = "local"
 ): Promise<string> {
   const { getCurrentVersionSync, COGNETIVY_VERSION_FILENAME } = await import("./skills-version.js");
   const targetPath = await getInstallPath(target, COGNETIVY_SKILL_NAME, cwd, config);
   await fs.mkdir(targetPath, { recursive: true });
-  await fs.writeFile(path.join(targetPath, SKILL_FILENAME), getCognetivySkillContent(), "utf-8");
-  await fs.writeFile(
-    path.join(targetPath, REFERENCE_FILENAME),
-    getCognetivyReferenceContent(),
-    "utf-8"
-  );
+  const skillContent = mode === "cloud" ? getCognetivySkillContentCloud() : getCognetivySkillContentLocal();
+  const refContent = mode === "cloud" ? getCognetivyReferenceContentCloud() : getCognetivyReferenceContentLocal();
+  await fs.writeFile(path.join(targetPath, SKILL_FILENAME), skillContent, "utf-8");
+  await fs.writeFile(path.join(targetPath, REFERENCE_FILENAME), refContent, "utf-8");
   await fs.writeFile(
     path.join(targetPath, COGNETIVY_VERSION_FILENAME),
     getCurrentVersionSync(),
     "utf-8"
   );
   return targetPath;
+}
+
+/**
+ * Return install-target paths for the cognetivy skill (for per-folder check and version read).
+ */
+export async function getCognetivySkillInstallPaths(
+  cwd: string,
+  config?: SkillsConfig
+): Promise<Array<{ target: SkillInstallTarget; path: string }>> {
+  const out: Array<{ target: SkillInstallTarget; path: string }> = [];
+  for (const t of ALL_COGNETIVY_INSTALL_TARGETS) {
+    const p = await getInstallPath(t, COGNETIVY_SKILL_NAME, cwd, config);
+    out.push({ target: t, path: p });
+  }
+  return out;
 }
 
 /** Derive a valid skill name from a folder name (lowercase, hyphens, no leading/trailing/consecutive hyphens). */

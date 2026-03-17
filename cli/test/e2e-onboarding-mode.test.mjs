@@ -426,14 +426,15 @@ describe("cognetivy mode — no workspace", () => {
     assert.strictEqual(await isWorkspaceMinimal(cwd), true);
   });
 
-  test("mode --show: prints message that no workspace, suggests init or mode", async () => {
+  test("mode --show: prints message that no workspace, suggests init or mode, does not create .cognetivy", async () => {
     const cwd = await mkdtemp();
     const out = await runCli(["mode", "--show"], cwd);
     assert.strictEqual(out.code, 0);
     assert.ok(out.stdout.includes("No workspace") || out.stdout.includes("init") || out.stdout.includes("mode"));
+    await assert.rejects(fs.access(path.join(cwd, ".cognetivy")), /ENOENT/);
   });
 
-  test("mode --json: outputs preferred_mode null, workspace none, cloud_authenticated boolean", async () => {
+  test("mode --json: outputs preferred_mode null, workspace none, cloud_authenticated boolean, does not create .cognetivy", async () => {
     const cwd = await mkdtemp();
     const out = await runCli(["mode", "--json"], cwd);
     assert.strictEqual(out.code, 0);
@@ -441,6 +442,15 @@ describe("cognetivy mode — no workspace", () => {
     assert.strictEqual(data.preferred_mode, null);
     assert.strictEqual(data.workspace, "none");
     assert.strictEqual(typeof data.cloud_authenticated, "boolean");
+    await assert.rejects(fs.access(path.join(cwd, ".cognetivy")), /ENOENT/);
+  });
+
+  test("mode with no args and no workspace (non-TTY): exits non-zero and does not create .cognetivy", async () => {
+    const cwd = await mkdtemp();
+    const out = await runCli(["mode"], cwd);
+    assert.notStrictEqual(out.code, 0);
+    assert.ok(out.stderr.includes("Interactive terminal required") || out.stderr.includes("--show") || out.stderr.includes("--json"));
+    await assert.rejects(fs.access(path.join(cwd, ".cognetivy")), /ENOENT/);
   });
 });
 

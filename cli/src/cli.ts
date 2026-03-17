@@ -128,6 +128,7 @@ import {
   installSkill,
   installSkillsFromDirectory,
   installCognetivySkill,
+  getCognetivySkillInstallPaths,
   updateSkill,
   updateAllSkills,
   type SkillInstallTarget,
@@ -136,7 +137,6 @@ import {
 import {
   getCurrentVersionSync,
   readInstalledSkillsVersion,
-  writeInstalledSkillsVersion,
   isNewerVersion,
 } from "./skills-version.js";
 import updateNotifier from "update-notifier";
@@ -428,7 +428,9 @@ program
     const showOnly = opts.show === true || opts.json === true;
     const selectMode = opts.select === "cloud" || opts.select === "local" ? opts.select : null;
 
-    if (!(await workspaceExists(cwd))) {
+    const hadWorkspace = await workspaceExists(cwd);
+
+    if (!hadWorkspace) {
       if (showOnly) {
         if (opts.json) {
           console.log(JSON.stringify({ preferred_mode: null, workspace: "none", cloud_authenticated: await isCloudAuthenticated() }));
@@ -437,7 +439,18 @@ program
         }
         return;
       }
-      await ensureMinimalWorkspace(cwd);
+      if (selectMode) {
+        if (selectMode === "cloud") {
+          await ensureMinimalWorkspace(cwd);
+        } else {
+          await ensureWorkspace(cwd, { force: false });
+        }
+        const indexAfter = await readWorkflowIndexOptional(cwd);
+        await writeWorkflowIndex({ ...(indexAfter ?? { current_workflow_id: "", workflows: [] }), preferred_mode: selectMode }, cwd);
+        console.log(`Default mode set to ${selectMode === "cloud" ? "Cloud" : "Local"}.`);
+        return;
+      }
+      // Interactive with no workspace: do not create yet; create only after user chooses below
     }
 
     const index = await readWorkflowIndexOptional(cwd);
@@ -491,7 +504,10 @@ program
             ? "Cloud (API key set)"
             : "Local";
     p.intro("cognetivy mode");
-    p.note(`Current: ${currentLabel}. Workspace: ${minimal ? "minimal" : "full"}.`, "Current state");
+    p.note(
+      hadWorkspace ? `Current: ${currentLabel}. Workspace: ${minimal ? "minimal" : "full"}.` : "No workspace yet. Choose mode to create one.",
+      "Current state"
+    );
     p.note(
       "Local: data stays in .cognetivy/ on this machine—you own it, view in Studio here.\nCloud: sign in once; view run status from anywhere (web or mobile browser) and work from anywhere.",
       "Local vs Cloud"
@@ -509,10 +525,17 @@ program
     }
 
     const selected = choice as "cloud" | "local";
-    const base: WorkflowIndexRecord = index ?? { current_workflow_id: "wf_default", workflows: [] };
-    await writeWorkflowIndex({ ...base, preferred_mode: selected }, cwd);
 
-    if (selected === "local" && minimal) {
+    if (!hadWorkspace) {
+      if (selected === "cloud") {
+        await ensureMinimalWorkspace(cwd);
+      } else {
+        await ensureWorkspace(cwd, { force: false });
+      }
+    }
+    const indexToWrite = await readWorkflowIndexOptional(cwd);
+    await writeWorkflowIndex({ ...(indexToWrite ?? { current_workflow_id: "", workflows: [] }), preferred_mode: selected }, cwd);
+    if (selected === "local" && (await isWorkspaceMinimal(cwd))) {
       await ensureWorkspace(cwd, { force: false });
       p.note("Full local workspace created (default workflow added).", "Local mode");
     }
@@ -2060,7 +2083,8 @@ program
   .option("--force", "Overwrite if skill already exists")
   .option("--no-init", "Skip cognetivy workspace init; only install skills")
   .option("--interactive", "Show interactive prompt to choose tool(s) and install accordingly")
-  .action(async (target: string | undefined, opts: { force?: boolean; init?: boolean; interactive?: boolean }) => {
+  .option("--cloud", "Install cloud-mode skill (no .cognetivy/ workspace; use --cloud on commands)")
+  .action(async (target: string | undefined, opts: { force?: boolean; init?: boolean; interactive?: boolean; cloud?: boolean }) => {
     const cwd = process.cwd();
     const useTUI = opts.interactive === true || target === undefined;
     if (useTUI) {
@@ -2068,7 +2092,8 @@ program
       await runInstallTUI({ cwd, force: opts.force, init: opts.init !== false });
       return;
     }
-    if (opts.init !== false) {
+    const skillMode = opts.cloud ? "cloud" : "local";
+    if (opts.init !== false && skillMode === "local") {
       await ensureWorkspace(cwd);
     }
     const normalized = target.toLowerCase();
@@ -2093,10 +2118,13 @@ program
     }
     const config = await getMergedConfig(cwd);
     const skillsConfig = getSkillsConfigFromMerged(config);
-    const targetsToInstall: SkillInstallTarget[] =
+    let targetsToInstall: SkillInstallTarget[] =
       resolved === "all"
         ? (["agent", "agents", "cursor", "factory", "gemini", "openclaw", "opencode", "qwen", "workspace"] as SkillInstallTarget[])
         : [resolved];
+    if (skillMode === "cloud") {
+      targetsToInstall = targetsToInstall.filter((t) => t !== "workspace");
+    }
     const optsCommon = { force: opts.force, cwd, config: skillsConfig };
     try {
       for (const internalTarget of targetsToInstall) {
@@ -2107,11 +2135,10 @@ program
         }
       }
       for (const internalTarget of targetsToInstall) {
-        const cognetivyPath = await installCognetivySkill(internalTarget, cwd, skillsConfig);
+        const cognetivyPath = await installCognetivySkill(internalTarget, cwd, skillsConfig, skillMode);
         const label = targetToLabel(internalTarget);
         console.log(`[${label}] Cognetivy skill at ${cognetivyPath}`);
       }
-      await writeInstalledSkillsVersion(cwd, getCurrentVersionSync());
     } catch (err) {
       console.error(err instanceof Error ? err.message : String(err));
       process.exit(1);
@@ -2224,7 +2251,7 @@ skillsCmd
   });
 skillsCmd
   .command("check [path]")
-  .description("Validate SKILL.md (path = skill dir; omit to check all listed skills)")
+  .description("Validate SKILL.md (path = skill dir; omit to check cognetivy skill per install target)")
   .action(async (dirPath?: string) => {
     const cwd = process.cwd();
     if (dirPath) {
@@ -2241,18 +2268,31 @@ skillsCmd
     }
     const config = await getMergedConfig(cwd);
     const skillsConfig = getSkillsConfigFromMerged(config);
-    const skills = await listSkills(cwd, undefined, skillsConfig);
+    const installPaths = await getCognetivySkillInstallPaths(cwd, skillsConfig);
     let hasInvalid = false;
-    for (const s of skills) {
-      const { valid, errors } = await validateSkill(s.path);
+    let checkedCount = 0;
+    for (const { target, path: skillPath } of installPaths) {
+      try {
+        await fs.access(path.join(skillPath, "SKILL.md"));
+      } catch {
+        continue;
+      }
+      checkedCount++;
+      const { valid, errors } = await validateSkill(skillPath);
       if (!valid) {
         hasInvalid = true;
-        console.error(`${s.metadata.name}:`);
+        console.error(`${target}:`);
         errors.forEach((e) => console.error("  -", e));
+      } else {
+        console.log(`${target}: valid`);
       }
     }
     if (hasInvalid) process.exit(1);
-    console.log(`All ${skills.length} skill(s) valid.`);
+    if (checkedCount === 0) {
+      console.log("No cognetivy skill folders found. Run `cognetivy install <target>` first.");
+    } else {
+      console.log(`All ${checkedCount} cognetivy skill folder(s) valid.`);
+    }
   });
 skillsCmd
   .command("paths")
@@ -2522,9 +2562,7 @@ async function runDefaultOnboardingFlow(cwd: string): Promise<void> {
     }
   }
 
-  if (mode === "cloud") {
-    await ensureMinimalWorkspace(cwd);
-  } else {
+  if (mode === "local") {
     await ensureWorkspace(cwd, { force: false });
   }
   const index = await readWorkflowIndexOptional(cwd);

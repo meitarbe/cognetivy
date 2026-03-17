@@ -11,11 +11,10 @@ import fs from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import ora from "ora";
 import type { SkillInstallTarget, SkillsConfig } from "./skills.js";
-import { ensureMinimalWorkspace, ensureWorkspace, workspaceExists } from "./workspace.js";
+import { ensureWorkspace, workspaceExists } from "./workspace.js";
 import { getMergedConfig } from "./config.js";
 import { installSkillsFromDirectory, installCognetivySkill } from "./skills.js";
 import { renderPngFileToAnsi } from "./terminal-png.js";
-import { getCurrentVersionSync, writeInstalledSkillsVersion } from "./skills-version.js";
 import { listWorkflowTemplatesForPicker } from "./workflow-templates.js";
 import { applyWorkflowTemplateToWorkspace } from "./workflow-template-apply.js";
 
@@ -191,7 +190,10 @@ export async function runInstallTUI(options: InstallTUIOptions): Promise<void> {
     process.exit(0);
   }
 
-  const targetsToInstall = clientToTargets(selectedClients as InstallerClient[]);
+  let targetsToInstall = clientToTargets(selectedClients as InstallerClient[]);
+  if (onboardingMode === "cloud") {
+    targetsToInstall = targetsToInstall.filter((t) => t !== "workspace");
+  }
 
   p.note(
     targetsToInstall.map((t) => `- ${t}: ${targetToInstallPathHint(t)}`).join("\n"),
@@ -200,14 +202,10 @@ export async function runInstallTUI(options: InstallTUIOptions): Promise<void> {
 
   const hadWorkspaceBefore = await workspaceExists(cwd);
 
-  if (init) {
+  if (init && onboardingMode !== "cloud") {
     const initSpinner = ora("Initializing workspace...").start();
     try {
-      if (onboardingMode === "cloud") {
-        await ensureMinimalWorkspace(cwd, { noGitignore });
-      } else {
-        await ensureWorkspace(cwd, { force, noGitignore });
-      }
+      await ensureWorkspace(cwd, { force, noGitignore });
       initSpinner.succeed("Workspace ready");
     } catch (err) {
       initSpinner.fail("Workspace init failed");
@@ -221,6 +219,7 @@ export async function runInstallTUI(options: InstallTUIOptions): Promise<void> {
   const optsCommon = { force: forceSkills, cwd, config: skillsConfig ?? {} };
   const installedPaths: string[] = [];
 
+  const skillMode = onboardingMode === "cloud" ? "cloud" : "local";
   for (const internalTarget of targetsToInstall) {
     const spinner = ora(`Installing (${targetToInstallPathHint(internalTarget)})...`).start();
     try {
@@ -228,7 +227,7 @@ export async function runInstallTUI(options: InstallTUIOptions): Promise<void> {
       for (const r of results) {
         installedPaths.push(`[${internalTarget}] ${r.path}`);
       }
-      const cognetivyPath = await installCognetivySkill(internalTarget, cwd, skillsConfig);
+      const cognetivyPath = await installCognetivySkill(internalTarget, cwd, skillsConfig, skillMode);
       installedPaths.push(`[${internalTarget}] Cognetivy skill: ${cognetivyPath}`);
       spinner.succeed(`Installed to ${targetToInstallPathHint(internalTarget)}`);
     } catch (err) {
@@ -244,8 +243,6 @@ export async function runInstallTUI(options: InstallTUIOptions): Promise<void> {
       throw err;
     }
   }
-
-  await writeInstalledSkillsVersion(cwd, getCurrentVersionSync());
 
   const skipTemplateInInstall = init && (hadWorkspaceBefore || onboardingMode === "cloud");
   if (!init || hadWorkspaceBefore) {
