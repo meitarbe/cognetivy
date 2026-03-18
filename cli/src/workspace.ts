@@ -19,8 +19,8 @@ import {
   createMinimalWorkflowIndex,
   DEFAULT_WORKFLOW_ID,
 } from "./default-workflow.js";
-import { validateCollectionItemPayload, validateCollectionItemsPayload } from "./validate-collection.js";
-import { mergeTraceabilityIntoSchema, mergeNameRequiredIntoSchema } from "./traceability-schema.js";
+import { localStoreExists, LocalStore, initLocalStore } from "./local-store/index.js";
+import { validateCollectionItemPayload } from "./validate-collection.js";
 
 export const WORKSPACE_DIR = ".cognetivy";
 export const WORKFLOWS_DIR = "workflows";
@@ -71,21 +71,14 @@ export function getWorkspacePaths(cwd: string = process.cwd()): WorkspacePaths {
 }
 
 /**
- * Check if workspace exists (has workflow.json).
+ * Check if workspace exists (.cognetivy/cognetivy.db).
  */
 export async function workspaceExists(cwd: string = process.cwd()): Promise<boolean> {
-  const p = getWorkspacePaths(cwd);
-  try {
-    await fs.access(p.workflowsIndexPath);
-    return true;
-  } catch {
-    return false;
-  }
+  return localStoreExists(cwd);
 }
 
 /**
- * Create full workspace structure. Idempotent for directories.
- * If default workflow artifacts already exist and force is false, they are not overwritten.
+ * Create full workspace (SQLite DB + default workflow). Idempotent.
  */
 export async function ensureWorkspace(
   cwd: string = process.cwd(),
@@ -93,28 +86,26 @@ export async function ensureWorkspace(
 ): Promise<WorkspacePaths> {
   const p = getWorkspacePaths(cwd);
   await fs.mkdir(p.root, { recursive: true });
-  await fs.mkdir(p.workflowsDir, { recursive: true });
-  await fs.mkdir(p.runsDir, { recursive: true });
-  await fs.mkdir(p.eventsDir, { recursive: true });
-  await fs.mkdir(p.collectionsDir, { recursive: true });
-  await fs.mkdir(p.nodeResultsDir, { recursive: true });
-
-  const indexExists = await fileExists(p.workflowsIndexPath);
-  if (!indexExists) {
-    const index = createDefaultWorkflowIndex();
-    await fs.writeFile(p.workflowsIndexPath, JSON.stringify(index, null, 2), "utf-8");
+  const existed = await localStoreExists(cwd);
+  await initLocalStore(cwd);
+  const store = new LocalStore(cwd);
+  try {
+    if (!existed || options.force) {
+      const now = new Date().toISOString();
+      store.writeWorkflowIndex(createDefaultWorkflowIndex());
+      store.writeWorkflowRecord(createDefaultWorkflowRecord(now));
+      store.writeWorkflowVersionRecord(createDefaultWorkflowVersionRecord(now));
+      const { createDefaultCollectionSchema } = await import("./default-collection-schema.js");
+      store.writeCollectionSchema(DEFAULT_WORKFLOW_ID, createDefaultCollectionSchema(DEFAULT_WORKFLOW_ID));
+    }
+  } finally {
+    store.close();
   }
-  // When force is true we only refresh default workflow files (wf_default); we never overwrite
-  // workflows/index.json so the user's workflows and current selection are preserved.
-  await ensureDefaultWorkflowFiles(cwd, { force: options.force });
-
   return p;
 }
 
 /**
- * Create minimal workspace structure (no default workflow).
- * Use for cloud-only: .cognetivy/, dirs, workflows/index.json only.
- * Idempotent; does not overwrite existing index.
+ * Create minimal workspace (SQLite DB, no default workflow). Idempotent.
  */
 export async function ensureMinimalWorkspace(
   cwd: string = process.cwd(),
@@ -122,60 +113,17 @@ export async function ensureMinimalWorkspace(
 ): Promise<WorkspacePaths> {
   const p = getWorkspacePaths(cwd);
   await fs.mkdir(p.root, { recursive: true });
-  await fs.mkdir(p.workflowsDir, { recursive: true });
-  await fs.mkdir(p.runsDir, { recursive: true });
-  await fs.mkdir(p.eventsDir, { recursive: true });
-  await fs.mkdir(p.collectionsDir, { recursive: true });
-  await fs.mkdir(p.nodeResultsDir, { recursive: true });
-
-  const indexExists = await fileExists(p.workflowsIndexPath);
-  if (!indexExists) {
-    const index = createMinimalWorkflowIndex();
-    await fs.writeFile(p.workflowsIndexPath, JSON.stringify(index, null, 2), "utf-8");
+  const existed = await localStoreExists(cwd);
+  await initLocalStore(cwd);
+  if (!existed) {
+    const store = new LocalStore(cwd);
+    try {
+      store.writeWorkflowIndex(createMinimalWorkflowIndex());
+    } finally {
+      store.close();
+    }
   }
   return p;
-}
-
-async function ensureDefaultWorkflowFiles(
-  cwd: string,
-  options: { force?: boolean } = {}
-): Promise<void> {
-  const p = getWorkspacePaths(cwd);
-  const now = new Date().toISOString();
-
-  const wfDir = getWorkflowDirPath(DEFAULT_WORKFLOW_ID, cwd);
-  const versionsDir = getWorkflowVersionsDirPath(DEFAULT_WORKFLOW_ID, cwd);
-  const wfCollectionsDir = getWorkflowCollectionsDirPath(DEFAULT_WORKFLOW_ID, cwd);
-  await fs.mkdir(wfDir, { recursive: true });
-  await fs.mkdir(versionsDir, { recursive: true });
-  await fs.mkdir(wfCollectionsDir, { recursive: true });
-
-  const wfPath = getWorkflowRecordPath(DEFAULT_WORKFLOW_ID, cwd);
-  const version = createDefaultWorkflowVersionRecord(now);
-  const versionPath = getWorkflowVersionRecordPath(DEFAULT_WORKFLOW_ID, version.version_id, cwd);
-  const schemaPath = getWorkflowCollectionSchemaPath(DEFAULT_WORKFLOW_ID, cwd);
-
-  if (!(await fileExists(wfPath)) || options.force) {
-    const wf = createDefaultWorkflowRecord(now);
-    await fs.writeFile(wfPath, JSON.stringify(wf, null, 2), "utf-8");
-  }
-  if (!(await fileExists(versionPath)) || options.force) {
-    await fs.writeFile(versionPath, JSON.stringify(version, null, 2), "utf-8");
-  }
-  if (!(await fileExists(schemaPath)) || options.force) {
-    const { createDefaultCollectionSchema } = await import("./default-collection-schema.js");
-    const schema = createDefaultCollectionSchema(DEFAULT_WORKFLOW_ID);
-    await fs.writeFile(schemaPath, JSON.stringify(schema, null, 2), "utf-8");
-  }
-}
-
-async function fileExists(filePath: string): Promise<boolean> {
-  try {
-    await fs.access(filePath);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 /**
@@ -210,14 +158,13 @@ export function getWorkflowRecordPath(workflowId: string, cwd: string = process.
  * True if workspace exists but default workflow (wf_default) is not present (cloud-only minimal workspace).
  */
 export async function isWorkspaceMinimal(cwd: string = process.cwd()): Promise<boolean> {
-  const exists = await workspaceExists(cwd);
-  if (!exists) return false;
-  const defaultWfPath = getWorkflowRecordPath(DEFAULT_WORKFLOW_ID, cwd);
+  if (!(await workspaceExists(cwd))) return false;
+  const store = new LocalStore(cwd);
   try {
-    await fs.access(defaultWfPath);
-    return false;
-  } catch {
-    return true;
+    const index = store.readWorkflowIndex();
+    return !index.workflows.some((w) => w.workflow_id === DEFAULT_WORKFLOW_ID);
+  } finally {
+    store.close();
   }
 }
 
@@ -258,24 +205,28 @@ export function getWorkflowCollectionSchemaPath(workflowId: string, cwd: string 
 }
 
 /**
- * Read workflow index (workflows/index.json). Throws if workspace or file missing.
+ * Read workflow index. Throws if workspace missing.
  */
 export async function readWorkflowIndex(cwd: string = process.cwd()): Promise<WorkflowIndexRecord> {
-  const p = await requireWorkspace(cwd);
-  const raw = await fs.readFile(p.workflowsIndexPath, "utf-8");
-  return JSON.parse(raw) as WorkflowIndexRecord;
+  await requireWorkspace(cwd);
+  const store = new LocalStore(cwd);
+  try {
+    return store.readWorkflowIndex();
+  } finally {
+    store.close();
+  }
 }
 
 /**
- * Read workflow index if it exists (e.g. for resolving cloud_current_workflow_id without requiring full workspace).
+ * Read workflow index if workspace exists; otherwise null.
  */
 export async function readWorkflowIndexOptional(cwd: string = process.cwd()): Promise<WorkflowIndexRecord | null> {
-  const p = getWorkspacePaths(cwd);
+  if (!(await workspaceExists(cwd))) return null;
+  const store = new LocalStore(cwd);
   try {
-    const raw = await fs.readFile(p.workflowsIndexPath, "utf-8");
-    return JSON.parse(raw) as WorkflowIndexRecord;
-  } catch {
-    return null;
+    return store.readWorkflowIndex();
+  } finally {
+    store.close();
   }
 }
 
@@ -283,8 +234,13 @@ export async function readWorkflowIndexOptional(cwd: string = process.cwd()): Pr
  * Write workflow index.
  */
 export async function writeWorkflowIndex(index: WorkflowIndexRecord, cwd: string = process.cwd()): Promise<void> {
-  const p = await requireWorkspace(cwd);
-  await fs.writeFile(p.workflowsIndexPath, JSON.stringify(index, null, 2), "utf-8");
+  await requireWorkspace(cwd);
+  const store = new LocalStore(cwd);
+  try {
+    store.writeWorkflowIndex(index);
+  } finally {
+    store.close();
+  }
 }
 
 export async function listWorkflows(cwd: string = process.cwd()): Promise<WorkflowRecordSummary[]> {
@@ -294,17 +250,22 @@ export async function listWorkflows(cwd: string = process.cwd()): Promise<Workfl
 
 export async function readWorkflowRecord(workflowId: string, cwd: string = process.cwd()): Promise<WorkflowRecord> {
   await requireWorkspace(cwd);
-  const filePath = getWorkflowRecordPath(workflowId, cwd);
-  const raw = await fs.readFile(filePath, "utf-8");
-  return JSON.parse(raw) as WorkflowRecord;
+  const store = new LocalStore(cwd);
+  try {
+    return store.readWorkflowRecord(workflowId);
+  } finally {
+    store.close();
+  }
 }
 
 export async function writeWorkflowRecord(workflow: WorkflowRecord, cwd: string = process.cwd()): Promise<void> {
   await requireWorkspace(cwd);
-  const wfDir = getWorkflowDirPath(workflow.workflow_id, cwd);
-  await fs.mkdir(wfDir, { recursive: true });
-  const filePath = getWorkflowRecordPath(workflow.workflow_id, cwd);
-  await fs.writeFile(filePath, JSON.stringify(workflow, null, 2), "utf-8");
+  const store = new LocalStore(cwd);
+  try {
+    store.writeWorkflowRecord(workflow);
+  } finally {
+    store.close();
+  }
 }
 
 export async function listWorkflowVersionIds(
@@ -312,28 +273,12 @@ export async function listWorkflowVersionIds(
   cwd: string = process.cwd()
 ): Promise<string[]> {
   await requireWorkspace(cwd);
-  const manifestPath = getWorkflowVersionIdsManifestPath(workflowId, cwd);
+  const store = new LocalStore(cwd);
   try {
-    const raw = await fs.readFile(manifestPath, "utf-8");
-    const data = JSON.parse(raw) as { version_ids?: string[] };
-    if (Array.isArray(data?.version_ids)) {
-      return data.version_ids;
-    }
-  } catch {
-    // manifest missing or invalid; fall back to readdir
+    return store.listWorkflowVersionIds(workflowId);
+  } finally {
+    store.close();
   }
-  const dir = getWorkflowVersionsDirPath(workflowId, cwd);
-  const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => []);
-  const ids = entries
-    .filter((e) => e.isFile() && e.name.endsWith(".json") && e.name !== WORKFLOW_VERSION_IDS_JSON)
-    .map((e) => e.name.replace(/\.json$/, ""))
-    .sort((a, b) => a.localeCompare(b, "en", { numeric: true, sensitivity: "base" }));
-  try {
-    await fs.writeFile(manifestPath, JSON.stringify({ version_ids: ids }, null, 2), "utf-8");
-  } catch {
-    // best-effort write
-  }
-  return ids;
 }
 
 export async function readWorkflowVersionRecord(
@@ -342,12 +287,11 @@ export async function readWorkflowVersionRecord(
   cwd: string = process.cwd()
 ): Promise<WorkflowVersionRecord> {
   await requireWorkspace(cwd);
-  const filePath = getWorkflowVersionRecordPath(workflowId, versionId, cwd);
+  const store = new LocalStore(cwd);
   try {
-    const raw = await fs.readFile(filePath, "utf-8");
-    return JSON.parse(raw) as WorkflowVersionRecord;
-  } catch {
-    throw new Error(`Workflow version "${workflowId}/${versionId}" not found at ${filePath}`);
+    return store.readWorkflowVersionRecord(workflowId, versionId);
+  } finally {
+    store.close();
   }
 }
 
@@ -356,27 +300,11 @@ export async function writeWorkflowVersionRecord(
   cwd: string = process.cwd()
 ): Promise<void> {
   await requireWorkspace(cwd);
-  const dir = getWorkflowVersionsDirPath(workflow.workflow_id, cwd);
-  await fs.mkdir(dir, { recursive: true });
-  const filePath = getWorkflowVersionRecordPath(workflow.workflow_id, workflow.version_id, cwd);
-  await fs.writeFile(filePath, JSON.stringify(workflow, null, 2), "utf-8");
-
-  const manifestPath = getWorkflowVersionIdsManifestPath(workflow.workflow_id, cwd);
-  let ids: string[];
+  const store = new LocalStore(cwd);
   try {
-    const raw = await fs.readFile(manifestPath, "utf-8");
-    const data = JSON.parse(raw) as { version_ids?: string[] };
-    ids = Array.isArray(data?.version_ids) ? data.version_ids : [];
-  } catch {
-    const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => []);
-    ids = entries
-      .filter((e) => e.isFile() && e.name.endsWith(".json") && e.name !== WORKFLOW_VERSION_IDS_JSON)
-      .map((e) => e.name.replace(/\.json$/, ""));
-  }
-  if (!ids.includes(workflow.version_id)) {
-    ids.push(workflow.version_id);
-    ids.sort((a, b) => a.localeCompare(b, "en", { numeric: true, sensitivity: "base" }));
-    await fs.writeFile(manifestPath, JSON.stringify({ version_ids: ids }, null, 2), "utf-8").catch(() => {});
+    store.writeWorkflowVersionRecord(workflow);
+  } finally {
+    store.close();
   }
 }
 
@@ -396,12 +324,11 @@ export function getEventsFilePath(runId: string, cwd: string = process.cwd()): s
 
 export async function runExists(runId: string, cwd: string = process.cwd()): Promise<boolean> {
   await requireWorkspace(cwd);
-  const filePath = getRunFilePath(runId, cwd);
+  const store = new LocalStore(cwd);
   try {
-    await fs.access(filePath);
-    return true;
-  } catch {
-    return false;
+    return store.runExists(runId);
+  } finally {
+    store.close();
   }
 }
 
@@ -409,9 +336,13 @@ export async function writeRunFile(
   record: RunRecord,
   cwd: string = process.cwd()
 ): Promise<void> {
-  const p = await requireWorkspace(cwd);
-  const filePath = path.join(p.runsDir, `${record.run_id}.json`);
-  await fs.writeFile(filePath, JSON.stringify(record, null, 2), "utf-8");
+  await requireWorkspace(cwd);
+  const store = new LocalStore(cwd);
+  try {
+    store.writeRunFile(record);
+  } finally {
+    store.close();
+  }
 }
 
 export async function readRunFile(
@@ -419,12 +350,11 @@ export async function readRunFile(
   cwd: string = process.cwd()
 ): Promise<RunRecord> {
   await requireWorkspace(cwd);
-  const filePath = getRunFilePath(runId, cwd);
+  const store = new LocalStore(cwd);
   try {
-    const raw = await fs.readFile(filePath, "utf-8");
-    return JSON.parse(raw) as RunRecord;
-  } catch (err) {
-    throw new Error(`Run "${runId}" not found. Ensure the run exists (e.g. cognetivy run start).`);
+    return store.readRunFile(runId);
+  } finally {
+    store.close();
   }
 }
 
@@ -433,32 +363,50 @@ export async function updateRunFile(
   updates: Partial<RunRecord>,
   cwd: string = process.cwd()
 ): Promise<void> {
-  const existing = await readRunFile(runId, cwd);
-  const updated = { ...existing, ...updates };
-  await writeRunFile(updated, cwd);
+  await requireWorkspace(cwd);
+  const store = new LocalStore(cwd);
+  try {
+    store.updateRunFile(runId, updates);
+  } finally {
+    store.close();
+  }
 }
 
-/** Append a single NDJSON line to the events file. Uses append-only write. */
+/** List all runs (newest first). */
+export async function listRuns(cwd: string = process.cwd()): Promise<RunRecord[]> {
+  await requireWorkspace(cwd);
+  const store = new LocalStore(cwd);
+  try {
+    return store.listRuns();
+  } finally {
+    store.close();
+  }
+}
+
+/** Read all events for a run in order. */
+export async function readRunEvents(runId: string, cwd: string = process.cwd()): Promise<EventPayload[]> {
+  await requireWorkspace(cwd);
+  const store = new LocalStore(cwd);
+  try {
+    return store.readRunEvents(runId);
+  } finally {
+    store.close();
+  }
+}
+
+/** Append a single event line to the run's events. */
 export async function appendEventLine(
   runId: string,
   event: EventPayload,
   cwd: string = process.cwd()
 ): Promise<void> {
-  const p = await requireWorkspace(cwd);
-  const filePath = path.join(p.eventsDir, `${runId}.ndjson`);
-  const line = JSON.stringify(event) + "\n";
-  const fd = await fs.open(filePath, "a");
+  await requireWorkspace(cwd);
+  const store = new LocalStore(cwd);
   try {
-    await fd.write(line, undefined, "utf-8");
+    store.appendEventLine(runId, event);
   } finally {
-    await fd.close();
+    store.close();
   }
-}
-
-function generateItemId(prefix: string): string {
-  const ts = Date.now().toString(36);
-  const rand = Math.random().toString(36).slice(2, 8);
-  return `${prefix}_${ts}_${rand}`;
 }
 
 // --- Collection schema and storage ---
@@ -479,18 +427,26 @@ export async function readCollectionSchema(
   cwd: string = process.cwd()
 ): Promise<CollectionSchemaConfig> {
   await requireWorkspace(cwd);
-  const schemaPath = getWorkflowCollectionSchemaPath(workflowId, cwd);
-  let schema: CollectionSchemaConfig;
+  const store = new LocalStore(cwd);
   try {
-    const raw = await fs.readFile(schemaPath, "utf-8");
-    schema = JSON.parse(raw) as CollectionSchemaConfig;
-  } catch {
-    const { createDefaultCollectionSchema } = await import("./default-collection-schema.js");
-    schema = createDefaultCollectionSchema(workflowId);
-    await fs.mkdir(path.dirname(schemaPath), { recursive: true });
-    await fs.writeFile(schemaPath, JSON.stringify(schema, null, 2), "utf-8");
+    return store.readCollectionSchema(workflowId);
+  } finally {
+    store.close();
   }
-  return mergeNameRequiredIntoSchema(mergeTraceabilityIntoSchema(schema));
+}
+
+/**
+ * Validate run input against the workflow's run_input schema. Call before creating a run;
+ * throws if input is invalid so no run is created on validation failure.
+ */
+export async function validateRunInput(
+  workflowId: string,
+  input: Record<string, unknown>,
+  cwd: string = process.cwd()
+): Promise<void> {
+  const schema = await readCollectionSchema(workflowId, cwd);
+  const payload = typeof input.name === "string" && input.name !== "" ? input : { name: "Run input", ...input };
+  validateCollectionItemPayload(schema, "run_input", payload);
 }
 
 export async function writeCollectionSchema(
@@ -499,32 +455,22 @@ export async function writeCollectionSchema(
   cwd: string = process.cwd()
 ): Promise<void> {
   await requireWorkspace(cwd);
-  if (schema.workflow_id !== workflowId) {
-    throw new Error(`Collection schema workflow_id must match: expected "${workflowId}", got "${schema.workflow_id}"`);
+  const store = new LocalStore(cwd);
+  try {
+    store.writeCollectionSchema(workflowId, schema);
+  } finally {
+    store.close();
   }
-  const schemaPath = getWorkflowCollectionSchemaPath(workflowId, cwd);
-  await fs.mkdir(path.dirname(schemaPath), { recursive: true });
-  await fs.writeFile(schemaPath, JSON.stringify(schema, null, 2), "utf-8");
 }
 
 export async function listCollectionKindsForRun(runId: string, cwd: string = process.cwd()): Promise<string[]> {
   await requireWorkspace(cwd);
-  if (!(await runExists(runId, cwd))) {
-    throw new Error(`Run "${runId}" not found.`);
-  }
-  const kinds = new Set<string>();
-  const dir = getRunCollectionsDir(runId, cwd);
+  const store = new LocalStore(cwd);
   try {
-    const entries = await fs.readdir(dir, { withFileTypes: true });
-    for (const e of entries) {
-      if (e.isFile() && e.name.endsWith(".json")) {
-        kinds.add(e.name.replace(/\.json$/, ""));
-      }
-    }
-  } catch {
-    // dir may not exist
+    return store.listCollectionKindsForRun(runId);
+  } finally {
+    store.close();
   }
-  return Array.from(kinds);
 }
 
 export async function readCollections(
@@ -533,23 +479,11 @@ export async function readCollections(
   cwd: string = process.cwd()
 ): Promise<CollectionStore> {
   await requireWorkspace(cwd);
-  if (!(await runExists(runId, cwd))) {
-    throw new Error(`Run "${runId}" not found.`);
-  }
-  const run = await readRunFile(runId, cwd);
-  const filePath = getCollectionStorePath(runId, kind, cwd);
+  const store = new LocalStore(cwd);
   try {
-    const raw = await fs.readFile(filePath, "utf-8");
-    return JSON.parse(raw) as CollectionStore;
-  } catch {
-    return {
-      run_id: runId,
-      workflow_id: run.workflow_id,
-      workflow_version_id: run.workflow_version_id,
-      kind,
-      updated_at: new Date().toISOString(),
-      items: [],
-    };
+    return store.readCollections(runId, kind);
+  } finally {
+    store.close();
   }
 }
 
@@ -561,41 +495,12 @@ export async function writeCollections(
   cwd: string = process.cwd()
 ): Promise<void> {
   await requireWorkspace(cwd);
-  if (!(await runExists(runId, cwd))) {
-    throw new Error(`Run "${runId}" not found.`);
+  const store = new LocalStore(cwd);
+  try {
+    store.writeCollections(runId, kind, payloads, options);
+  } finally {
+    store.close();
   }
-  const run = await readRunFile(runId, cwd);
-  const collectionSchema = await readCollectionSchema(run.workflow_id, cwd);
-  validateCollectionItemsPayload(collectionSchema, kind, payloads);
-
-  const now = new Date().toISOString();
-  const prefix = kind.slice(0, 3) || "col";
-  const items: CollectionItem[] = payloads.map((p) => {
-    const reserved = stripReservedCollectionKeys(p);
-    const idFromPayload = typeof p.id === "string" && p.id ? p.id : undefined;
-    const item: CollectionItem = {
-      ...reserved,
-      id: idFromPayload ?? generateItemId(prefix),
-      created_at: now,
-      run_id: runId,
-      created_by_node_id: options.created_by_node_id,
-      created_by_node_result_id: options.created_by_node_result_id,
-    };
-    return item;
-  });
-
-  const dir = getRunCollectionsDir(runId, cwd);
-  await fs.mkdir(dir, { recursive: true });
-  const store: CollectionStore = {
-    run_id: runId,
-    workflow_id: run.workflow_id,
-    workflow_version_id: run.workflow_version_id,
-    kind,
-    updated_at: new Date().toISOString(),
-    items,
-  };
-  const filePath = getCollectionStorePath(runId, kind, cwd);
-  await fs.writeFile(filePath, JSON.stringify(store, null, 2), "utf-8");
 }
 
 export async function appendCollection(
@@ -606,48 +511,12 @@ export async function appendCollection(
   cwd: string = process.cwd()
 ): Promise<CollectionItem> {
   await requireWorkspace(cwd);
-  if (!(await runExists(runId, cwd))) {
-    throw new Error(`Run "${runId}" not found.`);
+  const store = new LocalStore(cwd);
+  try {
+    return store.appendCollection(runId, kind, payload, options);
+  } finally {
+    store.close();
   }
-  const run = await readRunFile(runId, cwd);
-  const collectionSchema = await readCollectionSchema(run.workflow_id, cwd);
-  validateCollectionItemPayload(collectionSchema, kind, payload);
-  const existing = await readCollections(runId, kind, cwd);
-  const now = new Date().toISOString();
-  const prefix = kind.slice(0, 3) || "col";
-  const item: CollectionItem = {
-    ...stripReservedCollectionKeys(payload),
-    id: options.id ?? (typeof payload.id === "string" && payload.id ? payload.id : generateItemId(prefix)),
-    created_at: now,
-    run_id: runId,
-    created_by_node_id: options.created_by_node_id,
-    created_by_node_result_id: options.created_by_node_result_id,
-  };
-  existing.items.push(item);
-  existing.updated_at = now;
-  existing.workflow_id = run.workflow_id;
-  existing.workflow_version_id = run.workflow_version_id;
-  const dir = getRunCollectionsDir(runId, cwd);
-  await fs.mkdir(dir, { recursive: true });
-  const filePath = getCollectionStorePath(runId, kind, cwd);
-  await fs.writeFile(filePath, JSON.stringify(existing, null, 2), "utf-8");
-  return item;
-}
-
-function stripReservedCollectionKeys(payload: Record<string, unknown>): Record<string, unknown> {
-  const reserved = new Set([
-    "id",
-    "created_at",
-    "run_id",
-    "created_by_node_id",
-    "created_by_node_result_id",
-  ]);
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(payload)) {
-    if (reserved.has(k)) continue;
-    out[k] = v;
-  }
-  return out;
 }
 
 // --- Node results (per-run, per-node) ---
@@ -665,21 +534,12 @@ export function getNodeResultPath(runId: string, nodeId: string, cwd: string = p
 
 export async function listNodeResults(runId: string, cwd: string = process.cwd()): Promise<NodeResultRecord[]> {
   await requireWorkspace(cwd);
-  const dir = getRunNodeResultsDir(runId, cwd);
-  const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => []);
-  const results: NodeResultRecord[] = [];
-  for (const e of entries) {
-    if (!e.isFile() || !e.name.endsWith(".json")) continue;
-    const raw = await fs.readFile(path.join(dir, e.name), "utf-8").catch(() => "");
-    if (!raw) continue;
-    try {
-      results.push(JSON.parse(raw) as NodeResultRecord);
-    } catch {
-      // skip
-    }
+  const store = new LocalStore(cwd);
+  try {
+    return store.listNodeResults(runId);
+  } finally {
+    store.close();
   }
-  results.sort((a, b) => (b.started_at ?? "").localeCompare(a.started_at ?? ""));
-  return results;
 }
 
 export async function readNodeResult(
@@ -688,12 +548,11 @@ export async function readNodeResult(
   cwd: string = process.cwd()
 ): Promise<NodeResultRecord | null> {
   await requireWorkspace(cwd);
-  const filePath = getNodeResultPath(runId, nodeId, cwd);
+  const store = new LocalStore(cwd);
   try {
-    const raw = await fs.readFile(filePath, "utf-8");
-    return JSON.parse(raw) as NodeResultRecord;
-  } catch {
-    return null;
+    return store.readNodeResult(runId, nodeId);
+  } finally {
+    store.close();
   }
 }
 
@@ -704,14 +563,10 @@ export async function writeNodeResult(
   cwd: string = process.cwd()
 ): Promise<void> {
   await requireWorkspace(cwd);
-  if (result.run_id !== runId) {
-    throw new Error(`NodeResult.run_id must match: expected "${runId}", got "${result.run_id}"`);
+  const store = new LocalStore(cwd);
+  try {
+    store.writeNodeResult(runId, nodeId, result);
+  } finally {
+    store.close();
   }
-  if (result.node_id !== nodeId) {
-    throw new Error(`NodeResult.node_id must match: expected "${nodeId}", got "${result.node_id}"`);
-  }
-  const dir = getRunNodeResultsDir(runId, cwd);
-  await fs.mkdir(dir, { recursive: true });
-  const filePath = getNodeResultPath(runId, nodeId, cwd);
-  await fs.writeFile(filePath, JSON.stringify(result, null, 2), "utf-8");
 }

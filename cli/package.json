@@ -8,7 +8,9 @@
     "cognetivy": "dist/cli.js"
   },
   "scripts": {
-    "build": "tsc && node ./scripts/copy-installer-assets.mjs",
+    "build:core": "npm run build --prefix ../core",
+    "prebuild": "npm run build:core",
+    "build": "npm run prebuild && tsc && node ./scripts/copy-installer-assets.mjs && node ./scripts/patch-studio-server.mjs",
     "prepare": "npm run build",
     "test": "npm run build && node --test test/*.test.mjs",
     "build:studio": "cd ../studio && npm run build && node -e \"require('fs').cpSync(require('path').join(process.cwd(),'dist'), require('path').join(process.cwd(),'../cli/dist/studio'), {recursive:true})\"",
@@ -37,7 +39,9 @@
     "node": ">=18"
   },
   "dependencies": {
+    "@cognetivy/core": "file:../core",
     "@clack/prompts": "^1.0.1",
+    "better-sqlite3": "^11.6.0",
     "ajv": "^8.18.0",
     "ajv-formats": "^3.0.1",
     "chokidar": "^4.0.1",
@@ -52,6 +56,7 @@
     "yaml": "^2.8.2"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11",
     "@types/node": "^22.10.0",
     "@types/pngjs": "^6.0.5",
     "typescript": "^5.7.0"

@@ -1,18 +1,21 @@
 /**
  * Data types for cognetivy workflow, runs, events, and mutations.
- * All timestamps are ISO 8601 strings.
+ * Workflow/collection schema types from shared core; run/event/mutation types local.
  */
 
-export enum WorkflowNodeType {
-  Prompt = "PROMPT",
-  HumanInTheLoop = "HUMAN_IN_THE_LOOP",
-}
+export {
+  WorkflowNodeType,
+  type WorkflowNode,
+  type WorkflowVersionRecord,
+  type CollectionKindSchema,
+  type CollectionSchemaConfig,
+  CollectionReferenceCardinality,
+  type CollectionFieldReference,
+} from "@cognetivy/core";
 
 export interface WorkflowIndexRecord {
   current_workflow_id: string;
-  /** When set, cloud commands use this workflow when --workflow and COGNETIVY_WORKFLOW_ID are not set. */
   cloud_current_workflow_id?: string;
-  /** When set, commands default to cloud or local when both are possible (e.g. API key set but user prefers local). */
   preferred_mode?: "cloud" | "local";
   workflows: WorkflowRecordSummary[];
 }
@@ -28,50 +31,16 @@ export interface WorkflowRecord extends WorkflowRecordSummary {
   created_at: string;
 }
 
-export interface WorkflowNode {
-  id: string;
-  type: WorkflowNodeType;
-  input_collections: string[];
-  output_collections: string[];
-  /**
-   * Prompt/instructions for this node.
-   * For Prompt nodes this is the prompt; for HITL nodes this is instructions for the human.
-   */
-  prompt?: string;
-  /** Optional longer description shown in UI. */
-  description?: string;
-  /**
-   * When set, the agent should aim to produce at least this many items for this node's output collection(s).
-   * Must be a positive integer if present.
-   */
-  minimum_rows?: number;
-  /** MCP server names that should be available when executing this node. */
-  required_mcps?: string[];
-  /** Skill names that should be applied when executing this node. */
-  required_skills?: string[];
-}
-
-export interface WorkflowVersionRecord {
-  workflow_id: string;
-  version_id: string;
-  name?: string;
-  description?: string;
-  created_at: string;
-  nodes: WorkflowNode[];
-}
-
 export type RunStatus = "running" | "completed" | "failed";
 
 export interface RunRecord {
   run_id: string;
-  /** Human-readable name for the run (e.g. "Q1 ideas exploration"). */
   name?: string;
   workflow_id: string;
   workflow_version_id: string;
   status: RunStatus;
   input: Record<string, unknown>;
   created_at: string;
-  /** Final answer or summary for the run (e.g. markdown). */
   final_answer?: string;
 }
 
@@ -108,44 +77,11 @@ export interface MutationRecord {
   applied_to_version_id?: string;
 }
 
-/** RFC 6902 JSON Patch operation */
 export interface JsonPatchOperation {
   op: "add" | "remove" | "replace" | "move" | "copy" | "test";
   path: string;
   value?: unknown;
   from?: string;
-}
-
-// --- Collections (workflow-scoped schemas + per-run item stores) ---
-
-export enum CollectionReferenceCardinality {
-  One = "one",
-  Many = "many",
-}
-
-export interface CollectionFieldReference {
-  kind: string;
-  cardinality: CollectionReferenceCardinality;
-  /** Optional label for UI. */
-  label?: string;
-}
-
-/**
- * Strict JSON Schema for collection items (validated with Ajv).
- * Stored alongside optional `references` metadata for easy navigation in Studio.
- */
-export interface CollectionKindSchema {
-  name?: string;
-  description: string;
-  /** JSON Schema (object) that describes the item payload (excluding system provenance fields). */
-  item_schema: Record<string, unknown>;
-  /** Field-level references for navigation. Keys are top-level field names in the item. */
-  references?: Record<string, CollectionFieldReference>;
-}
-
-export interface CollectionSchemaConfig {
-  workflow_id: string;
-  kinds: Record<string, CollectionKindSchema>;
 }
 
 export interface CollectionItemMeta {
@@ -191,4 +127,3 @@ export interface NodeResultRecord {
   output?: string;
   writes?: NodeResultWrite[];
 }
-
