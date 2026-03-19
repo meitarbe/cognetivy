@@ -468,7 +468,15 @@ export class LocalStore {
   ): void {
     const run = this.readRunFile(runId);
     const collectionSchema = this.readCollectionSchema(run.workflow_id);
-    const itemSchema = collectionSchema.kinds[kind]?.item_schema ?? { type: "object", properties: {}, required: ["name"] };
+    const itemSchema = collectionSchema.kinds[kind]?.item_schema;
+    if (!itemSchema) {
+      throw new Error(
+        `Missing collection schema for kind "${kind}" in this workflow. Add it before writing collections (agent/tool flow):\n` +
+          `- MCP: call collection_schema_add_kind or collection_schema_set\n` +
+          `- CLI: cognetivy collection-schema set --file <schema.json>\n` +
+          `This prevents silent schema mismatches and skipped findings.`
+      );
+    }
     validateCollectionItemsPayload(payloads, itemSchema, kind);
     const db = this.getDb();
     const now = new Date().toISOString();
@@ -498,7 +506,15 @@ export class LocalStore {
   ): CollectionItem {
     const run = this.readRunFile(runId);
     const collectionSchema = this.readCollectionSchema(run.workflow_id);
-    const itemSchema = collectionSchema.kinds[kind]?.item_schema ?? { type: "object", properties: {}, required: ["name"] };
+    const itemSchema = collectionSchema.kinds[kind]?.item_schema;
+    if (!itemSchema) {
+      throw new Error(
+        `Missing collection schema for kind "${kind}" in this workflow. Add it before writing collections (agent/tool flow):\n` +
+          `- MCP: call collection_schema_add_kind or collection_schema_set\n` +
+          `- CLI: cognetivy collection-schema set --file <schema.json>\n` +
+          `This prevents silent schema mismatches and skipped findings.`
+      );
+    }
     validateCollectionItemPayload(payload, itemSchema, kind);
     const db = this.getDb();
     const now = new Date().toISOString();
@@ -518,6 +534,16 @@ export class LocalStore {
       created_by_node_id: options.created_by_node_id,
       created_by_node_result_id: options.created_by_node_result_id,
     } as CollectionItem;
+  }
+
+  deleteCollectionItemsByIds(runId: string, itemIds: string[]): void {
+    const unique = Array.from(new Set(itemIds.filter((id) => typeof id === "string" && id.trim() !== "")));
+    if (unique.length === 0) return;
+    const placeholders = unique.map(() => "?").join(",");
+    const db = this.getDb();
+    db.prepare(
+      `DELETE FROM collection_items WHERE run_id = ? AND id IN (${placeholders})`
+    ).run(runId, ...unique);
   }
 
   // --- Node results ---

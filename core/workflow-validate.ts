@@ -108,5 +108,14 @@ export function validateWorkflowVersion(version: WorkflowVersionRecord): void {
       throw new WorkflowValidationError(`Node "${n.id}" must have output_collections (array).`);
     }
   }
+
+  // Measure change A5: disallow workflows that reference zero collection kinds.
+  // This prevents creating workflows where nodes cannot read/write any collections.
+  const referencedKinds = getCollectionNamesFromNodes(nodes);
+  if (referencedKinds.length === 0) {
+    throw new WorkflowValidationError(
+      "Workflow must reference at least one collection kind in node input_collections/output_collections.",
+    );
+  }
   assertWorkflowAcyclic(nodes);
 }

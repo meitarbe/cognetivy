@@ -32,6 +32,7 @@ import {
   listNodeResults,
   readNodeResult,
   writeNodeResult,
+  deleteCollectionItemsByIds,
 } from "./workspace.js";
 import { getMergedConfig } from "./config.js";
 import { validateWorkflowVersion } from "./validate.js";
@@ -1056,6 +1057,19 @@ workflowCmd
     };
     validateWorkflowVersion(version);
 
+    // Measure change remaining-1: require collection schema presence when setting a version with nodes.
+    const referencedKinds = getCollectionNamesFromNodes(version.nodes ?? []);
+    if (referencedKinds.length > 0) {
+      const schema = await readCollectionSchema(workflowId, cwd);
+      const missing = referencedKinds.filter((k) => k !== "run_input" && (schema.kinds?.[k]?.item_schema == null));
+      if (missing.length > 0) {
+        console.error(
+          `Error: Collection schema (kinds) is required for all collections referenced in nodes. Missing kinds for: ${missing.join(", ")}. Add a "kinds" entry for each kind before setting this workflow version.`,
+        );
+        process.exit(1);
+      }
+    }
+
     await writeWorkflowVersionRecord(version, cwd);
     await writeWorkflowRecord({ ...wf, current_version_id: newVersionId }, cwd);
 
@@ -1424,6 +1438,19 @@ runCmd
       if (opts.node !== undefined) {
         const nodeId = opts.node;
         const existingResult = await readNodeResult(opts.run, nodeId, cwd);
+        // Replace semantics (B2): if this node was completed before and we are completing it again
+        // with new collection output, delete the previous output items created by that node result.
+        let priorItemIds: string[] = [];
+        if (existingResult?.writes != null && Array.isArray(existingResult.writes)) {
+          for (const w of existingResult.writes) {
+            const itemIdsMaybe = w && typeof w === "object" ? (w as { item_ids?: unknown }).item_ids : undefined;
+            if (Array.isArray(itemIdsMaybe)) {
+              for (const id of itemIdsMaybe) {
+                if (typeof id === "string" && id.trim() !== "") priorItemIds.push(id);
+              }
+            }
+          }
+        }
         if (!opts.collectionKind && !existingResult) {
           await appendEventLine(opts.run, { ts: now, type: "step_started", by, data: { step: nodeId, step_id: nodeId } }, cwd);
           await writeNodeResult(opts.run, nodeId, {
@@ -1455,6 +1482,9 @@ runCmd
         }
         const nodeResultId = generateId("node_result");
         if (opts.collectionKind) {
+          if (priorItemIds.length > 0) {
+            await deleteCollectionItemsByIds(opts.run, priorItemIds, cwd);
+          }
           const raw = await readPayloadFromFileOrStdin(opts.collectionFile, cwd);
           const payload = parsePayload(raw, "auto") as unknown;
           const mode = opts.collectionMode === "set" || opts.collectionMode === "append" ? opts.collectionMode : Array.isArray(payload) ? "set" : "append";

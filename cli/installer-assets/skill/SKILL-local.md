@@ -29,19 +29,24 @@ Workflows, runs, node results, and schema-backed collections. **Single surface: 
 
 **Four commands.** Every response includes `COGNETIVY_NEXT_STEP=...` (JSON with `run_id`, `status`, `next_step`, and `current_node_id` when a node is in progress). **Do what the hint says**; no guessing. The next node is chosen by DAG (topological) order so dependencies run before consumers.
 
-1. **Start:** `cognetivy run start --local --workflow <workflow_id> --input input.json --name "Short name"` (or `--input -` for stdin, or `--input-inline '{"topic":"..."}'`). You must pass `--workflow <id>`; get the id from `workflow list --local`. Prints `run_id` and `COGNETIVY_NEXT_STEP=...`. Parse `next_step`; usually `action: "run_node"` or `complete_node`, `node_id`, `hint` (do work for that node, then run step with payload).
+1. **Start:** `cognetivy run start --local --workflow <workflow_id> --input input.json --name "Short name"` (or `--input -` for stdin, or `--input-inline '{"topic":"..."}'`). You must pass `--workflow <id>`; get the id from `workflow list --local`. Prints `run_id` and `COGNETIVY_NEXT_STEP=...`. Parse `next_step` and also check `current_node_id` / `current_node_ids`: if they exist, you are resuming in-progress node(s) and must only follow `next_step.action === "complete_node"` (complete `next_step.node_id`, matching `current_node_id` when single).
 
 2. **Status (optional):** `cognetivy run status --run <run_id> [--json]`
    - Shows run state, `current_node_id` (in progress) when a node is started but not completed, and `next_step`.
 
 3. **Step (repeat until done):**
    - **Always spawn one sub-agent per runnable node** (even when there is only one). This keeps each agent's context small and avoids context-window bloat. For a single runnable node, spawn one sub-agent for that node; for `run_nodes_parallel`, spawn one sub-agent per node in `runnable_node_ids`. First run `cognetivy run step --run <run_id>` (no `--node`) to start the node(s); then each sub-agent does the work and completes with `run step --run <id> --node <node_id> --collection-kind <kind>` and payload.
-   - **Complete node with output:** `cognetivy run step --run <run_id> --node <node_id> --collection-kind <kind>` with payload on stdin (single object = append, array = set). Or without `--collection-kind` to mark node completed with no collection.
+   - **Resume/stop-continue rule:** If you see `current_node_id` / `current_node_ids` in the response, you must not start new runnable nodes. You must only complete `next_step.node_id` using `next_step.action === "complete_node"`.
+   - **Complete node with output:** `cognetivy run step --run <run_id> --node <node_id> --collection-kind <kind>` with payload on stdin (single object = append, array = set). Use `--collection-kind` only when `next_step.collection_kind` is set (or when `next_step.output_collections.length === 1`) and it must match exactly. Never complete a node with the wrong output kind.
+   - **Complete node with no output:** Only when `next_step.output_collections` is empty.
    - Each call prints `COGNETIVY_NEXT_STEP=...`. When `action` is `complete_run`, follow the hint (event append run_completed + run complete).
 
-4. **End the run:** When `next_step.action` is `complete_run`: `echo '{"type":"run_completed","data":{}}' | cognetivy event append --local --run <run_id>`, then `cognetivy run complete --local --run <run_id>`.
+4. **End the run (reflection + versioning):** When `next_step.action` is `complete_run`:
+   - Reflect on issues/gaps you found, and explicitly suggest the next workflow changes.
+   - If the user requests changes, create a **new workflow version** and set it current (use `cognetivy workflow set --file <path> --local --workflow <workflow_id>`; get `<workflow_id>` from `run status --run <run_id>`). Then start a new run using the updated workflow.
+   - Then finish: `echo '{"type":"run_completed","data":{}}' | cognetivy event append --local --run <run_id>`, then `cognetivy run complete --local --run <run_id>`.
 
-**Pitfalls to avoid:** Do not run sqlite3 or edit the DB. Do not create a workflow with `workflow create --name` then `workflow set` for a brand-new workflow—use `workflow create --file` once. Always pass `--local` when using the local workspace. Always pass `--workflow <id>` to `run start`.
+**Pitfalls to avoid:** Do not run sqlite3 or edit the DB. Do not create a workflow with `workflow create --name` then `workflow set` for a brand-new workflow—use `workflow create --file` once. When updating an existing workflow (including one with no versions yet), do not call `workflow create` again—use `workflow set --file <path> --local --workflow <workflow_id>`. Always pass `--local` when using the local workspace. Always pass `--workflow <id>` to `run start`.
 
 ---
 
@@ -84,10 +89,10 @@ Usually covered by `node complete`. For inspect or when not using it: `node-resu
 `collection-schema get` / `set --file` (kinds + `item_schema`). `collection list --run <id>`, `collection get --run <id> --kind <kind>`. `collection set` / `collection append` need `--node` and `--node-result` (or use `node complete --collection-kind` which creates the result). Omit `--file` to read from stdin.
 - **Many items:** Prefer incremental `collection append` or `node complete` per item instead of one large `collection set`. Use Markdown in long text fields for Studio.
 
-**Traceability (enforced by schema):** Every kind (except `run_input`) has optional `citations`, `derived_from`, and `reasoning`. **Always populate these** so outputs are traceable:
+**Traceability (enforced by schema):** Every kind (except `run_input`) requires non-empty `citations` and non-empty `derived_from`, plus `reasoning`. **Always populate these** so outputs are traceable:
 - **citations:** Array of sources: `{ url?, title?, excerpt? }` for external URLs (only verified), or `{ item_ref: { kind, item_id } }` for another collection item (e.g. a `sources` item). Enables "where did this come from?"
 - **derived_from:** Array of `{ kind, item_id }`  -  which collection items this was derived from (chain of thinking). Enables "why did we decide this?"
-- **reasoning:** Optional string explaining the conclusion or chain of thought.
+- **reasoning:** String explaining the conclusion or chain of thought.
 
 **Payload:** Must match `item_schema` for the kind; do not include `created_at`, `created_by_node_id` - cognetivy adds them. For kinds like `sources` that have a `url` field: only include URLs you have verified (retrieved or opened); do not invent URLs.
 
@@ -135,7 +140,7 @@ Use `--local` on every command when using the local workspace so the CLI does no
 
 - **Rely only on real information:** Use (a) run input/collections, or (b) sources you actually retrieve via tools (e.g. web search, MCP, browser). Do not invent or guess URLs, quotes, or facts.
 - **When writing to a `sources` (or similar) collection:** Only include URLs you have verified (e.g. fetched or opened). Do not fabricate URLs; if a URL is unverified, omit it or mark it clearly as unverified.
-- **Trace every output:** When writing any collection item (except `run_input`), include `citations` (sources: URLs or `item_ref` to other items) and/or `derived_from` (items this was derived from) so the chain of thinking and sources are always traceable.
+- **Trace every output:** When writing any collection item (except `run_input`), include `citations` (sources: URLs or `item_ref` to other items), `derived_from` (items this was derived from), and `reasoning` so the chain of thinking and sources are always traceable.
 
 ## Token usage and performance
 
@@ -154,3 +159,9 @@ Follow these rules to minimize context size and token use.
 6. **Always spawn one sub-agent per runnable node.** Even for a single runnable node, spawn one sub-agent dedicated to that node. This keeps each context window small and avoids bloating the parent with full run history and all collections.
 
 7. **Per-item extraction.** When a node maps over a list (e.g. many items), prefer per-item extraction over all-at-once so each agent turn sees a bounded amount of data.
+
+8. **Hard max prompt length (C2):** Keep the prompt text you send for a single node-work completion request to **<= 100 words**. If you need more, split the work into intermediate research nodes/collections (e.g. write partial `research_notes_*` items), then use a later node to synthesize them.
+
+9. **Context compression artifact (C3):** After completing a node, save a small compressed artifact into `node_result.output` (small summary + key references). On the next runnable node, use only this compressed artifact as context (instead of replaying full run history).
+
+10. **Token estimates (MCP):** If you use MCP tools, follow `estimated_tokens` returned by `collection_get` and `estimated_output_tokens` returned by `run_step` node completion; if estimates are too large, split into intermediate nodes/collections.

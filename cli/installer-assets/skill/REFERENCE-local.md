@@ -9,7 +9,7 @@
 - `cognetivy workflow select --workflow <workflow_id> [--cloud | --local]` - select current workflow. Use `--cloud` to set the default workflow for cloud (persisted in workspace; workflow must exist on server). Omit both to select from local workspace.
 - `cognetivy workflow versions [--workflow <workflow_id>]` - list versions for a workflow.
 - `cognetivy workflow get [--workflow <workflow_id>] [--version <version_id>]` - print a workflow version JSON.
-- `cognetivy workflow set --file <path> [--workflow <workflow_id>] [--name <string>]` - set workflow version from JSON file (creates new version and sets it current). **Workflow must be one connected graph with no cycles.**
+- `cognetivy workflow set --file <path> [--workflow <workflow_id>] [--name <string>]` - set workflow version from JSON file (creates a new version and sets it current). **Do not use `workflow create` for updates; use `workflow set --file ... --workflow <workflow_id>` (it creates the first version if the workflow has no versions yet). Workflow must be one connected graph with no cycles.**
 
 ## run
 - `cognetivy run start --input <path> [--name <string>] ...` - start run; prints run_id and COGNETIVY_NEXT_STEP.
@@ -17,6 +17,11 @@
 - `cognetivy run step --run <run_id> [--node <node_id>] [--collection-kind <kind>]` - start next node (no --node) or complete node (--node, optional payload via stdin); prints next_step.
 
 **next_step fields (use for scoped fetch):** `action`, `node_id`, `runnable_node_ids`, `hint`, `output_collections`, `collection_kind`. When present: `input_collections` (single node — fetch only these kinds with collection get); `input_collections_by_node` (parallel — for each node_id, fetch only `input_collections_by_node[node_id]`).
+
+Resume/stop-continue rules:
+- If the CLI response includes `current_node_id` (or `current_node_ids`), you must only follow `next_step.action === "complete_node"` and complete `next_step.node_id` (which must match `current_node_id` when single).
+- Output kind matching: if `next_step.collection_kind` is set (or `next_step.output_collections.length === 1`), complete the node with `--collection-kind <next_step.collection_kind>` and provide matching payload. Never complete with the wrong output kind.
+- If `next_step.output_collections` is empty, you may complete the node without `--collection-kind`.
 - `cognetivy run complete --run <run_id>`, `run set-name --run <run_id> --name <string>`.
 
 ## node

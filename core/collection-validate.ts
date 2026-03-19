@@ -21,6 +21,7 @@ export class CollectionValidationError extends Error {
 export const TRACEABILITY_PROPERTIES: Record<string, Record<string, unknown>> = {
   citations: {
     type: "array",
+    minItems: 1,
     description: "Sources: url/title/excerpt or item_ref (kind, item_id).",
     items: {
       type: "object",
@@ -37,13 +38,14 @@ export const TRACEABILITY_PROPERTIES: Record<string, Record<string, unknown>> = 
   },
   derived_from: {
     type: "array",
+    minItems: 1,
     description: "Collection items this was derived from.",
     items: {
       type: "object",
       properties: { kind: { type: "string" }, item_id: { type: "string" } },
     },
   },
-  reasoning: { type: "string", description: "Optional chain of thought or explanation." },
+  reasoning: { type: "string", description: "Required explanation or chain of thought." },
 };
 
 /** Kinds that skip traceability (e.g. run_input). */
@@ -108,7 +110,14 @@ export function mergeTraceabilityIntoItemSchema(
   }
   const props = (itemSchema.properties as Record<string, unknown>) ?? {};
   const mergedProps = { ...props, ...TRACEABILITY_PROPERTIES };
-  return { ...itemSchema, properties: mergedProps };
+  const required = Array.isArray(itemSchema.required)
+    ? [...(itemSchema.required as string[])]
+    : [];
+  // C1: traceability fields are required for output kinds.
+  for (const field of ["citations", "derived_from", "reasoning"] as const) {
+    if (!required.includes(field)) required.push(field);
+  }
+  return { ...itemSchema, properties: mergedProps, required };
 }
 
 /**

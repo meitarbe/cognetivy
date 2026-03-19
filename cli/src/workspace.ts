@@ -446,7 +446,15 @@ export async function validateRunInput(
 ): Promise<void> {
   const schema = await readCollectionSchema(workflowId, cwd);
   const payload = typeof input.name === "string" && input.name !== "" ? input : { name: "Run input", ...input };
-  const runInputSchema = schema.kinds["run_input"]?.item_schema ?? { type: "object", required: ["name"], properties: { name: { type: "string" } } };
+  const runInputSchema = schema.kinds["run_input"]?.item_schema;
+  if (!runInputSchema) {
+    throw new Error(
+      `Missing collection schema for kind "run_input" in workflow. Add it before creating a run:\n` +
+        `- MCP: call collection_schema_add_kind or collection_schema_set\n` +
+        `- CLI: cognetivy collection-schema set --file <schema.json>\n` +
+        `This prevents silent schema mismatches.`
+    );
+  }
   validateCollectionItemPayload(payload, runInputSchema, "run_input");
 }
 
@@ -515,6 +523,20 @@ export async function appendCollection(
   const store = new LocalStore(cwd);
   try {
     return store.appendCollection(runId, kind, payload, options);
+  } finally {
+    store.close();
+  }
+}
+
+export async function deleteCollectionItemsByIds(
+  runId: string,
+  itemIds: string[],
+  cwd: string = process.cwd()
+): Promise<void> {
+  await requireWorkspace(cwd);
+  const store = new LocalStore(cwd);
+  try {
+    store.deleteCollectionItemsByIds(runId, itemIds);
   } finally {
     store.close();
   }

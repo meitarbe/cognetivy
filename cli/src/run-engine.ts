@@ -75,10 +75,44 @@ export async function getNextStep(runId: string, cwd: string): Promise<GetNextSt
     kindsWithData,
   });
 
+  // Measure change remaining-3 (C3 operational): inject latest compressed artifact
+  // (node_result.output) into next_step.hint, bounded to avoid token blowups.
+  const maxArtifactChars = 1200;
+  const completedWithOutput = nodeResults
+    .filter((r) => r.status === "completed" && r.node_id !== "__system__" && typeof r.output === "string" && r.output.trim().length > 0)
+    .map((r) => ({
+      output: r.output as string,
+      completedAt: r.completed_at ? new Date(r.completed_at) : null,
+      startedAt: r.started_at ? new Date(r.started_at) : null,
+    }));
+
+  const latestCompletedWithOutput = completedWithOutput
+    .sort((a, b) => {
+      const atA = a.completedAt ?? a.startedAt ?? new Date(0);
+      const atB = b.completedAt ?? b.startedAt ?? new Date(0);
+      return atB.getTime() - atA.getTime();
+    })[0];
+
+  const artifactText = latestCompletedWithOutput?.output?.trim() ?? "";
+  const boundedArtifactText =
+    artifactText.length > maxArtifactChars ? `${artifactText.slice(0, maxArtifactChars)}...` : artifactText;
+
+  const artifactBlock =
+    result.next_step.action === "run_node" || result.next_step.action === "run_nodes_parallel"
+      ? boundedArtifactText
+        ? `\n\nC3 compressed context artifact (from latest completed node_result.output, <=${maxArtifactChars} chars):\n${boundedArtifactText}`
+        : ""
+      : "";
+
+  const next_step = {
+    ...result.next_step,
+    hint: `${result.next_step.hint ?? ""}${artifactBlock}`,
+  };
+
   return {
     run,
     version,
-    next_step: result.next_step,
+    next_step,
     current_node_id: result.current_node_id,
     current_node_ids: result.current_node_ids,
   };

@@ -54,6 +54,59 @@ export function topologicalNodeOrder(nodes: WorkflowNode[]): WorkflowNode[] {
   return ordered.length === nodes.length ? ordered : nodes;
 }
 
+function getBehavioralHintSuffix(params: {
+  includeResumeRule: boolean;
+  includeReplaceRule: boolean;
+  includePromptSplitRule: boolean;
+  includeTraceabilityRule: boolean;
+  includeOutputKindRule: boolean;
+  includeContextCompressionSetRule: boolean;
+  includeContextCompressionUseRule: boolean;
+  inProgressNodeIds?: string[];
+}): string {
+  const parts: string[] = [];
+
+  if (params.includeResumeRule) {
+    parts.push(
+      params.inProgressNodeIds && params.inProgressNodeIds.length > 0
+        ? `Resume/stop: current_node_ids present (${params.inProgressNodeIds.join(", ")}). Do not start new nodes; only complete the node_id in next_step.`
+        : `Resume/stop: current_node_id/current_node_ids present. Do not start new nodes; only complete the node_id in next_step.`,
+    );
+  }
+
+  if (params.includeOutputKindRule) {
+    parts.push(
+      `Output kind matching: when next_step provides collection_kind/output_collections, complete with the matching --collection-kind (exact match).`,
+    );
+  }
+
+  if (params.includeTraceabilityRule) {
+    parts.push(
+      `Traceability (required): every output item must include citations + derived_from + reasoning; citations and derived_from must be non-empty.`,
+    );
+  }
+
+  if (params.includePromptSplitRule) {
+    parts.push(
+      `Token/prompt rule (<= 100 words): keep the completion prompt for this node-work request <= 100 words; if more is needed, split into intermediate research nodes/collections then synthesize later.`,
+    );
+  }
+
+  if (params.includeReplaceRule) {
+    parts.push(`Replace semantics (retry-safe): if you complete the same node again for the same output kind, previous output items are replaced.`);
+  }
+
+  if (params.includeContextCompressionSetRule) {
+    parts.push(`C3 context compression: after this node completes, store a compressed artifact in node_result.output (small summary + key references).`);
+  }
+
+  if (params.includeContextCompressionUseRule) {
+    parts.push(`C3 context compression: for your work, use node_result.output from the latest completed node as the compressed context; do not replay full run history.`);
+  }
+
+  return parts.length > 0 ? ` ${parts.join(" ")}` : "";
+}
+
 /**
  * Return the node ids that should be auto-started when a run is created (first runnable set).
  * Call this right after creating the run and run_input; then persist step_started + node result
@@ -111,16 +164,47 @@ export function getNextStep(params: GetNextStepParams): GetNextStepResult {
           input_collections: inputKinds,
           output_collections: outKinds,
           collection_kind: collectionKind,
-          hint: `Produce output for node "${node.id}" and complete.`,
+          hint: `Produce output for node "${node.id}" and complete.` +
+            getBehavioralHintSuffix({
+              includeResumeRule: true,
+              includeReplaceRule: true,
+              includePromptSplitRule: true,
+              includeTraceabilityRule: true,
+              includeOutputKindRule: true,
+              includeContextCompressionSetRule: true,
+              includeContextCompressionUseRule: false,
+              inProgressNodeIds: startedList.length > 0 ? startedList : undefined,
+            }),
         },
       };
     }
   }
 
   const inputCols = (n: WorkflowNode) => n.input_collections ?? [];
+  // "Completed" is a storage-level flag (nodeResult.status === COMPLETED).
+  // For reliability we treat a node as effectively completed only when its
+  // required outputs exist in the run's collections (tracked via kindsWithData).
+  //
+  // For now we enforce this strictly for single-output nodes. Multi-output
+  // nodes can be revisited after we confirm real workflows patterns.
+  const nodeById = new Map(nodes.map((n) => [n.id, n]));
+  const effectiveCompletedNodeIds = new Set<string>();
+  for (const nodeId of completedNodeIds) {
+    const node = nodeById.get(nodeId);
+    if (!node) continue;
+    const outKinds = node.output_collections ?? [];
+    if (outKinds.length === 0) {
+      effectiveCompletedNodeIds.add(nodeId);
+      continue;
+    }
+    // Measure change remaining-2: for reliability, a node is effectively completed
+    // only when ALL of its output collection kinds have data in the run.
+    const allOutputsPresent = outKinds.every((k) => kindsWithData.has(k));
+    if (allOutputsPresent) effectiveCompletedNodeIds.add(nodeId);
+  }
   const runnableNodes = orderedNodes.filter(
     (n) =>
-      !completedNodeIds.has(n.id) &&
+      !effectiveCompletedNodeIds.has(n.id) &&
       !startedNodeIds.has(n.id) &&
       inputCols(n).every((c) => kindsWithData.has(c))
   );
@@ -137,7 +221,16 @@ export function getNextStep(params: GetNextStepParams): GetNextStepResult {
         action: "run_nodes_parallel",
         runnable_node_ids: runnableIds,
         input_collections_by_node: inputCollectionsByNode,
-        hint: `Multiple nodes runnable (${runnableIds.join(", ")}). Spawn one sub-agent per node or start all then complete each.`,
+        hint: `Multiple nodes runnable (${runnableIds.join(", ")}). Spawn one sub-agent per node or start all then complete each.` +
+          getBehavioralHintSuffix({
+            includeResumeRule: false,
+            includeReplaceRule: false,
+            includePromptSplitRule: true,
+            includeTraceabilityRule: true,
+            includeOutputKindRule: false,
+            includeContextCompressionSetRule: false,
+            includeContextCompressionUseRule: true,
+          }),
       },
     };
   }
@@ -155,16 +248,25 @@ export function getNextStep(params: GetNextStepParams): GetNextStepResult {
         input_collections: inputKinds,
         output_collections: outKinds,
         collection_kind: collectionKind,
-        hint: `Do work for node "${node.id}" (output: ${outKinds.join(", ")}), then complete.`,
+        hint: `Do work for node "${node.id}" (output: ${outKinds.join(", ")}), then complete.` +
+          getBehavioralHintSuffix({
+            includeResumeRule: false,
+            includeReplaceRule: false,
+            includePromptSplitRule: true,
+            includeTraceabilityRule: true,
+            includeOutputKindRule: false,
+            includeContextCompressionSetRule: false,
+            includeContextCompressionUseRule: true,
+          }),
       },
     };
   }
 
-  const allCompleted = nodes.every((n) => completedNodeIds.has(n.id));
+  const allCompleted = nodes.every((n) => effectiveCompletedNodeIds.has(n.id));
   const next_step: CanonicalNextStep = allCompleted
     ? {
         action: "complete_run",
-        hint: "All nodes done. Send run_completed event and complete the run.",
+        hint: "All nodes done. Reflect on issues/gaps and explicitly suggest next workflow changes. If the user requests changes, create a new workflow version and set it current, then start a new run with the updated workflow. Finally: send run_completed event and complete the run.",
       }
     : {
         action: "done",
