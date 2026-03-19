@@ -231,6 +231,10 @@ async function launchLocalStudio(
   console.log(`Local Studio at ${base} (workspace: ${workspacePath}). Press Ctrl+C to stop.`);
 }
 
+const DEV_API_URL = "http://localhost:3000";
+/** Local cloud-studio dev server; used for auth/login when --dev. */
+const DEV_APP_URL = "http://localhost:5174";
+
 program
   .name("cognetivy")
   .description(
@@ -238,6 +242,7 @@ program
   )
   .version(getCurrentVersionSync())
   .option("--interface", "Open CLI reference in browser (same as `cognetivy docs`)")
+  .option("--dev", "Use local backend (API http://localhost:3000, app http://localhost:5174). Run backend and cloud-studio locally first.")
   .addHelpText(
     "after",
     `
@@ -246,9 +251,17 @@ Environment (cloud):
   COGNETIVY_APP_URL    URL opened by default command (default: https://alpha.cognetivy.com).
   COGNETIVY_API_URL    Cloud API base URL (default: http://localhost:3000 in dev, https://bm.cognetivy.com otherwise). Use for local backend or custom deployment.
 
-Use \`cognetivy auth status\` to see current auth and URLs. Use \`--local\` on run/event to force local workspace when API key is set.
+Use \`cognetivy auth status\` to see current auth and URLs. Use \`--local\` on run/event to force local workspace when API key is set. Use \`--dev\` to point cloud at http://localhost:3000.
 `
   );
+
+program.hook("preAction", () => {
+  const opts = program.opts() as { dev?: boolean };
+  if (opts.dev) {
+    process.env.COGNETIVY_API_URL = DEV_API_URL;
+    process.env.COGNETIVY_APP_URL = DEV_APP_URL;
+  }
+});
 
 const authCmd = program
   .command("auth")
