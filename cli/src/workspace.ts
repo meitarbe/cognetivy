@@ -446,7 +446,8 @@ export async function validateRunInput(
 ): Promise<void> {
   const schema = await readCollectionSchema(workflowId, cwd);
   const payload = typeof input.name === "string" && input.name !== "" ? input : { name: "Run input", ...input };
-  validateCollectionItemPayload(schema, "run_input", payload);
+  const runInputSchema = schema.kinds["run_input"]?.item_schema ?? { type: "object", required: ["name"], properties: { name: { type: "string" } } };
+  validateCollectionItemPayload(payload, runInputSchema, "run_input");
 }
 
 export async function writeCollectionSchema(

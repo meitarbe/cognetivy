@@ -815,7 +815,7 @@ async function handleToolsCall(
             cwd
           );
           return `Set ${payloads.length} collection(s) for kind "${kindSet}".`;
-        } catch (err) {
+        } catch (err: unknown) {
           if (err instanceof CollectionValidationError) {
             const run = await readRunFile(runIdSet, cwd);
             const schema = await readCollectionSchema(run.workflow_id, cwd);
@@ -846,7 +846,7 @@ async function handleToolsCall(
             cwd
           );
           return JSON.stringify(item, null, 2);
-        } catch (err) {
+        } catch (err: unknown) {
           if (err instanceof CollectionValidationError) {
             const run = await readRunFile(runIdApp, cwd);
             const schema = await readCollectionSchema(run.workflow_id, cwd);

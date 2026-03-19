@@ -32,7 +32,7 @@ export function mergeKindTemplate(
   if (itemSchema == null || typeof itemSchema !== "object") return schema;
 
   const base = itemSchema as Record<string, unknown>;
-  let mergedSchema = mergeTraceabilityIntoItemSchema(kind, { ...base });
+  let mergedSchema = mergeTraceabilityIntoItemSchema({ ...base }, kind);
 
   const template = KIND_TEMPLATES[kind];
   if (!template) return { ...schema, item_schema: mergedSchema };

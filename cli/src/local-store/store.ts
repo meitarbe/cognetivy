@@ -275,7 +275,14 @@ export class LocalStore {
       };
     }
     const schema: CollectionSchemaConfig = { workflow_id: workflowId, kinds };
-    return mergeNameRequiredIntoSchema(mergeTraceabilityIntoSchema(schema));
+    const mergedKinds: Record<string, { name?: string; description: string; item_schema: Record<string, unknown> }> = {};
+    for (const [k, v] of Object.entries(schema.kinds)) {
+      let itemSchema = v.item_schema;
+      itemSchema = mergeTraceabilityIntoSchema(itemSchema, k) as Record<string, unknown>;
+      itemSchema = mergeNameRequiredIntoSchema(itemSchema) as Record<string, unknown>;
+      mergedKinds[k] = { ...v, item_schema: itemSchema };
+    }
+    return { workflow_id: schema.workflow_id, kinds: mergedKinds };
   }
 
   writeCollectionSchema(workflowId: string, schema: CollectionSchemaConfig): void {
@@ -461,7 +468,8 @@ export class LocalStore {
   ): void {
     const run = this.readRunFile(runId);
     const collectionSchema = this.readCollectionSchema(run.workflow_id);
-    validateCollectionItemsPayload(collectionSchema, kind, payloads);
+    const itemSchema = collectionSchema.kinds[kind]?.item_schema ?? { type: "object", properties: {}, required: ["name"] };
+    validateCollectionItemsPayload(payloads, itemSchema, kind);
     const db = this.getDb();
     const now = new Date().toISOString();
     const prefix = kind.slice(0, 3) || "col";
@@ -490,7 +498,8 @@ export class LocalStore {
   ): CollectionItem {
     const run = this.readRunFile(runId);
     const collectionSchema = this.readCollectionSchema(run.workflow_id);
-    validateCollectionItemPayload(collectionSchema, kind, payload);
+    const itemSchema = collectionSchema.kinds[kind]?.item_schema ?? { type: "object", properties: {}, required: ["name"] };
+    validateCollectionItemPayload(payload, itemSchema, kind);
     const db = this.getDb();
     const now = new Date().toISOString();
     const prefix = kind.slice(0, 3) || "col";

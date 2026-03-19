@@ -1032,12 +1032,14 @@ workflowCmd
     const nextNum = Math.max(0, ...nums) + 1;
     const newVersionId = `v${nextNum}`;
 
+    const dataRecord = data as Record<string, unknown>;
     const version = {
-      ...(data as Record<string, unknown>),
+      ...dataRecord,
       workflow_id: workflowId,
       version_id: newVersionId,
       name: opts.name,
       created_at: new Date().toISOString(),
+      nodes: Array.isArray(dataRecord.nodes) ? dataRecord.nodes : [],
     };
     validateWorkflowVersion(version);
 
