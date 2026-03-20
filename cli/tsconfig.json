@@ -7,15 +7,11 @@
     "rootDir": "src",
     "strict": true,
     "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
     "skipLibCheck": true,
     "declaration": true,
     "declarationMap": true,
-    "sourceMap": true,
-    "baseUrl": ".",
-    "paths": {
-      "@cognetivy/core": ["../core"],
-      "@cognetivy/core/*": ["../core/*"]
-    }
+    "sourceMap": true
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "**/*.test.ts"]

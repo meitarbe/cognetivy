@@ -11,7 +11,7 @@ export {
   type CollectionSchemaConfig,
   CollectionReferenceCardinality,
   type CollectionFieldReference,
-} from "@cognetivy/core";
+} from "./core/index.js";
 
 export interface WorkflowIndexRecord {
   current_workflow_id: string;

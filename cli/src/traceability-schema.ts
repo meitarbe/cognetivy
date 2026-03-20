@@ -9,4 +9,4 @@ export {
   mergeNameRequiredIntoItemSchema,
   mergeNameRequiredIntoSchema,
   mergeTraceabilityIntoSchema,
-} from "@cognetivy/core";
+} from "./core/index.js";

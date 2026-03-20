@@ -1,6 +1,6 @@
 {
   "name": "cognetivy",
-  "version": "0.1.34",
+  "version": "1.0.2",
   "description": "Reasoning orchestration state: workflow structure, run logs, and versioned mutations",
   "type": "module",
   "main": "dist/index.js",
@@ -9,7 +9,8 @@
   },
   "scripts": {
     "build:core": "npm run build --prefix ../core",
-    "prebuild": "npm run build:core",
+    "sync:core": "node ./scripts/sync-core-source.mjs",
+    "prebuild": "npm run build:core && npm run sync:core",
     "build": "npm run prebuild && tsc && node ./scripts/copy-installer-assets.mjs && node ./scripts/patch-studio-server.mjs",
     "prepare": "npm run build",
     "test": "npm run build && node --test test/*.test.mjs",
@@ -17,7 +18,8 @@
     "build:full": "npm run build && npm run build:studio",
     "release": "npm version patch && npm publish",
     "release:minor": "npm version minor && npm publish",
-    "release:major": "npm version major && npm publish"
+    "release:major": "npm version major && npm publish",
+    "release:next": "npm publish --tag next"
   },
   "keywords": [
     "cli",
@@ -39,7 +41,6 @@
     "node": ">=18"
   },
   "dependencies": {
-    "@cognetivy/core": "file:../core",
     "@clack/prompts": "^1.0.1",
     "better-sqlite3": "^11.6.0",
     "ajv": "^8.18.0",

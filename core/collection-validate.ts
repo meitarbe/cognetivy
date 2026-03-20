@@ -3,8 +3,8 @@
  * Shared by backend and CLI.
  */
 
-import Ajv from "ajv";
-import addFormats from "ajv-formats";
+import { Ajv, type ErrorObject } from "ajv";
+import * as addFormatsModule from "ajv-formats";
 
 export class CollectionValidationError extends Error {
   readonly kind?: string;
@@ -141,6 +141,10 @@ export const mergeNameRequiredIntoSchema = mergeNameRequiredIntoItemSchema;
 /** Alias for mergeTraceabilityIntoItemSchema (CLI compatibility). */
 export const mergeTraceabilityIntoSchema = mergeTraceabilityIntoItemSchema;
 
+const addFormats = (
+  "default" in addFormatsModule ? addFormatsModule.default : addFormatsModule
+) as unknown as (instance: Ajv) => void;
+
 const ajv = new Ajv({ allErrors: true });
 addFormats(ajv);
 
@@ -153,7 +157,7 @@ export function validatePayload(
 ): { valid: boolean; errors?: string[] } {
   const ok = ajv.validate(mergedItemSchema, payload);
   if (ok) return { valid: true };
-  const errs = ajv.errors ?? [];
+  const errs = (ajv.errors ?? []) as ErrorObject[];
   const messages = errs.map((e) => ajv.errorsText([e]));
   return { valid: false, errors: messages };
 }

@@ -2,8 +2,8 @@
  * Run engine: load run state from workspace and compute next step via shared core.
  */
 
-import { getNextStep as getNextStepCore, topologicalNodeOrder as topologicalNodeOrderCore } from "@cognetivy/core";
-import type { CanonicalNextStep, GetNextStepResult as CoreGetNextStepResult } from "@cognetivy/core";
+import { getNextStep as getNextStepCore, topologicalNodeOrder as topologicalNodeOrderCore } from "./core/index.js";
+import type { CanonicalNextStep } from "./core/index.js";
 import type { WorkflowVersionRecord, RunRecord } from "./models.js";
 import {
   readRunFile,

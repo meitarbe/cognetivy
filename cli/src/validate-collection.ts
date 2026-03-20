@@ -14,4 +14,4 @@ export {
   TRACEABILITY_EXCLUDED_KINDS,
   NAME_PROPERTY_SCHEMA,
   TRACEABILITY_PROPERTIES,
-} from "@cognetivy/core";
+} from "./core/index.js";

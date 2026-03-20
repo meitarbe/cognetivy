@@ -6,4 +6,4 @@ export {
   assertWorkflowAcyclic,
   getCollectionNamesFromNodes,
   WorkflowValidationError,
-} from "@cognetivy/core";
+} from "./core/index.js";
