@@ -529,8 +529,8 @@ program
     const choice = await p.select({
       message: "Local or Cloud?",
       options: [
-        { value: "local" as const, label: "Local", hint: "Data in .cognetivy/ here; view in Studio on this machine" },
         { value: "cloud" as const, label: "Cloud", hint: "View run status from anywhere (web or mobile browser)" },
+        { value: "local" as const, label: "Local", hint: "Data in .cognetivy/ here; view in Studio on this machine" },
       ],
     });
     if (p.isCancel(choice)) {
@@ -2542,8 +2542,8 @@ async function runDefaultOnboardingFlow(cwd: string): Promise<void> {
     const choice = await p.select({
       message: "Local or Cloud?",
       options: [
-        { value: "local" as OnboardingMode, label: "Local", hint: "Data in .cognetivy/ here; view in Studio on this machine" },
         { value: "cloud" as OnboardingMode, label: "Cloud", hint: "View run status from anywhere (web or mobile browser)" },
+        { value: "local" as OnboardingMode, label: "Local", hint: "Data in .cognetivy/ here; view in Studio on this machine" },
       ],
     });
     if (p.isCancel(choice)) {
