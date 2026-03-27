@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [Unreleased](https://github.com/meitarbe/cognetivy/compare/v1.0.3...HEAD)
 
 ### Added
 
@@ -23,13 +23,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - (none)
 
-## [0.1.34] - 2025-03-08
+## [1.0.3](https://github.com/meitarbe/cognetivy/compare/v0.1.34...v1.0.3) - 2026-03-27
+
+### Added
+
+- **Core package:** Added a new `core` workspace package with reusable workflow/run validation and next-step engine modules, so CLI and other clients can share the same execution primitives.
+- **CLI cloud onboarding and auth flow:** Added onboarding URL generation, local login callback server, credentials handling, and cloud client modules to support a cloud-connected workflow from the CLI.
+- **CLI local store foundation:** Added typed local store modules (`schema`, `store`, and public index) as groundwork for persistent local state management.
+- **CLI onboarding docs/tests/assets:** Added cloud/local skill references, CLI docs helpers, onboarding e2e/unit tests, and installer/script assets for syncing/patching packaged resources.
+
+### Changed
+
+- **CLI command surface and execution paths:** Updated `cli.ts`, `mcp.ts`, `run-engine.ts`, validation/model modules, and install/workspace flows to integrate the new core and cloud/onboarding capabilities.
+- **Default workflow/schema templates:** Updated default workflow, collection schema templates, kind templates, and traceability schema wiring to align with the new execution and storage architecture.
+- **Studio workflow/run pages:** Updated app layout, entity page, and run detail page behavior to match backend/workflow changes introduced in this branch.
+
+### Fixed
+
+- **CLI tests and onboarding reliability:** Added and updated tests around onboarding URL handling and collection workflows to reduce regressions in new cloud/onboarding paths.
+
+### Notes
+
+- Released to npm as `cognetivy@1.0.3`.
+
+## [0.1.34](https://github.com/meitarbe/cognetivy/compare/v0.1.33...v0.1.34) - 2025-03-08
 
 ### Fixed
 
 - **Studio: workflow selection.** Selected workflow is no longer overwritten when the workflow list is reloaded (e.g. every 2s poll). Users can switch workflows from the sidebar and the choice persists across refresh. When the selected workflow is missing from the list (invalid or deleted), the sidebar still shows the selector with an "Unknown workflow" option so the user can pick another.
 
-## [0.1.33] - 2025-03-08
+## [0.1.33](https://github.com/meitarbe/cognetivy/compare/v0.1.31...v0.1.33) - 2025-03-08
 
 ### Added
 
@@ -62,7 +85,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - (none)
 
-## [0.1.31] - 2025-03-06
+## [0.1.31](https://github.com/meitarbe/cognetivy/compare/v0.1.30...v0.1.31) - 2025-03-06
 
 ### Added
 
@@ -80,7 +103,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - (none)
 
-## [0.1.30] - 2025-03-06
+## [0.1.30](https://github.com/meitarbe/cognetivy/compare/v0.1.23...v0.1.30) - 2025-03-06
 
 ### Added
 
@@ -122,7 +145,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Released to npm as `cognetivy@0.1.30`. Changes were compiled from branch diff `main..feat/perfection-master-plan`.
 
-## [0.1.23] - 2025-03-03
+## [0.1.23](https://github.com/meitarbe/cognetivy/compare/v0.1.10...v0.1.23) - 2025-03-03
 
 - **Workflow nodes: required skills and MCPs:** Nodes can declare `required_skills` (array of skill names) and `required_mcps` (array of MCP server names). CLI: model, validation, studio-server API, default workflow example; skill and MCP instructions document the fields (use `required_skills` not `skills`). Studio: node cards and node detail drawer show Skills and MCPs; workflow node card redesigned (layout, spacing, no ellipsis on I/O and tools).
 - **Studio: workflow layout:** Increased node spacing (width, height, gaps) so the DAG is less cramped; vertical spacing tuned for readability.
@@ -133,13 +156,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CLI: skills version tracking.** Record which CLI version was used when skills were installed (`.cognetivy/skills-version.json` and `.cognetivy-version` in each cognetivy skill dir). If the folder version differs from the current CLI, prompt to reinstall skills; after reinstall, launch Studio and keep the process running.
 - **Released to npm** as `cognetivy@0.1.23`.
 
-## [0.1.10] - 2025-03-02
+## [0.1.10](https://github.com/meitarbe/cognetivy/compare/v0.1.9...v0.1.10) - 2025-03-02
 
 - **Studio: polling and version selection:** Collection schema and workflow list now poll every 2s so schema and sidebar stay in sync with the server. Workflow version poll interval reduced from 3s to 2s. Version selection fixed: when loading a workflow, the selected version is set to the URL version or current version only if it exists in the version list; otherwise the first available version is used, avoiding invalid/stale version IDs.
 
-## [0.1.9] - 2025-03-01
+## [0.1.9](https://github.com/meitarbe/cognetivy/compare/v0.1.6...v0.1.9) - 2025-03-01
 
-- **Tooling:** Repo pins npm via `packageManager` (npm@10.9.4) for consistent installs; CONTRIBUTING.md documents npm 7+ and optional Corepack. Lockfile and package version synced for open-source release.
+- **Tooling:** Repo pins npm via `packageManager` ([npm@10.9.4](mailto:npm@10.9.4)) for consistent installs; CONTRIBUTING.md documents npm 7+ and optional Corepack. Lockfile and package version synced for open-source release.
 - **Run engine:** New run-engine module computes the next step from run state and workflow DAG (topological order). CLI `run start` / `run status` / `run step` and MCP `run_start` / `run_status` / `run_step` return `next_step` (action: `run_node`, `run_nodes_parallel`, `complete_node`, `complete_run`, or `done`), `current_node_id`, and `current_node_ids`. Agent flow: follow the hint; no guessing.
 - **Parallel nodes (deterministic in progress):** When multiple nodes are runnable at the same level, run-engine returns `run_nodes_parallel` with `runnable_node_ids`. Running `run step --run <id>` (no `--node`) causes the CLI and MCP to start all those nodes in one go (step_started + started node result per node), so every parallel node is in progress without relying on sub-agents to call start. Sub-agents do the work and complete with `run step --run <id> --node <node_id> --collection-kind <kind>` and payload. Skill and run-engine hint: you must spawn one sub-agent per node unless the user says otherwise.
 - **Traceability:** Optional `citations`, `derived_from`, and `reasoning` are merged into every collection kind's item schema (except `run_input`) via traceability-schema. Default schema and kind-templates use it; skill and MCP describe traceability. Studio: `TraceabilityDisplay` and collection item detail/page show citations (external links and internal item refs), derived-from links, and reasoning; table and generic item view exclude these keys.
@@ -149,19 +172,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Studio:** Node prompts and descriptions load on demand when opening a node in the workflow canvas (smaller initial payload, faster load). Run detail and workflow pages use the new behavior.
 - **Workspace:** Version listing uses a `version_ids.json` manifest per workflow for faster listing; created or updated when listing or writing versions. Missing manifest falls back to directory listing.
 
-## [0.1.6] - 2025-02-25
+## [0.1.6](https://github.com/meitarbe/cognetivy/releases/tag/v0.1.6) - 2025-02-25
 
 - Initial public release as open-source.
 - CLI: installer, workflow, run, event, collection, and MCP server.
 - Studio: read-only UI for workflow DAG, runs, events, and collections.
 - Skills installation for Cursor, Claude Code, OpenClaw, and workspace.
 
-[Unreleased]: https://github.com/meitarbe/cognetivy/compare/v0.1.34...HEAD
-[0.1.34]: https://github.com/meitarbe/cognetivy/compare/v0.1.33...v0.1.34
-[0.1.33]: https://github.com/meitarbe/cognetivy/compare/v0.1.31...v0.1.33
-[0.1.31]: https://github.com/meitarbe/cognetivy/compare/v0.1.30...v0.1.31
-[0.1.30]: https://github.com/meitarbe/cognetivy/compare/v0.1.23...v0.1.30
-[0.1.23]: https://github.com/meitarbe/cognetivy/compare/v0.1.10...v0.1.23
-[0.1.10]: https://github.com/meitarbe/cognetivy/compare/v0.1.9...v0.1.10
-[0.1.9]: https://github.com/meitarbe/cognetivy/compare/v0.1.6...v0.1.9
-[0.1.6]: https://github.com/meitarbe/cognetivy/releases/tag/v0.1.6
