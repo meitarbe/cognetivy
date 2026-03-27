@@ -19,30 +19,19 @@ describe("cognetivy init", () => {
     const p = getWorkspacePaths(cwd);
     assert.strictEqual(p.root, path.join(cwd, WORKSPACE_DIR));
 
-    await assert.doesNotReject(fs.access(p.workflowsIndexPath));
-    await assert.doesNotReject(fs.access(p.workflowsDir));
-    await assert.doesNotReject(fs.access(p.runsDir));
-    await assert.doesNotReject(fs.access(p.eventsDir));
-    await assert.doesNotReject(fs.access(p.collectionsDir));
-    await assert.doesNotReject(fs.access(p.nodeResultsDir));
-
-    const index = JSON.parse(await fs.readFile(p.workflowsIndexPath, "utf-8"));
+    // SQLite-backed workspace may not materialize legacy JSON/NDJSON directories.
+    await assert.doesNotReject(fs.access(p.root));
+    const { readWorkflowIndex } = await import("../dist/workspace.js");
+    const index = await readWorkflowIndex(cwd);
     assert.strictEqual(index.current_workflow_id, "wf_default");
     assert.strictEqual(Array.isArray(index.workflows), true);
 
-    const wfDir = path.join(p.workflowsDir, "wf_default");
-    const wfPath = path.join(wfDir, "workflow.json");
-    const versionPath = path.join(wfDir, "versions", "v1.json");
-    const schemaPath = path.join(wfDir, "collections", "schema.json");
-    await assert.doesNotReject(fs.access(wfPath));
-    await assert.doesNotReject(fs.access(versionPath));
-    await assert.doesNotReject(fs.access(schemaPath));
-
-    const wf = JSON.parse(await fs.readFile(wfPath, "utf-8"));
+    const { readWorkflowRecord, readWorkflowVersionRecord } = await import("../dist/workspace.js");
+    const wf = await readWorkflowRecord("wf_default", cwd);
     assert.strictEqual(wf.workflow_id, "wf_default");
     assert.strictEqual(wf.current_version_id, "v1");
 
-    const version = JSON.parse(await fs.readFile(versionPath, "utf-8"));
+    const version = await readWorkflowVersionRecord("wf_default", "v1", cwd);
     assert.strictEqual(version.workflow_id, "wf_default");
     assert.strictEqual(version.version_id, "v1");
     assert.strictEqual(Array.isArray(version.nodes), true);

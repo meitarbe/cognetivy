@@ -8,7 +8,7 @@ import {
   writeRunFile,
   appendEventLine,
   readRunFile,
-  getEventsFilePath,
+  readRunEvents,
 } from "../dist/workspace.js";
 
 describe("run start and event append", () => {
@@ -39,10 +39,9 @@ describe("run start and event append", () => {
     assert.strictEqual(read.run_id, runId);
     assert.strictEqual(read.status, "running");
 
-    const eventsPath = getEventsFilePath(runId, cwd);
-    const lines = (await fs.readFile(eventsPath, "utf-8")).trim().split("\n");
-    assert.strictEqual(lines.length, 1);
-    const firstEvent = JSON.parse(lines[0]);
+    const events = await readRunEvents(runId, cwd);
+    assert.strictEqual(events.length, 1);
+    const firstEvent = events[0];
     assert.strictEqual(firstEvent.type, "run_started");
   });
 
@@ -78,9 +77,8 @@ describe("run start and event append", () => {
       cwd
     );
 
-    const eventsPath = getEventsFilePath(runId, cwd);
-    const lines = (await fs.readFile(eventsPath, "utf-8")).trim().split("\n");
-    assert.strictEqual(lines.length, 2);
-    assert.strictEqual(JSON.parse(lines[1]).type, "step_started");
+    const events = await readRunEvents(runId, cwd);
+    assert.strictEqual(events.length, 2);
+    assert.strictEqual(events[1].type, "step_started");
   });
 });
