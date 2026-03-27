@@ -17,6 +17,14 @@ export function createDefaultWorkflowIndex(): WorkflowIndexRecord {
   };
 }
 
+/** Index for cloud-only minimal workspace: no local workflow, no wf_default. */
+export function createMinimalWorkflowIndex(): WorkflowIndexRecord {
+  return {
+    current_workflow_id: "",
+    workflows: [],
+  };
+}
+
 export function createDefaultWorkflowRecord(now: string = new Date().toISOString()): WorkflowRecord {
   return {
     workflow_id: DEFAULT_WORKFLOW_ID,

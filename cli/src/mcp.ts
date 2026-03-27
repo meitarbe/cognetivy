@@ -24,6 +24,7 @@ import {
   readCollections,
   writeCollections,
   appendCollection,
+  deleteCollectionItemsByIds,
   writeNodeResult,
   readNodeResult,
   listNodeResults,
@@ -45,6 +46,7 @@ import { mergeKindTemplate } from "./kind-templates.js";
 import { listSkills, getSkillByName } from "./skills.js";
 import type { SkillSource } from "./skills.js";
 import { getNextStep } from "./run-engine.js";
+import { startEnvWatcher } from "./env-watcher.js";
 
 const DEFAULT_BY = "mcp";
 
@@ -77,6 +79,20 @@ function sendError(id: string | number | null, code: number, message: string, da
   sendResponse({ jsonrpc: "2.0", id, error: { code, message, data } });
 }
 
+function estimateTokensFromText(text: string): number {
+  // Rough heuristic: ~4 chars per token on average.
+  return Math.max(0, Math.ceil(text.length / 4));
+}
+
+function estimateTokensFromUnknown(value: unknown): number {
+  try {
+    return estimateTokensFromText(JSON.stringify(value));
+  } catch {
+    // Fallback to string length if JSON serialization fails.
+    return estimateTokensFromText(String(value));
+  }
+}
+
 const TOOLS: Array<{ name: string; description: string; inputSchema: { type: "object"; properties: Record<string, unknown>; required?: string[] } }> = [
   {
     name: "workflow_get",
@@ -87,7 +103,7 @@ const TOOLS: Array<{ name: string; description: string; inputSchema: { type: "ob
   {
     name: "workflow_set",
     description:
-      "Set workflow from provided JSON. Creates a new version and updates the pointer. Workflow must be a single connected DAG: no disconnected subgraphs, no cycles (acyclic dataflow).",
+      "Update the *currently selected* workflow from provided JSON. This creates a new workflow version and updates the current pointer (do NOT create a new workflow; do NOT call workflow_create). Workflow must be a single connected DAG: no disconnected subgraphs, no cycles (acyclic dataflow). If the selected workflow has no versions yet, workflow_set will create the first one.",
     inputSchema: {
       type: "object",
       properties: {
@@ -379,14 +395,16 @@ async function handleToolsCall(
                 ? `Before collection_set/collection_append: call collection_schema_get. Ensure schema has kinds for: ${suggested_collection_kinds.join(", ")}. Use collection_schema_set or collection_schema_add_kind if missing.`
                 : undefined,
           },
-          null,
-          2
+          undefined
         );
       }
       case "workflow_set": {
         const workflowJson = args.workflow_json as object;
         const index = await readWorkflowIndex(cwd);
         const workflowId = index.current_workflow_id;
+        if (!workflowId) {
+          throw new Error("workflow_set requires a current workflow to be selected in the workspace. Use `cognetivy workflow select --workflow <workflow_id> [--local|--cloud]` (or set COGNETIVY_WORKFLOW_ID) before calling workflow_set.");
+        }
         const wf = await readWorkflowRecord(workflowId, cwd);
         const existing = await listWorkflowVersionIds(workflowId, cwd);
         const nums = existing.map((v) => parseInt(v.replace(/^v/, ""), 10)).filter((n) => !Number.isNaN(n));
@@ -400,6 +418,29 @@ async function handleToolsCall(
           nodes: (workflowJson as { nodes?: unknown[] }).nodes as WorkflowVersionRecord["nodes"],
         };
         validateWorkflowVersion(version);
+
+        // Measure change remaining-1: require collection schema kinds to exist
+        // for every collection referenced in the workflow nodes.
+        const referencedKinds = new Set<string>();
+        for (const n of version.nodes ?? []) {
+          if (n != null && typeof n === "object") {
+            const node = n as { input_collections?: string[]; output_collections?: string[] };
+            for (const c of node.input_collections ?? []) if (typeof c === "string" && c) referencedKinds.add(c);
+            for (const c of node.output_collections ?? []) if (typeof c === "string" && c) referencedKinds.add(c);
+          }
+        }
+        if (referencedKinds.size > 0) {
+          const schema = await readCollectionSchema(workflowId, cwd);
+          const missing = Array.from(referencedKinds).filter((k) => k !== "run_input" && schema.kinds?.[k]?.item_schema == null);
+          if (missing.length > 0) {
+            throw new Error(
+              `Collection schema (kinds) is required for all collections referenced in nodes. Missing kinds for: ${missing.join(
+                ", "
+              )}. Add a "kinds" entry for each kind before calling workflow_set.`,
+            );
+          }
+        }
+
         await writeWorkflowVersionRecord(version, cwd);
         await writeWorkflowRecord({ ...wf, current_version_id: newVersionId }, cwd);
         await writeWorkflowIndex(
@@ -458,7 +499,7 @@ async function handleToolsCall(
           status: NodeResultStatus.Completed,
           started_at: now,
           completed_at: now,
-          output: JSON.stringify(inputJson, null, 2),
+          output: JSON.stringify(inputJson),
           writes: [{ kind: "run_input", item_ids: ["run_input"] }],
         };
         await writeNodeResult(runId, systemNodeId, nodeResult, cwd);
@@ -472,27 +513,56 @@ async function handleToolsCall(
 
         const workflow = await readWorkflowVersionRecord(workflowId, versionId, cwd);
         const suggested_collection_kinds = getSuggestedCollectionKinds(workflow);
-        let { next_step, current_node_id } = await getNextStep(runId, cwd);
+        let { next_step, current_node_id, current_node_ids } = await getNextStep(runId, cwd);
+
+        const startNodeResultsAsStarted = async (nodeIds: string[]): Promise<void> => {
+          for (const nodeResultIdNodeId of nodeIds) {
+            await appendEventLine(
+              runId,
+              {
+                ts: now,
+                type: "step_started",
+                by,
+                data: { step: nodeResultIdNodeId, step_id: nodeResultIdNodeId },
+              },
+              cwd
+            );
+            await writeNodeResult(
+              runId,
+              nodeResultIdNodeId,
+              {
+                node_result_id: generateId("node_result"),
+                run_id: runId,
+                workflow_id: workflowId,
+                workflow_version_id: versionId,
+                node_id: nodeResultIdNodeId,
+                status: NodeResultStatus.Started,
+                started_at: now,
+              },
+              cwd
+            );
+          }
+        };
+
         if (next_step.action === "run_node" && next_step.node_id) {
-          await appendEventLine(runId, { ts: now, type: "step_started", by, data: { step: next_step.node_id, step_id: next_step.node_id } }, cwd);
-          await writeNodeResult(runId, next_step.node_id, {
-            node_result_id: generateId("node_result"),
-            run_id: runId,
-            workflow_id: workflowId,
-            workflow_version_id: versionId,
-            node_id: next_step.node_id,
-            status: NodeResultStatus.Started,
-            started_at: now,
-          }, cwd);
+          await startNodeResultsAsStarted([next_step.node_id]);
           const after = await getNextStep(runId, cwd);
           next_step = after.next_step;
           current_node_id = after.current_node_id;
+          current_node_ids = after.current_node_ids;
+        } else if (next_step.action === "run_nodes_parallel" && next_step.runnable_node_ids?.length) {
+          await startNodeResultsAsStarted(next_step.runnable_node_ids);
+          const after = await getNextStep(runId, cwd);
+          next_step = after.next_step;
+          current_node_id = after.current_node_id;
+          current_node_ids = after.current_node_ids;
         }
         return JSON.stringify({
           run_id: runId,
           suggested_collection_kinds,
           next_step,
           ...(current_node_id !== undefined && { current_node_id }),
+          ...(current_node_ids !== undefined && { current_node_ids }),
           _hint:
             suggested_collection_kinds.length > 0
               ? `Call collection_schema_get. Ensure schema has kinds: ${suggested_collection_kinds.join(", ")}. Use collection_schema_add_kind if missing. Then use run_step to advance; follow next_step.hint.`
@@ -512,8 +582,24 @@ async function handleToolsCall(
         const byStep = (args.by as string) ?? (await resolveBy(cwd));
         const nowStep = new Date().toISOString();
 
+        let estimatedOutputTokens: number | undefined = undefined;
+        let writesCount = 0;
+
         if (nodeIdStep !== undefined) {
           const existingStep = await readNodeResult(runIdStep, nodeIdStep, cwd);
+            // Replace semantics (B2): if this node was completed before, capture
+            // previous output item ids from node_result.writes before we overwrite it.
+            let priorItemIdsStep: string[] = [];
+            if (existingStep?.writes != null && Array.isArray(existingStep.writes)) {
+              for (const w of existingStep.writes) {
+                const itemIdsMaybe = w && typeof w === "object" ? (w as { item_ids?: unknown }).item_ids : undefined;
+                if (Array.isArray(itemIdsMaybe)) {
+                  for (const id of itemIdsMaybe) {
+                    if (typeof id === "string" && id.trim() !== "") priorItemIdsStep.push(id);
+                  }
+                }
+              }
+            }
           if (!existingStep || existingStep.status !== "started") {
             await appendEventLine(runIdStep, { ts: nowStep, type: "step_started", by: byStep, data: { step: nodeIdStep, step_id: nodeIdStep } }, cwd);
             await writeNodeResult(runIdStep, nodeIdStep, {
@@ -534,6 +620,9 @@ async function handleToolsCall(
           const writesStep: { kind: string; item_ids: string[] }[] = [];
 
           if (collectionKindStep) {
+            if (priorItemIdsStep.length > 0) {
+              await deleteCollectionItemsByIds(runIdStep, priorItemIdsStep, cwd);
+            }
             const payloads = collectionItemsStep ?? (collectionPayloadStep ? [collectionPayloadStep] : []);
             if (payloads.length === 0) {
               throw new Error("run_step with collection_kind requires collection_items or collection_payload.");
@@ -544,6 +633,8 @@ async function handleToolsCall(
                 ...p,
                 id: (p as { id?: string }).id ?? `${collectionKindStep}_${i}`,
               }));
+              estimatedOutputTokens = estimateTokensFromUnknown(payloadsWithIds);
+              writesCount = payloadsWithIds.length;
               await writeCollections(
                 runIdStep,
                 collectionKindStep,
@@ -560,6 +651,8 @@ async function handleToolsCall(
                 { created_by_node_id: nodeIdStep, created_by_node_result_id: nodeResultIdStep },
                 cwd
               );
+              estimatedOutputTokens = estimateTokensFromUnknown(payloads[0]);
+              writesCount = 1;
               writesStep.push({ kind: collectionKindStep, item_ids: [item.id] });
             }
           }
@@ -643,6 +736,8 @@ async function handleToolsCall(
           status: runAfter.status,
           next_step: nextStep,
         };
+        if (estimatedOutputTokens !== undefined) result.estimated_output_tokens = estimatedOutputTokens;
+        if (writesCount > 0) result.writes_count = writesCount;
         if (currentStep !== undefined) result.current_node_id = currentStep;
         if (currentStepIds !== undefined && currentStepIds.length > 0) result.current_node_ids = currentStepIds;
         return JSON.stringify(result);
@@ -733,7 +828,7 @@ async function handleToolsCall(
       case "collection_schema_get": {
         const index = await readWorkflowIndex(cwd);
         const schema = await readCollectionSchema(index.current_workflow_id, cwd);
-        return JSON.stringify(schema, null, 2);
+        return JSON.stringify(schema);
       }
       case "collection_schema_set": {
         const schemaJson = args.schema_json as CollectionSchemaConfig;
@@ -755,7 +850,8 @@ async function handleToolsCall(
       case "collection_schema_add_kind": {
         const kind = args.kind as string;
         const description = args.description as string;
-        const required = (args.required as string[] | undefined) ?? [];
+        const requiredArg = args.required as string[] | undefined;
+        const required = requiredArg ?? [];
         const properties = (args.properties as Record<string, { type?: string; description?: string }> | undefined) ?? undefined;
         if (!kind || !description) {
           throw new Error("collection_schema_add_kind requires: kind, description.");
@@ -770,12 +866,16 @@ async function handleToolsCall(
             ...(v.description ? { description: v.description } : {}),
           };
         }
+        // If required was not provided, default it to all property keys.
+        // This prevents schema structure mismatches and makes Ajv validation deterministic.
+        const requiredFinal =
+          requiredArg === undefined && Object.keys(jsonSchemaProps).length > 0 ? Object.keys(jsonSchemaProps) : required;
         let kindSchema: CollectionKindSchema = {
           description,
           item_schema: {
             type: "object",
             properties: jsonSchemaProps,
-            required,
+            required: requiredFinal,
             additionalProperties: true,
           },
         };
@@ -793,7 +893,8 @@ async function handleToolsCall(
         const runIdGet = args.run_id as string;
         const kindGet = args.kind as string;
         const store = await readCollections(runIdGet, kindGet, cwd);
-        return JSON.stringify(store, null, 2);
+        const estimated_tokens = estimateTokensFromUnknown(store);
+        return JSON.stringify({ ...store, estimated_tokens });
       }
       case "collection_set": {
         const runIdSet = args.run_id as string;
@@ -814,7 +915,7 @@ async function handleToolsCall(
             cwd
           );
           return `Set ${payloads.length} collection(s) for kind "${kindSet}".`;
-        } catch (err) {
+        } catch (err: unknown) {
           if (err instanceof CollectionValidationError) {
             const run = await readRunFile(runIdSet, cwd);
             const schema = await readCollectionSchema(run.workflow_id, cwd);
@@ -844,8 +945,8 @@ async function handleToolsCall(
             { id: idOpt, created_by_node_id: createdByNodeId, created_by_node_result_id: createdByNodeResultId },
             cwd
           );
-          return JSON.stringify(item, null, 2);
-        } catch (err) {
+          return JSON.stringify(item);
+        } catch (err: unknown) {
           if (err instanceof CollectionValidationError) {
             const run = await readRunFile(runIdApp, cwd);
             const schema = await readCollectionSchema(run.workflow_id, cwd);
@@ -1007,6 +1108,7 @@ async function handleInitialize(): Promise<{
     capabilities: { tools: {} },
     serverInfo: { name: "cognetivy", version: "0.1.0" },
     instructions:
+      "MCP works with a local .cognetivy workspace (run cognetivy init if missing). For cloud runs use the Cognetivy app or CLI with COGNETIVY_API_KEY. " +
       "When you start a run with run_start, you MUST execute the workflow. Do not leave runs incomplete. " +
       "WORKFLOW NODES: Use required_skills (array of skill names) and required_mcps (array of MCP server names) on each node - not \"skills\". Call workflow_get to see the default workflow example. " +
       "MINIMAL FLOW: run_start returns next_step (action, node_id?, hint?). Use run_step to advance: run_step(run_id) starts the next node; run_step(run_id, node_id, collection_kind, collection_items or collection_payload) completes that node. Every run_start, run_status, and run_step returns next_step and current_node_id (when a node is in progress). Follow next_step.hint; do not guess. When next_step.action is complete_run, call event_append run_completed then run_complete. " +
@@ -1028,7 +1130,19 @@ export async function runMcpServer(workspacePath: string): Promise<void> {
     process.exit(1);
   }
 
+  const stopWatcher = await startEnvWatcher(cwd, {
+    debounceMs: 400,
+    onEvent: (event) => {
+      process.stderr.write(
+        JSON.stringify({ type: "env_fs", event: event.type, path: event.path }) + "\n"
+      );
+    },
+  });
+
   const rl = readline.createInterface({ input: process.stdin, terminal: false });
+  rl.on("close", () => {
+    stopWatcher();
+  });
 
   for await (const line of rl) {
     if (!line.trim()) continue;

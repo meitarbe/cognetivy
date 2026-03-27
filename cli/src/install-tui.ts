@@ -15,7 +15,6 @@ import { ensureWorkspace, workspaceExists } from "./workspace.js";
 import { getMergedConfig } from "./config.js";
 import { installSkillsFromDirectory, installCognetivySkill } from "./skills.js";
 import { renderPngFileToAnsi } from "./terminal-png.js";
-import { getCurrentVersionSync, writeInstalledSkillsVersion } from "./skills-version.js";
 import { listWorkflowTemplatesForPicker } from "./workflow-templates.js";
 import { applyWorkflowTemplateToWorkspace } from "./workflow-template-apply.js";
 
@@ -163,15 +162,19 @@ async function tryPrintFaviconBanner(cwd: string): Promise<void> {
   }
 }
 
+export type OnboardingMode = "cloud" | "local";
+
 export interface InstallTUIOptions {
   cwd: string;
   force?: boolean;
   init?: boolean;
   noGitignore?: boolean;
+  /** When set to "cloud", skip the template picker in install (default flow will apply template to cloud). */
+  onboardingMode?: OnboardingMode;
 }
 
 export async function runInstallTUI(options: InstallTUIOptions): Promise<void> {
-  const { cwd, force = false, init = true, noGitignore = false } = options;
+  const { cwd, force = false, init = true, noGitignore = false, onboardingMode } = options;
 
   await tryPrintFaviconBanner(cwd);
   p.intro("cognetivy install");
@@ -187,7 +190,10 @@ export async function runInstallTUI(options: InstallTUIOptions): Promise<void> {
     process.exit(0);
   }
 
-  const targetsToInstall = clientToTargets(selectedClients as InstallerClient[]);
+  let targetsToInstall = clientToTargets(selectedClients as InstallerClient[]);
+  if (onboardingMode === "cloud") {
+    targetsToInstall = targetsToInstall.filter((t) => t !== "workspace");
+  }
 
   p.note(
     targetsToInstall.map((t) => `- ${t}: ${targetToInstallPathHint(t)}`).join("\n"),
@@ -196,7 +202,7 @@ export async function runInstallTUI(options: InstallTUIOptions): Promise<void> {
 
   const hadWorkspaceBefore = await workspaceExists(cwd);
 
-  if (init) {
+  if (init && onboardingMode !== "cloud") {
     const initSpinner = ora("Initializing workspace...").start();
     try {
       await ensureWorkspace(cwd, { force, noGitignore });
@@ -213,6 +219,7 @@ export async function runInstallTUI(options: InstallTUIOptions): Promise<void> {
   const optsCommon = { force: forceSkills, cwd, config: skillsConfig ?? {} };
   const installedPaths: string[] = [];
 
+  const skillMode = onboardingMode === "cloud" ? "cloud" : "local";
   for (const internalTarget of targetsToInstall) {
     const spinner = ora(`Installing (${targetToInstallPathHint(internalTarget)})...`).start();
     try {
@@ -220,7 +227,7 @@ export async function runInstallTUI(options: InstallTUIOptions): Promise<void> {
       for (const r of results) {
         installedPaths.push(`[${internalTarget}] ${r.path}`);
       }
-      const cognetivyPath = await installCognetivySkill(internalTarget, cwd, skillsConfig);
+      const cognetivyPath = await installCognetivySkill(internalTarget, cwd, skillsConfig, skillMode);
       installedPaths.push(`[${internalTarget}] Cognetivy skill: ${cognetivyPath}`);
       spinner.succeed(`Installed to ${targetToInstallPathHint(internalTarget)}`);
     } catch (err) {
@@ -237,10 +244,19 @@ export async function runInstallTUI(options: InstallTUIOptions): Promise<void> {
     }
   }
 
-  await writeInstalledSkillsVersion(cwd, getCurrentVersionSync());
-
-  if (hadWorkspaceBefore) {
-    p.note("Workspace already set up; skipping template.", "Skills updated");
+  const skipTemplateInInstall = init && (hadWorkspaceBefore || onboardingMode === "cloud");
+  if (!init || hadWorkspaceBefore) {
+    if (!init) {
+      p.note("Skills updated. Your .cognetivy workflows and runs were not touched.", "Skills updated");
+    } else {
+      p.note("Workspace already set up; skipping template.", "Skills updated");
+    }
+  } else if (skipTemplateInInstall) {
+    if (onboardingMode === "cloud") {
+      p.note("Template will be chosen in the next step (cloud workflow).", "Skills updated");
+    } else {
+      p.note("Workspace already set up; skipping template.", "Skills updated");
+    }
   } else {
     const templates = listWorkflowTemplatesForPicker();
     const templateSelection = await p.select({

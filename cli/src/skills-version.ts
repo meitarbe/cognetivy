@@ -1,15 +1,27 @@
 /**
- * Track which CLI version was used to install skills (per project and per skill dir).
+ * Track which CLI version was used to install skills. Version is stored per skill folder only
+ * (.cognetivy-version in each install target); no central .cognetivy/ file.
  */
 
 import path from "node:path";
 import fs from "node:fs/promises";
 import fsSync from "node:fs";
 import { fileURLToPath } from "node:url";
-import { getWorkspaceRoot } from "./workspace.js";
 
-export const SKILLS_VERSION_FILENAME = "skills-version.json";
 export const COGNETIVY_VERSION_FILENAME = ".cognetivy-version";
+
+/** All install targets that can have the cognetivy skill (project-local paths only). */
+const COGNETIVY_VERSION_CANDIDATES_RELATIVE = [
+  ".cursor/skills/cognetivy",
+  ".claude/skills/cognetivy",
+  ".agents/skills/cognetivy",
+  ".factory/skills/cognetivy",
+  ".gemini/skills/cognetivy",
+  "skills/cognetivy",
+  ".opencode/skills/cognetivy",
+  ".qwen/skills/cognetivy",
+  ".cognetivy/skills/cognetivy",
+] as const;
 
 function getPackageJsonPath(): string {
   const dir = path.dirname(fileURLToPath(import.meta.url));
@@ -43,26 +55,16 @@ export function isNewerVersion(a: string, b: string): boolean {
 }
 
 /**
- * Read the CLI version that was used when skills were last installed in this project.
+ * Read the CLI version from installed skill folders (per-folder .cognetivy-version).
+ * Returns the newest version found, or null if none.
  */
 export async function readInstalledSkillsVersion(cwd: string): Promise<string | null> {
-  const root = getWorkspaceRoot(cwd);
-  const projectFile = path.join(root, SKILLS_VERSION_FILENAME);
-  try {
-    const raw = await fs.readFile(projectFile, "utf-8");
-    const data = JSON.parse(raw) as { version?: string };
-    if (typeof data.version === "string") return data.version;
-  } catch {
-    // no project file
-  }
-  const candidates = [
-    path.resolve(cwd, ".cursor", "skills", "cognetivy", COGNETIVY_VERSION_FILENAME),
-    path.resolve(cwd, ".claude", "skills", "cognetivy", COGNETIVY_VERSION_FILENAME),
-  ];
+  const resolvedCwd = path.resolve(cwd);
   let maxVersion: string | null = null;
-  for (const file of candidates) {
+  for (const rel of COGNETIVY_VERSION_CANDIDATES_RELATIVE) {
+    const versionFile = path.join(resolvedCwd, rel, COGNETIVY_VERSION_FILENAME);
     try {
-      const v = (await fs.readFile(file, "utf-8")).trim();
+      const v = (await fs.readFile(versionFile, "utf-8")).trim();
       if (v && (!maxVersion || isNewerVersion(v, maxVersion))) maxVersion = v;
     } catch {
       // skip
@@ -72,14 +74,8 @@ export async function readInstalledSkillsVersion(cwd: string): Promise<string | 
 }
 
 /**
- * Write the current CLI version so we know "skills in this project were installed with version X".
+ * No-op: version is written per skill folder by installCognetivySkill. Kept for API compatibility.
  */
-export async function writeInstalledSkillsVersion(cwd: string, version: string): Promise<void> {
-  const root = getWorkspaceRoot(cwd);
-  await fs.mkdir(root, { recursive: true });
-  await fs.writeFile(
-    path.join(root, SKILLS_VERSION_FILENAME),
-    JSON.stringify({ version }, null, 2),
-    "utf-8"
-  );
+export async function writeInstalledSkillsVersion(_cwd: string, _version: string): Promise<void> {
+  // Version is stored only in each install target's .cognetivy-version file.
 }

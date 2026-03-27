@@ -314,7 +314,11 @@ async function handleApi(
       const kind = apiMatch[1];
       const runId = searchParams?.get("run_id") ?? undefined;
       const workflowIdParam = searchParams?.get("workflow_id") ?? undefined;
-      const workflowId = workflowIdParam ?? (await readWorkflowIndex(cwd)).current_workflow_id;
+      const workflowId = workflowIdParam ?? (await readWorkflowIndex(cwd)).current_workflow_id ?? undefined;
+      if (!workflowId || String(workflowId).trim() === "") {
+        sendJson(res, 200, []);
+        return true;
+      }
       const schema = await readCollectionSchema(workflowId, cwd);
       if (!schema.kinds[kind]) {
         sendJson(res, 404, { error: `Unknown entity kind "${kind}" in workflow "${workflowId}"` });
@@ -326,7 +330,7 @@ async function handleApi(
       for (const run of runs) {
         try {
           const r = run as { run_id: string; workflow_id?: string };
-          if (workflowId && r.workflow_id && r.workflow_id !== workflowId) continue;
+          if (workflowId && (!r.workflow_id || r.workflow_id !== workflowId)) continue;
           if (runId && r.run_id !== runId) continue;
           const store = await readCollections(r.run_id, kind, cwd);
           for (const item of store.items) allItems.push(item);

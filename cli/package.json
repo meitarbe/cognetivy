@@ -1,6 +1,6 @@
 {
   "name": "cognetivy",
-  "version": "0.1.34",
+  "version": "1.0.3",
   "description": "Reasoning orchestration state: workflow structure, run logs, and versioned mutations",
   "type": "module",
   "main": "dist/index.js",
@@ -8,14 +8,18 @@
     "cognetivy": "dist/cli.js"
   },
   "scripts": {
-    "build": "tsc && node ./scripts/copy-installer-assets.mjs",
+    "build:core": "npm install --prefix ../core && npm run build --prefix ../core",
+    "sync:core": "node ./scripts/sync-core-source.mjs",
+    "prebuild": "npm run build:core && npm run sync:core",
+    "build": "npm run prebuild && tsc && node ./scripts/copy-installer-assets.mjs && node ./scripts/patch-studio-server.mjs",
     "prepare": "npm run build",
     "test": "npm run build && node --test test/*.test.mjs",
     "build:studio": "cd ../studio && npm run build && node -e \"require('fs').cpSync(require('path').join(process.cwd(),'dist'), require('path').join(process.cwd(),'../cli/dist/studio'), {recursive:true})\"",
     "build:full": "npm run build && npm run build:studio",
     "release": "npm version patch && npm publish",
     "release:minor": "npm version minor && npm publish",
-    "release:major": "npm version major && npm publish"
+    "release:major": "npm version major && npm publish",
+    "release:next": "npm publish --tag next"
   },
   "keywords": [
     "cli",
@@ -38,8 +42,10 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.0.1",
+    "better-sqlite3": "^11.6.0",
     "ajv": "^8.18.0",
     "ajv-formats": "^3.0.1",
+    "chokidar": "^4.0.1",
     "commander": "^12.1.0",
     "env-paths": "^3.0.0",
     "fast-json-patch": "^3.1.1",
@@ -47,9 +53,11 @@
     "open": "^11.0.0",
     "ora": "^9.3.0",
     "pngjs": "^7.0.0",
-    "update-notifier": "^7.3.1"
+    "update-notifier": "^7.3.1",
+    "yaml": "^2.8.2"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11",
     "@types/node": "^22.10.0",
     "@types/pngjs": "^6.0.5",
     "typescript": "^5.7.0"

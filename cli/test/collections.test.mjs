@@ -64,13 +64,21 @@ describe("collection schema and storage", () => {
     const item = await appendCollection(
       runId,
       "sources",
-      { url: "https://example.com", title: "Example" },
+      {
+        name: "Example",
+        url: "https://example.com",
+        title: "Example",
+        citations: [{ url: "https://example.com", title: "Example", excerpt: "Example source" }],
+        derived_from: [{ kind: "run_input", item_id: "input_1" }],
+        reasoning: "Source selected for relevance.",
+      },
       { created_by_node_id: "retrieve_sources", created_by_node_result_id: "nr_1" },
       cwd
     );
     assert.ok(item.id);
     assert.ok(item.created_at);
     assert.strictEqual(item.created_by_node_id, "retrieve_sources");
+    assert.strictEqual(item.name, "Example");
     assert.strictEqual(item.url, "https://example.com");
     assert.strictEqual(item.title, "Example");
 
@@ -79,6 +87,7 @@ describe("collection schema and storage", () => {
     assert.strictEqual(store.kind, "sources");
     assert.ok(store.updated_at);
     assert.strictEqual(store.items.length, 1);
+    assert.strictEqual(store.items[0].name, "Example");
     assert.strictEqual(store.items[0].url, "https://example.com");
   });
 
@@ -124,7 +133,7 @@ describe("collection schema and storage", () => {
           { created_by_node_id: "retrieve_sources", created_by_node_result_id: "nr_1" },
           cwd
         ),
-      /schema validation/i
+      /collection item validation failed/i
     );
   });
 
@@ -165,8 +174,20 @@ describe("collection schema and storage", () => {
       runId,
       "ideas",
       [
-        { name: "Idea A", why_now: "Because now" },
-        { name: "Idea B", description: "Second" },
+        {
+          name: "Idea A",
+          why_now: "Because now",
+          citations: [{ url: "https://example.com/a", title: "A", excerpt: "A source" }],
+          derived_from: [{ kind: "run_input", item_id: "input_1" }],
+          reasoning: "First option generated from prompt.",
+        },
+        {
+          name: "Idea B",
+          description: "Second",
+          citations: [{ url: "https://example.com/b", title: "B", excerpt: "B source" }],
+          derived_from: [{ kind: "run_input", item_id: "input_1" }],
+          reasoning: "Alternative direction.",
+        },
       ],
       { created_by_node_id: "synthesize_summary", created_by_node_result_id: "nr_2" },
       cwd

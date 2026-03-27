@@ -1,0 +1,19 @@
+{
+  "name": "@cognetivy/core",
+  "version": "0.1.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "private": true,
+  "scripts": {
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "ajv": "^8.18.0",
+    "ajv-formats": "^3.0.1",
+    "typescript": "^5.7.0"
+  },
+  "peerDependencies": {
+    "ajv": "^8",
+    "ajv-formats": "^3"
+  }
+}
