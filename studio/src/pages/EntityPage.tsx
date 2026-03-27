@@ -24,8 +24,6 @@ import {
 } from "@/components/ui/select";
 import { cn, downloadTableCsv, getCollectionColor, TABLE_LINK_CLASS } from "@/lib/utils";
 
-const POLL_MS = 5000;
-
 function formatCellValue(value: unknown): string {
   if (value === undefined || value === null) return "-";
   if (typeof value === "string") return value;

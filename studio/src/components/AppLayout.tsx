@@ -26,7 +26,6 @@ import {
 } from "lucide-react";
 
 const SIDEBAR_OPEN_KEY = "cognetivy-sidebar-open";
-const SCHEMA_POLL_MS = 2000;
 
 const staticNavItems: Array<{ to: string; label: string; icon: LucideIcon }> = [
   { to: "/", label: "Workflow", icon: GitBranch },

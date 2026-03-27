@@ -89,7 +89,7 @@ export function RunDetailPage() {
     selectedCollectionTab ?? (tabParam && kinds.includes(tabParam) ? tabParam : kinds[0]) ?? "";
 
   const lastEventTs = events.length > 0 ? events[events.length - 1]?.ts : undefined;
-  // const lagState = getRunLagState(run?.status, lastEventTs);
+  const lagState = getRunLagState(run?.status, lastEventTs);
 
   const filteredEvents = useMemo(() => {
     if (eventViewMode === "all") return events;
