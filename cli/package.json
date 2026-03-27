@@ -8,7 +8,7 @@
     "cognetivy": "dist/cli.js"
   },
   "scripts": {
-    "build:core": "npm run build --prefix ../core",
+    "build:core": "npm install --prefix ../core && npm run build --prefix ../core",
     "sync:core": "node ./scripts/sync-core-source.mjs",
     "prebuild": "npm run build:core && npm run sync:core",
     "build": "npm run prebuild && tsc && node ./scripts/copy-installer-assets.mjs && node ./scripts/patch-studio-server.mjs",
