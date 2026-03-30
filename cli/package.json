@@ -42,7 +42,7 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.0.1",
-    "better-sqlite3": "^11.6.0",
+    "better-sqlite3": "^12.8.0",
     "ajv": "^8.18.0",
     "ajv-formats": "^3.0.1",
     "chokidar": "^4.0.1",
