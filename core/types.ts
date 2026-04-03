@@ -8,6 +8,15 @@ export enum WorkflowNodeType {
   HumanInTheLoop = "HUMAN_IN_THE_LOOP",
 }
 
+export interface WorkflowNodeExecutor {
+  /** References an ExecutorProfile.id stored in the backend. */
+  profile_id?: string;
+  /** Provider name, e.g. "anthropic", "openai". */
+  provider?: string;
+  /** Model identifier, e.g. "claude-sonnet-4-6". */
+  model_id?: string;
+}
+
 export interface WorkflowNode {
   id: string;
   type: WorkflowNodeType;
@@ -18,6 +27,7 @@ export interface WorkflowNode {
   minimum_rows?: number;
   required_mcps?: string[];
   required_skills?: string[];
+  executor?: WorkflowNodeExecutor;
 }
 
 export interface WorkflowVersionRecord {
