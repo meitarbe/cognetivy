@@ -11,12 +11,13 @@ import fs from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import ora from "ora";
 import type { SkillInstallTarget, SkillsConfig } from "./skills.js";
-import { ensureWorkspace, workspaceExists } from "./workspace.js";
+import { ensureMinimalWorkspace, workspaceExists } from "./workspace.js";
 import { getMergedConfig } from "./config.js";
 import { installSkillsFromDirectory, installCognetivySkill } from "./skills.js";
 import { renderPngFileToAnsi } from "./terminal-png.js";
 import { listWorkflowTemplatesForPicker } from "./workflow-templates.js";
-import { applyWorkflowTemplateToWorkspace } from "./workflow-template-apply.js";
+import { applyWorkflowTemplateToCloud } from "./workflow-template-apply.js";
+import { isCloudAuthenticated, resolveCloudOrganizationId } from "./cloud-client.js";
 
 function getSkillsConfigFromMerged(config: Awaited<ReturnType<typeof getMergedConfig>>): SkillsConfig | undefined {
   const skills = config.skills as SkillsConfig | undefined;
@@ -135,12 +136,6 @@ async function tryPrintFaviconBanner(cwd: string): Promise<void> {
     path.resolve(moduleDir, "installer-assets", "icon-pixelized2.png"),
     path.resolve(moduleDir, "installer-assets", "icon-pixelized.png"),
     path.resolve(moduleDir, "installer-assets", "favicon.png"),
-    path.resolve(cwd, "studio", "public", "icon-pixelized2.png"),
-    path.resolve(cwd, "studio", "public", "icon-pixelized.png"),
-    path.resolve(cwd, "studio", "public", "favicon.png"),
-    path.resolve(moduleDir, "../../studio/public/icon-pixelized2.png"),
-    path.resolve(moduleDir, "../../studio/public/icon-pixelized.png"),
-    path.resolve(moduleDir, "../../studio/public/favicon.png"),
   ];
   async function resolveFirstExistingPath(paths: string[]): Promise<string | null> {
     for (const candidatePath of paths) {
@@ -162,19 +157,17 @@ async function tryPrintFaviconBanner(cwd: string): Promise<void> {
   }
 }
 
-export type OnboardingMode = "cloud" | "local";
-
 export interface InstallTUIOptions {
   cwd: string;
   force?: boolean;
   init?: boolean;
   noGitignore?: boolean;
-  /** When set to "cloud", skip the template picker in install (default flow will apply template to cloud). */
-  onboardingMode?: OnboardingMode;
+  /** When true, skip interactive template apply during install (e.g. onboarding will create the workflow). */
+  skipTemplate?: boolean;
 }
 
 export async function runInstallTUI(options: InstallTUIOptions): Promise<void> {
-  const { cwd, force = false, init = true, noGitignore = false, onboardingMode } = options;
+  const { cwd, force = false, init = true, noGitignore = false, skipTemplate = false } = options;
 
   await tryPrintFaviconBanner(cwd);
   p.intro("cognetivy install");
@@ -190,10 +183,7 @@ export async function runInstallTUI(options: InstallTUIOptions): Promise<void> {
     process.exit(0);
   }
 
-  let targetsToInstall = clientToTargets(selectedClients as InstallerClient[]);
-  if (onboardingMode === "cloud") {
-    targetsToInstall = targetsToInstall.filter((t) => t !== "workspace");
-  }
+  const targetsToInstall = clientToTargets(selectedClients as InstallerClient[]);
 
   p.note(
     targetsToInstall.map((t) => `- ${t}: ${targetToInstallPathHint(t)}`).join("\n"),
@@ -202,10 +192,10 @@ export async function runInstallTUI(options: InstallTUIOptions): Promise<void> {
 
   const hadWorkspaceBefore = await workspaceExists(cwd);
 
-  if (init && onboardingMode !== "cloud") {
+  if (init) {
     const initSpinner = ora("Initializing workspace...").start();
     try {
-      await ensureWorkspace(cwd, { force, noGitignore });
+      await ensureMinimalWorkspace(cwd, { noGitignore });
       initSpinner.succeed("Workspace ready");
     } catch (err) {
       initSpinner.fail("Workspace init failed");
@@ -219,7 +209,6 @@ export async function runInstallTUI(options: InstallTUIOptions): Promise<void> {
   const optsCommon = { force: forceSkills, cwd, config: skillsConfig ?? {} };
   const installedPaths: string[] = [];
 
-  const skillMode = onboardingMode === "cloud" ? "cloud" : "local";
   for (const internalTarget of targetsToInstall) {
     const spinner = ora(`Installing (${targetToInstallPathHint(internalTarget)})...`).start();
     try {
@@ -227,7 +216,7 @@ export async function runInstallTUI(options: InstallTUIOptions): Promise<void> {
       for (const r of results) {
         installedPaths.push(`[${internalTarget}] ${r.path}`);
       }
-      const cognetivyPath = await installCognetivySkill(internalTarget, cwd, skillsConfig, skillMode);
+      const cognetivyPath = await installCognetivySkill(internalTarget, cwd, skillsConfig);
       installedPaths.push(`[${internalTarget}] Cognetivy skill: ${cognetivyPath}`);
       spinner.succeed(`Installed to ${targetToInstallPathHint(internalTarget)}`);
     } catch (err) {
@@ -244,43 +233,39 @@ export async function runInstallTUI(options: InstallTUIOptions): Promise<void> {
     }
   }
 
-  const skipTemplateInInstall = init && (hadWorkspaceBefore || onboardingMode === "cloud");
+  const skipTemplateInInstall = skipTemplate || !init || hadWorkspaceBefore;
   if (!init || hadWorkspaceBefore) {
     if (!init) {
-      p.note("Skills updated. Your .cognetivy workflows and runs were not touched.", "Skills updated");
+      p.note("Skills updated. Your .cognetivy folder (skills) was not removed.", "Skills updated");
     } else {
       p.note("Workspace already set up; skipping template.", "Skills updated");
     }
   } else if (skipTemplateInInstall) {
-    if (onboardingMode === "cloud") {
-      p.note("Template will be chosen in the next step (cloud workflow).", "Skills updated");
-    } else {
-      p.note("Workspace already set up; skipping template.", "Skills updated");
-    }
+    p.note("Template will be chosen when you run `cognetivy` (after sign-in), or create workflows in the app.", "Skills updated");
   } else {
-    const templates = listWorkflowTemplatesForPicker();
-    const templateSelection = await p.select({
-      message: "Pick a workflow template to apply now",
-      options: templates.map((t) => ({ value: t.id, label: t.name, hint: `${t.category} · ${t.node_count} nodes` })),
-    });
+    const authed = await isCloudAuthenticated();
+    if (!authed) {
+      p.note("Sign in with `cognetivy auth login`, then run `cognetivy` to add a workflow template.", "Skills updated");
+    } else {
+      const templates = listWorkflowTemplatesForPicker();
+      const templateSelection = await p.select({
+        message: "Pick a workflow template to create in your cloud org",
+        options: templates.map((t) => ({ value: t.id, label: t.name, hint: `${t.category} · ${t.node_count} nodes` })),
+      });
 
-    if (p.isCancel(templateSelection)) {
-      p.cancel("Install cancelled.");
-      process.exit(0);
-    }
+      if (p.isCancel(templateSelection)) {
+        p.cancel("Install cancelled.");
+        process.exit(0);
+      }
 
-    const templateId = templateSelection as string;
-    try {
-      const result = await applyWorkflowTemplateToWorkspace({ cwd, templateId });
-      p.note(
-        `Applied template \"${result.template.name}\"\nWorkflow: ${result.workflow.workflow_id}\nNow current: ${result.workflow.workflow_id}`,
-        "Template applied"
-      );
-    } catch (err) {
-      p.note(
-        err instanceof Error ? err.message : String(err),
-        "Template apply failed"
-      );
+      const templateId = templateSelection as string;
+      try {
+        const orgId = await resolveCloudOrganizationId();
+        const result = await applyWorkflowTemplateToCloud({ organizationId: orgId, templateId, cwd });
+        p.note(`Created workflow "${result.template.name}" (${result.workflowId}) in cloud.`, "Template applied");
+      } catch (err) {
+        p.note(err instanceof Error ? err.message : String(err), "Template apply failed");
+      }
     }
   }
 

@@ -306,7 +306,7 @@ export async function cloudGetWorkflowVersion(
 }
 
 /** Map backend action names to CLI NextStepAction for display. */
-export function mapCloudActionToLocal(action: string): NextStepAction {
+export function mapCloudActionToCliAction(action: string): NextStepAction {
   const map: Record<string, NextStepAction> = {
     execute_node: "run_node",
     execute_nodes_parallel: "run_nodes_parallel",
@@ -332,4 +332,10 @@ export async function cloudGetCollectionItems(
   return cloudFetch<{ run_id: string; kind: string; items: Array<Record<string, unknown>> }>(
     `/runs/${encodeURIComponent(runId)}/collections/${encodeURIComponent(kind)}/items`
   );
+}
+
+export async function cloudGetCollectionSchema(
+  workflowId: string
+): Promise<{ workflow_id: string; kinds: Record<string, { name?: string; description: string; item_schema: unknown }> }> {
+  return cloudFetch(`/workflows/${encodeURIComponent(workflowId)}/collections/schema`);
 }

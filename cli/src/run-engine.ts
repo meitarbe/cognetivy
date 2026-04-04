@@ -1,122 +1,12 @@
 /**
- * Run engine: load run state from workspace and compute next step via shared core.
+ * Next-step types and formatting for CLI stdout (cloud API maps backend actions into these).
  */
 
-import { getNextStep as getNextStepCore, topologicalNodeOrder as topologicalNodeOrderCore } from "./core/index.js";
 import type { CanonicalNextStep } from "./core/index.js";
-import type { WorkflowVersionRecord, RunRecord } from "./models.js";
-import {
-  readRunFile,
-  listNodeResults,
-  listCollectionKindsForRun,
-  readWorkflowVersionRecord,
-} from "./workspace.js";
 
 export type NextStepAction = "run_node" | "run_nodes_parallel" | "complete_node" | "complete_run" | "done";
 
 export type NextStep = CanonicalNextStep;
-
-export interface RunStatusEnvelope {
-  run_id: string;
-  status: string;
-  next_step: NextStep;
-  current_node_id?: string;
-  current_node_ids?: string[];
-}
-
-export { topologicalNodeOrderCore as topologicalNodeOrder };
-
-export interface GetNextStepResult {
-  next_step: NextStep;
-  run: RunRecord;
-  version: WorkflowVersionRecord | null;
-  current_node_id?: string;
-  current_node_ids?: string[];
-}
-
-/**
- * Compute the next step for a running workflow (loads from workspace, delegates to core).
- */
-export async function getNextStep(runId: string, cwd: string): Promise<GetNextStepResult> {
-  const run = await readRunFile(runId, cwd);
-  if (run.status !== "running") {
-    return {
-      run,
-      version: null,
-      next_step: { action: "done", hint: "Run is not running." },
-    };
-  }
-
-  let version: WorkflowVersionRecord | null = null;
-  try {
-    version = await readWorkflowVersionRecord(run.workflow_id, run.workflow_version_id, cwd);
-  } catch {
-    return {
-      run,
-      version: null,
-      next_step: { action: "done", hint: "Workflow version not found." },
-    };
-  }
-
-  const nodeResults = await listNodeResults(runId, cwd);
-  const completedNodeIds = new Set(
-    nodeResults.filter((r) => r.status === "completed").map((r) => r.node_id)
-  );
-  const startedNodeIds = new Set(
-    nodeResults.filter((r) => r.status === "started").map((r) => r.node_id)
-  );
-  const kindsWithData = new Set(await listCollectionKindsForRun(runId, cwd));
-
-  const nodes = version.nodes ?? [];
-  const result = getNextStepCore({
-    nodes,
-    completedNodeIds,
-    startedNodeIds,
-    kindsWithData,
-  });
-
-  // Measure change remaining-3 (C3 operational): inject latest compressed artifact
-  // (node_result.output) into next_step.hint, bounded to avoid token blowups.
-  const maxArtifactChars = 1200;
-  const completedWithOutput = nodeResults
-    .filter((r) => r.status === "completed" && r.node_id !== "__system__" && typeof r.output === "string" && r.output.trim().length > 0)
-    .map((r) => ({
-      output: r.output as string,
-      completedAt: r.completed_at ? new Date(r.completed_at) : null,
-      startedAt: r.started_at ? new Date(r.started_at) : null,
-    }));
-
-  const latestCompletedWithOutput = completedWithOutput
-    .sort((a, b) => {
-      const atA = a.completedAt ?? a.startedAt ?? new Date(0);
-      const atB = b.completedAt ?? b.startedAt ?? new Date(0);
-      return atB.getTime() - atA.getTime();
-    })[0];
-
-  const artifactText = latestCompletedWithOutput?.output?.trim() ?? "";
-  const boundedArtifactText =
-    artifactText.length > maxArtifactChars ? `${artifactText.slice(0, maxArtifactChars)}...` : artifactText;
-
-  const artifactBlock =
-    result.next_step.action === "run_node" || result.next_step.action === "run_nodes_parallel"
-      ? boundedArtifactText
-        ? `\n\nC3 compressed context artifact (from latest completed node_result.output, <=${maxArtifactChars} chars):\n${boundedArtifactText}`
-        : ""
-      : "";
-
-  const next_step = {
-    ...result.next_step,
-    hint: `${result.next_step.hint ?? ""}${artifactBlock}`,
-  };
-
-  return {
-    run,
-    version,
-    next_step,
-    current_node_id: result.current_node_id,
-    current_node_ids: result.current_node_ids,
-  };
-}
 
 /**
  * Format next_step as a single JSON line for agent parsing (append to stdout).
@@ -129,7 +19,11 @@ export function formatNextStepLine(
   current_node_ids?: string[]
 ): string {
   const payload: Record<string, unknown> = { run_id: runId, status, next_step };
-  if (current_node_id !== undefined) payload.current_node_id = current_node_id;
-  if (current_node_ids !== undefined && current_node_ids.length > 0) payload.current_node_ids = current_node_ids;
+  if (current_node_id !== undefined) {
+    payload.current_node_id = current_node_id;
+  }
+  if (current_node_ids !== undefined && current_node_ids.length > 0) {
+    payload.current_node_ids = current_node_ids;
+  }
   return `COGNETIVY_NEXT_STEP=${JSON.stringify(payload)}`;
 }
