@@ -17,9 +17,44 @@ import { HitlCoordinator } from "./hitl-coordinator.js";
 import { getCloudApiUrl } from "../cloud-client.js";
 import { resolveLocalStudioStaticRoot } from "./static-root.js";
 import { writeExecutorTerminalLog, writeExecutorTerminalNote } from "./executor-terminal-log.js";
-import { serverMessage, WS_PROTOCOL_VERSION, type WsClientMessage, type WsServerMessage } from "./ws-protocol.js";
+import {
+  serverMessage,
+  WS_PROTOCOL_VERSION,
+  type WsClientMessage,
+  type WsServerMessage,
+} from "./ws-protocol.js";
 
 const DEFAULT_PORT = 3848;
+
+/** Large single `data` events from the agent process become one huge WS payload; split so the UI can paint between chunks. */
+const WORKFLOW_GENERATE_AGENT_LOG_BROADCAST_MAX = 2_048;
+
+function broadcastWorkflowGenerateAgentLog(
+  text: string,
+  stream: "stdout" | "stderr",
+  broadcast: (msg: WsServerMessage) => void
+): void {
+  if (!text) {
+    return;
+  }
+  if (text.length <= WORKFLOW_GENERATE_AGENT_LOG_BROADCAST_MAX) {
+    broadcast({ v: 1, type: "workflow.generate", phase: "agent_log", chunk: text, stream });
+    return;
+  }
+  let offset = 0;
+  function sendNext(): void {
+    if (offset >= text.length) {
+      return;
+    }
+    const end = Math.min(offset + WORKFLOW_GENERATE_AGENT_LOG_BROADCAST_MAX, text.length);
+    broadcast({ v: 1, type: "workflow.generate", phase: "agent_log", chunk: text.slice(offset, end), stream });
+    offset = end;
+    if (offset < text.length) {
+      setImmediate(sendNext);
+    }
+  }
+  sendNext();
+}
 
 export interface LocalStudioServerOptions {
   /** Workspace cwd for agent subprocesses (default process.cwd()) */
@@ -192,7 +227,7 @@ export function createLocalStudioServer(options: LocalStudioServerOptions = {}):
                 agent,
                 cwd: workspaceCwd,
                 onChunk: (text, stream) => {
-                  broadcast({ v: 1, type: "workflow.generate", phase: "agent_log", chunk: text, stream });
+                  broadcastWorkflowGenerateAgentLog(text, stream, broadcast);
                 },
                 onPhase: (phase) => {
                   broadcast({ v: 1, type: "workflow.generate", phase });

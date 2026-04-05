@@ -2,6 +2,7 @@
  * Spawn Claude Code or Codex with a text prompt; parse collection payload from stdout.
  */
 import { spawn } from "node:child_process";
+import { isExecutorTerminalLogEnabled, writeExecutorTerminalNote } from "../local-server/executor-terminal-log.js";
 import { processClaudeStreamJsonLine } from "./claude-stream-json-line.js";
 import { processCodexJsonlLine } from "./codex-jsonl-stream.js";
 
@@ -63,6 +64,13 @@ function buildSpawn(
 
 const COLLECTION_MARKER = "COGNETIVY_COLLECTION_JSON=";
 const MAX_LOG_CHARS = 500_000;
+
+function traceAgentPipeData(agent: ExecutorAgentKind, label: "stdout" | "stderr", byteLength: number): void {
+  if (!isExecutorTerminalLogEnabled() || process.env.COGNETIVY_AGENT_STDOUT_TRACE !== "1") {
+    return;
+  }
+  writeExecutorTerminalNote(`agent ${agent} ${label} pipe data bytes=${byteLength}`);
+}
 
 export interface AgentNodeRunParams {
   cwd: string;
@@ -221,9 +229,11 @@ export function runAgentForNodeRaw(params: AgentNodeRunParams): Promise<{ exitCo
       let stderrAcc = "";
       const ndjson = attachNdjsonStdout(processCodexJsonlLine);
       child.stdout?.on("data", (buf: Buffer) => {
+        traceAgentPipeData(params.agent, "stdout", buf.length);
         ndjson.onData(buf);
       });
       child.stderr?.on("data", (buf: Buffer) => {
+        traceAgentPipeData(params.agent, "stderr", buf.length);
         const s = buf.toString("utf8");
         stderrAcc += s;
         params.onChunk(s, "stderr");
@@ -247,9 +257,11 @@ export function runAgentForNodeRaw(params: AgentNodeRunParams): Promise<{ exitCo
       let stderrAcc = "";
       const ndjson = attachNdjsonStdout(processClaudeStreamJsonLine);
       child.stdout?.on("data", (buf: Buffer) => {
+        traceAgentPipeData(params.agent, "stdout", buf.length);
         ndjson.onData(buf);
       });
       child.stderr?.on("data", (buf: Buffer) => {
+        traceAgentPipeData(params.agent, "stderr", buf.length);
         const s = buf.toString("utf8");
         stderrAcc += s;
         params.onChunk(s, "stderr");
@@ -271,9 +283,11 @@ export function runAgentForNodeRaw(params: AgentNodeRunParams): Promise<{ exitCo
       });
     } else {
       child.stdout?.on("data", (buf: Buffer) => {
+        traceAgentPipeData(params.agent, "stdout", buf.length);
         appendPipeChunk(buf.toString("utf8"), "stdout");
       });
       child.stderr?.on("data", (buf: Buffer) => {
+        traceAgentPipeData(params.agent, "stderr", buf.length);
         appendPipeChunk(buf.toString("utf8"), "stderr");
       });
 

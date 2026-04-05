@@ -14,6 +14,7 @@ import {
   resolveCloudOrganizationId,
 } from "../cloud-client.js";
 import { runAgentForNodeRaw, type ExecutorAgentKind } from "./agent-node-runner.js";
+import { isExecutorTerminalLogEnabled, writeExecutorTerminalNote } from "../local-server/executor-terminal-log.js";
 import {
   WORKFLOW_GENERATE_OUTPUT_MARKER,
   buildWorkflowGenerateFullPrompt,
@@ -179,15 +180,39 @@ export async function runWorkflowGenerateFromBrief(
   const { brief, nameHint, descriptionHint, agent, cwd, signal, onChunk, onPhase } = params;
   const prompt = buildWorkflowGenerateFullPrompt({ brief, nameHint, descriptionHint });
 
+  const claudeStreamJsonDisabled = process.env.COGNETIVY_CLAUDE_STREAM_JSON === "0";
+  const useCodexJsonl = agent === "codex";
+  const useClaudeStreamJson = agent === "claude" && !claudeStreamJsonDisabled;
+
+  if (isExecutorTerminalLogEnabled()) {
+    writeExecutorTerminalNote(
+      `workflow.generate spawn agent=${agent} codex_jsonl=${useCodexJsonl} claude_stream_json=${useClaudeStreamJson}`
+    );
+  }
+
+  let onChunkCalls = 0;
+  let onChunkBytes = 0;
+  const sink = onChunk ?? (() => {});
   const { exitCode, combinedLog } = await runAgentForNodeRaw({
     cwd,
     agent,
     prompt,
-    onChunk: onChunk ?? (() => {}),
+    onChunk: (text: string, stream: "stdout" | "stderr") => {
+      onChunkCalls += 1;
+      onChunkBytes += text.length;
+      sink(text, stream);
+    },
     signal,
     /** Codex plain exec buffers transcript; `--json` emits each item as it completes. */
-    codexJsonlStdout: agent === "codex",
+    codexJsonlStdout: useCodexJsonl,
+    claudeStreamJsonStdout: useClaudeStreamJson,
   });
+
+  if (isExecutorTerminalLogEnabled()) {
+    writeExecutorTerminalNote(
+      `workflow.generate agent subprocess done onChunk_calls=${onChunkCalls} onChunk_bytes=${onChunkBytes} combined_log_chars=${combinedLog.length}`
+    );
+  }
 
   if (exitCode !== 0 && exitCode !== null) {
     const tail = combinedLog.trim().slice(-2000);

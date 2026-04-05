@@ -1,6 +1,10 @@
 /**
  * Concise executor status lines on stderr (not agent stdout/stderr chunks).
  * Disable with COGNETIVY_EXECUTOR_LOG=0 or false.
+ *
+ * Optional workflow.generate / agent streaming diagnostics:
+ * - COGNETIVY_WORKFLOW_GENERATE_CHUNK_LOG=1 — log each agent_log WS payload (stream + byte size).
+ * - COGNETIVY_AGENT_STDOUT_TRACE=1 — log each child_process stdout/stderr `data` event size (raw OS pipe).
  */
 import type { WsServerMessage } from "./ws-protocol.js";
 
@@ -20,6 +24,11 @@ export function isExecutorTerminalLogEnabled(): boolean {
     return false;
   }
   return true;
+}
+
+function isWorkflowGenerateChunkLogEnabled(): boolean {
+  const v = process.env.COGNETIVY_WORKFLOW_GENERATE_CHUNK_LOG;
+  return v === "1" || v === "true" || v === "yes";
 }
 
 export function writeExecutorTerminalNote(note: string): void {
@@ -126,6 +135,11 @@ export function writeExecutorTerminalLog(msg: WsServerMessage): void {
     }
     case "workflow.generate": {
       if (msg.phase === "agent_log") {
+        if (isWorkflowGenerateChunkLogEnabled() && isExecutorTerminalLogEnabled()) {
+          const n = typeof msg.chunk === "string" ? msg.chunk.length : 0;
+          const st = msg.stream === "stderr" ? "stderr" : "stdout";
+          console.error(`[${PREFIX}] workflow.generate agent_log ${st} bytes=${n}`);
+        }
         return;
       }
       const wf = msg.workflowId ? ` id=${msg.workflowId}` : "";
