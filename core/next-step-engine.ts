@@ -11,6 +11,33 @@ import type {
 } from "./types.js";
 
 /**
+ * True if an input_collections entry is satisfied for scheduling:
+ * - the string names a collection kind that already has data in the run, or
+ * - the string equals another node's id and every declared output kind for that node has data.
+ *
+ * The second case fixes workflows where authors list upstream node ids instead of output collection kinds
+ * (e.g. input "fundamentals_deep_dive" while that node's output kind is "equity_fundamentals").
+ */
+function inputCollectionReady(
+  ref: string,
+  kindsWithData: Set<string>,
+  nodeById: Map<string, WorkflowNode>,
+): boolean {
+  if (kindsWithData.has(ref)) {
+    return true;
+  }
+  const producerNode = nodeById.get(ref);
+  if (!producerNode) {
+    return false;
+  }
+  const outs = producerNode.output_collections ?? [];
+  if (outs.length === 0) {
+    return false;
+  }
+  return outs.every((k) => kindsWithData.has(k));
+}
+
+/**
  * Topological order of workflow nodes (DAG): A comes before B if B consumes a collection produced by A.
  */
 export function topologicalNodeOrder(nodes: WorkflowNode[]): WorkflowNode[] {
@@ -28,6 +55,9 @@ export function topologicalNodeOrder(nodes: WorkflowNode[]): WorkflowNode[] {
   for (const n of nodes) {
     const inCols = n.input_collections ?? [];
     for (const c of inCols) {
+      if (idToNode.has(c) && c !== n.id) {
+        outEdges.get(c)!.add(n.id);
+      }
       for (const producerId of collectionToProducers.get(c) ?? []) {
         if (producerId !== n.id) outEdges.get(producerId)!.add(n.id);
       }
@@ -120,12 +150,13 @@ export function getInitialRunnableNodeIds(
   const orderedNodes = topologicalNodeOrder(nodes);
   const completedNodeIds = new Set<string>();
   const startedNodeIds = new Set<string>();
+  const nodeById = new Map(nodes.map((n) => [n.id, n]));
   const inputCols = (n: WorkflowNode) => n.input_collections ?? [];
   const runnableNodes = orderedNodes.filter(
     (n) =>
       !completedNodeIds.has(n.id) &&
       !startedNodeIds.has(n.id) &&
-      inputCols(n).every((c) => kindsWithData.has(c))
+      inputCols(n).every((c) => inputCollectionReady(c, kindsWithData, nodeById))
   );
   return runnableNodes.map((n) => n.id);
 }
@@ -206,7 +237,7 @@ export function getNextStep(params: GetNextStepParams): GetNextStepResult {
     (n) =>
       !effectiveCompletedNodeIds.has(n.id) &&
       !startedNodeIds.has(n.id) &&
-      inputCols(n).every((c) => kindsWithData.has(c))
+      inputCols(n).every((c) => inputCollectionReady(c, kindsWithData, nodeById))
   );
   const runnableIds = runnableNodes.map((n) => n.id);
 
@@ -262,6 +293,49 @@ export function getNextStep(params: GetNextStepParams): GetNextStepResult {
     };
   }
 
+  function buildStuckWorkflowHint(): string {
+    const kindsList = Array.from(kindsWithData).sort().join(", ") || "none";
+    const parts: string[] = [
+      "No runnable node (inputs not ready).",
+      `Collections present in run: ${kindsList}.`,
+    ];
+
+    const dataGaps: string[] = [];
+    for (const nodeId of completedNodeIds) {
+      if (effectiveCompletedNodeIds.has(nodeId)) continue;
+      const node = nodeById.get(nodeId);
+      const outs = (node?.output_collections ?? []).join(", ") || "(none)";
+      dataGaps.push(
+        `"${nodeId}" is COMPLETED in storage but output kinds [${outs}] are not all present in run collections.`,
+      );
+    }
+    if (dataGaps.length > 0) {
+      parts.push(`Data gaps: ${dataGaps.join(" ")}`);
+    }
+
+    const blocked: string[] = [];
+    for (const n of orderedNodes) {
+      if (effectiveCompletedNodeIds.has(n.id)) continue;
+      if (startedNodeIds.has(n.id)) continue;
+      const ins = inputCols(n);
+      const missing = ins.filter((k) => !inputCollectionReady(k, kindsWithData, nodeById));
+      if (missing.length > 0) {
+        blocked.push(`"${n.id}" needs collection kinds: ${missing.join(", ")}`);
+      }
+    }
+    if (blocked.length > 0) {
+      parts.push(`Blocked downstream nodes: ${blocked.join(" | ")}`);
+    }
+
+    if (dataGaps.length === 0 && blocked.length === 0) {
+      parts.push(
+        "Tip: after parallel branches, list each branch's output collection kinds in input_collections, or use the upstream node's id (treated as satisfied when that node's output kinds all have data).",
+      );
+    }
+
+    return parts.join(" ");
+  }
+
   const allCompleted = nodes.every((n) => effectiveCompletedNodeIds.has(n.id));
   const next_step: CanonicalNextStep = allCompleted
     ? {
@@ -270,7 +344,7 @@ export function getNextStep(params: GetNextStepParams): GetNextStepResult {
       }
     : {
         action: "done",
-        hint: "No runnable node (inputs not ready).",
+        hint: buildStuckWorkflowHint(),
       };
 
   return { next_step };

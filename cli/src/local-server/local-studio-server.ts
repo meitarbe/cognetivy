@@ -10,7 +10,9 @@ import { WebSocketServer, type WebSocket } from "ws";
 import { executeWorkflowRun } from "../executor/workflow-executor.js";
 import { ExecutionStore } from "../local-db/execution-store.js";
 import { HitlCoordinator } from "./hitl-coordinator.js";
+import { getCloudApiUrl } from "../cloud-client.js";
 import { resolveLocalStudioStaticRoot } from "./static-root.js";
+import { writeExecutorTerminalLog, writeExecutorTerminalNote } from "./executor-terminal-log.js";
 import { serverMessage, WS_PROTOCOL_VERSION, type WsClientMessage, type WsServerMessage } from "./ws-protocol.js";
 
 const DEFAULT_PORT = 3848;
@@ -45,6 +47,7 @@ export function createLocalStudioServer(options: LocalStudioServerOptions = {}):
     const runJobs = new Map<string, RunJob>();
 
     function broadcast(msg: WsServerMessage): void {
+      writeExecutorTerminalLog(msg);
       const raw = serverMessage(msg);
       for (const ws of clients) {
         if (ws.readyState === ws.OPEN) {
@@ -75,6 +78,8 @@ export function createLocalStudioServer(options: LocalStudioServerOptions = {}):
       if (fs.existsSync(indexPath)) {
         let html = fs.readFileSync(indexPath, "utf-8");
         html = html.replace(/__COGNETIVY_LOCAL_SESSION__/g, sessionToken);
+        const apiBase = getCloudApiUrl();
+        html = html.replace(/"__COGNETIVY_RUNTIME_API_BASE__"/g, JSON.stringify(apiBase));
         res.type("html").send(html);
       } else {
         res.status(404).send("Local studio bundle missing. Run npm run build in cognetivy/cli.");
@@ -134,12 +139,14 @@ export function createLocalStudioServer(options: LocalStudioServerOptions = {}):
             ws.send(serverMessage({ v: 1, type: "error", code: "BAD_PAYLOAD", message: "hitl.response requires runId, nodeId, payload" }));
             return;
           }
+          writeExecutorTerminalNote(`HITL response submitted run=${runId} node=${nodeId}`);
           hitl.respond(runId, nodeId, payload);
           return;
         }
 
         if (body.type === "run.cancel") {
           const runId = body.runId as string;
+          writeExecutorTerminalNote(`Cancel requested run=${runId}`);
           const job = runJobs.get(runId);
           if (job) {
             job.abortController.abort();
@@ -161,6 +168,10 @@ export function createLocalStudioServer(options: LocalStudioServerOptions = {}):
             );
             return;
           }
+
+          writeExecutorTerminalNote(
+            `Starting run: workflow=${workflowId.trim()} name=${name.trim()} agent=${agent} cwd=${cwd}`
+          );
 
           const abortController = new AbortController();
           void executeWorkflowRun({
@@ -200,8 +211,9 @@ export function createLocalStudioServer(options: LocalStudioServerOptions = {}):
       });
     });
 
+    /** Bind loopback only; use `localhost` in URLs so Firebase Auth accepts the origin (authorized domain). */
     server.listen(port, "127.0.0.1", () => {
-      const baseUrl = `http://127.0.0.1:${port}`;
+      const baseUrl = `http://localhost:${port}`;
       const openUrl = `${baseUrl}/?session=${encodeURIComponent(sessionToken)}`;
       resolveListen({
         baseUrl,

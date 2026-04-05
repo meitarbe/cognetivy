@@ -196,26 +196,38 @@ program
   )
   .version(getCurrentVersionSync())
   .option("--interface", "Open CLI reference in browser (same as `cognetivy docs`)")
-  .option("--dev", "Use local backend (API http://localhost:3000, app http://localhost:5174). Run backend and cloud-studio locally first.")
+  .option(
+    "--dev",
+    "Point at local backend: API http://localhost:3000 and app http://localhost:5174. Same URL is injected into local studio so browser sign-in hits your Nest server. Run backend (and vite app for hosted login) first."
+  )
+  .option(
+    "--api-url <url>",
+    "Backend API base for this run only (overrides COGNETIVY_API_URL). Local studio CLI auth uses this URL. Example: --api-url http://localhost:3000"
+  )
   .addHelpText(
     "after",
     `
 Environment (cloud):
   COGNETIVY_API_KEY    API key for cloud run/event (create at app → Settings). When set, run/event use cloud by default.
   COGNETIVY_APP_URL    URL opened by default command (default: https://alpha.cognetivy.com).
-  COGNETIVY_API_URL    Cloud API base URL (default: http://localhost:3000 in dev, https://bm.cognetivy.com otherwise). Use for local backend or custom deployment.
+  COGNETIVY_API_URL    Backend API base (default: https://bm.cognetivy.com, or http://localhost:3000 when NODE_ENV=development / COGNETIVY_DEV=1). Local studio injects this into the page so /auth/cli/authorize matches the CLI token exchange.
 
 Local studio (default command):
-  COGNETIVY_LOCAL_PORT Bind port for local HTTP + WebSocket (default: 3848).
-  COGNETIVY_OPEN_APP   Set to 0 or false to skip opening the browser.
+  COGNETIVY_LOCAL_PORT   Bind port for local HTTP + WebSocket (default: 3848).
+  COGNETIVY_OPEN_APP     Set to 0 or false to skip opening the browser.
+  COGNETIVY_EXECUTOR_LOG       Set to 0 or false to hide executor status lines on stderr (run phases, nodes, HITL; not agent tool output).
+  COGNETIVY_PARALLEL_ISOLATION copy (default) or none — per parallel PROMPT node, copy workspace into .cognetivy/exec-islands/<run>/<node>/ (skips node_modules, .git, dist, …) or share the parent cwd.
 
-Use \`cognetivy auth status\` to see current auth and URLs. Use \`--dev\` to point cloud at http://localhost:3000.
+Examples: \`cognetivy --dev\` (local API), \`cognetivy --api-url http://127.0.0.1:3000\`. Use \`cognetivy auth status\` to see resolved URLs.
 `
   );
 
 program.hook("preAction", () => {
-  const opts = program.opts() as { dev?: boolean };
-  if (opts.dev) {
+  const opts = program.opts() as { dev?: boolean; apiUrl?: string };
+  const trimmedApi = typeof opts.apiUrl === "string" ? opts.apiUrl.trim() : "";
+  if (trimmedApi) {
+    process.env.COGNETIVY_API_URL = trimmedApi.replace(/\/$/, "");
+  } else if (opts.dev) {
     process.env.COGNETIVY_API_URL = DEV_API_URL;
     process.env.COGNETIVY_APP_URL = DEV_APP_URL;
   }
@@ -223,7 +235,14 @@ program.hook("preAction", () => {
 
 const authCmd = program
   .command("auth")
-  .description("Authentication and API key. Run with no subcommand to see: status, login, logout, whoami.");
+  .description("Authentication and API key. Run with no subcommand to see: status, login, logout, whoami.")
+  .addHelpText(
+    "after",
+    `
+For a local Nest API, put global options first:  cognetivy --dev auth login
+or:  cognetivy --api-url http://localhost:3000 auth login
+`
+  );
 
 authCmd
   .command("status")
@@ -259,7 +278,9 @@ authCmd
 
 authCmd
   .command("login")
-  .description("Open the app in browser to sign in and authorize the CLI. Saves API key locally; no other options required.")
+  .description(
+    "Open the app (or local studio) to sign in and authorize the CLI. Saves API key locally. Use cognetivy --dev auth login to use http://localhost:3000."
+  )
   .action(async () => {
     const appUrl = getCloudAppUrl();
     console.log("Opening browser to sign in and authorize the CLI…");
@@ -1560,7 +1581,14 @@ async function runDefaultOnboardingFlow(cwd: string): Promise<void> {
 
   let loginServerHandle: LocalStudioServerHandle | undefined;
   if (!authenticated) {
-    p.note("Sign in once; your API key is stored locally. Workflows and runs live in Cognetivy cloud.", "Cognetivy");
+    const signInApiBase = getCloudApiUrl();
+    const apiLooksLocal = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(signInApiBase);
+    p.note(
+      `Sign in once; your API key is stored locally.\nBackend API for this run: ${signInApiBase}${
+        apiLooksLocal ? "" : "\nTip: for a local Nest server use --dev or --api-url http://localhost:3000."
+      }`,
+      "Cognetivy"
+    );
     const staticRoot = resolveLocalStudioStaticRoot();
     const canAuthViaLocalStudio = localStudioBundleHasCliAuth(staticRoot);
     if (canAuthViaLocalStudio) {

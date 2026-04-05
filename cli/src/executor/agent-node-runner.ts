@@ -65,6 +65,23 @@ export interface AgentNodeRunResult {
   collectionPayload: unknown;
 }
 
+const AGENT_ERR_SNIPPET = 1200;
+const AGENT_OUTPUT_TAIL = 2500;
+
+function formatAgentProcessFailure(exitCode: number | null, combinedLog: string): string {
+  const trimmed = combinedLog.trim();
+  const tail = trimmed.length > AGENT_ERR_SNIPPET ? trimmed.slice(-AGENT_ERR_SNIPPET) : trimmed;
+  const lines = trimmed.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const hit = lines.find((l) =>
+    /access to Claude|does not have access|Please login|ENOENT|command not found|EACCES|authentication|unauthorized|error:/i.test(
+      l
+    )
+  );
+  const detail = hit ?? (tail || "(no output)");
+  const codePart = exitCode == null ? "exited abnormally (no code)" : `exit code ${exitCode}`;
+  return `Agent failed (${codePart}): ${detail}`;
+}
+
 function parseCollectionPayloadFromLog(log: string): unknown {
   const idx = log.lastIndexOf(COLLECTION_MARKER);
   if (idx < 0) {
@@ -80,12 +97,17 @@ function parseCollectionPayloadFromLog(log: string): unknown {
   }
 }
 
-export function buildAgentSystemPromptSuffix(expectedKind: string | undefined): string {
+export function buildAgentSystemPromptSuffix(
+  expectedKind: string | undefined,
+  options?: { schemaProvidedInline?: boolean }
+): string {
   const kindHint = expectedKind ? ` Output kind name: "${expectedKind}".` : "";
+  const schemaHint = options?.schemaProvidedInline
+    ? ` Match the JSON Schema under "Required output shape" exactly (required keys and types).`
+    : " Items must satisfy the workflow collection schema (traceability fields if required by schema).";
   return (
     `\n\n---\nWhen finished, print the exact line ${COLLECTION_MARKER} immediately followed by JSON on the same line or the next lines: ` +
-    `a JSON array of collection item objects, or a single object.${kindHint} ` +
-    `Items must satisfy the workflow collection schema (traceability fields if required by schema).`
+    `a JSON array of collection item objects, or a single object.${kindHint}${schemaHint}`
   );
 }
 
@@ -144,8 +166,17 @@ export function runAgentForNodeRaw(params: AgentNodeRunParams): Promise<{ exitCo
 
 export async function runAgentForNode(params: AgentNodeRunParams): Promise<AgentNodeRunResult> {
   const { exitCode, combinedLog } = await runAgentForNodeRaw(params);
-  const collectionPayload = parseCollectionPayloadFromLog(combinedLog);
-  return { exitCode, combinedLog, collectionPayload };
+  if (exitCode !== 0 && exitCode !== null) {
+    throw new Error(formatAgentProcessFailure(exitCode, combinedLog));
+  }
+  try {
+    const collectionPayload = parseCollectionPayloadFromLog(combinedLog);
+    return { exitCode, combinedLog, collectionPayload };
+  } catch (parseErr) {
+    const msg = parseErr instanceof Error ? parseErr.message : String(parseErr);
+    const tail = combinedLog.trim().length > 0 ? `\n--- agent output (tail) ---\n${combinedLog.trim().slice(-AGENT_OUTPUT_TAIL)}` : "";
+    throw new Error(`${msg}${tail}`);
+  }
 }
 
 export function buildNoOutputPromptSuffix(): string {

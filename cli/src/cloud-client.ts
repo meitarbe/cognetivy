@@ -81,6 +81,23 @@ async function cloudFetch<T>(path: string, options: RequestInit = {}): Promise<T
   return res.json() as Promise<T>;
 }
 
+/** Serialize POST .../complete per run so parallel agents cannot interleave completions on the server. */
+const completeNodeChains = new Map<string, Promise<unknown>>();
+
+function enqueueCloudCompleteNode<T>(runId: string, execute: () => Promise<T>): Promise<T> {
+  const prev = completeNodeChains.get(runId) ?? Promise.resolve();
+  const safePrev = prev.catch(() => undefined);
+  const next = safePrev.then(() => execute());
+  completeNodeChains.set(
+    runId,
+    next.then(
+      () => undefined,
+      () => undefined,
+    ),
+  );
+  return next;
+}
+
 export interface CloudCreateRunInput {
   workflowId: string;
   workflowVersionId?: string;
@@ -158,10 +175,12 @@ export async function cloudCompleteNode(
   nodeId: string,
   body: CloudCompleteNodeBody = {}
 ): Promise<{ next_step: CloudNextStep; current_node_id?: string; current_node_ids?: string[] }> {
-  return cloudFetch(`/runs/${runId}/nodes/${encodeURIComponent(nodeId)}/complete`, {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
+  return enqueueCloudCompleteNode(runId, () =>
+    cloudFetch(`/runs/${runId}/nodes/${encodeURIComponent(nodeId)}/complete`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  );
 }
 
 export interface CloudAppendEventsBody {
