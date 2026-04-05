@@ -15,6 +15,7 @@
     "build": "npm run prebuild && tsc && node ./scripts/copy-installer-assets.mjs && node ./scripts/copy-local-studio-assets.mjs",
     "prepare": "npm run build",
     "test": "npm run build && node --test test/*.test.mjs",
+    "test:live": "npx tsc && COGNETIVY_LIVE_CLAUDE=1 node --test test/claude-stream-stdio-smoke.test.mjs",
     "release": "npm version patch && npm publish",
     "release:minor": "npm version minor && npm publish",
     "release:major": "npm version major && npm publish",

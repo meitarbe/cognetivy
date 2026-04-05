@@ -3,6 +3,11 @@
  */
 import { spawn } from "node:child_process";
 import { isExecutorTerminalLogEnabled, writeExecutorTerminalNote } from "../local-server/executor-terminal-log.js";
+import {
+  buildClaudeStreamJsonStdinHandshake,
+  createStdinJsonlWriter,
+  tryRespondToClaudeStdoutControlLine,
+} from "./claude-code-stdio-protocol.js";
 import { processClaudeStreamJsonLine } from "./claude-stream-json-line.js";
 import { processCodexJsonlLine } from "./codex-jsonl-stream.js";
 
@@ -25,28 +30,38 @@ function buildSpawn(
       const useGlobal = process.env.COGNETIVY_CLAUDE_USE_GLOBAL === "1" || process.env.AGENT_BRIDGE_CLAUDE_USE_GLOBAL === "1";
       const bare = process.env.COGNETIVY_CLAUDE_BARE === "1" || process.env.AGENT_BRIDGE_CLAUDE_BARE === "1";
       const useStreamJson = Boolean(options?.claudeStreamJsonStdout);
-      const tail: string[] = [
+      /**
+       * Stream-json mode matches vibe-kanban `ClaudeCode::build_command_builder`: stdin is JSONL
+       * (initialize → set_permission_mode → user message) plus control_response lines for tool/hook
+       * requests (`claude-code-stdio-protocol.ts`).
+       */
+      const flags: string[] = [
         "-p",
-        prompt,
         "--disallowedTools",
         "AskUserQuestion",
         "--allowedTools",
         "Bash,Read,Edit",
-        "--output-format",
-        useStreamJson ? "stream-json" : "text",
       ];
       if (useStreamJson) {
-        tail.push("--include-partial-messages");
+        flags.push(
+          "--verbose",
+          "--output-format=stream-json",
+          "--input-format=stream-json",
+          "--include-partial-messages",
+          "--replay-user-messages"
+        );
+      } else {
+        flags.push("--output-format", "text");
       }
       if (bare) {
-        tail.unshift("--bare");
+        flags.unshift("--bare");
       }
       if (useGlobal) {
-        return { command: "claude", args: tail };
+        return { command: "claude", args: flags };
       }
       return {
         command: npxCommand(),
-        args: ["-y", CLAUDE_CODE_PACKAGE, ...tail],
+        args: ["-y", CLAUDE_CODE_PACKAGE, ...flags],
       };
     }
     case "codex": {
@@ -108,7 +123,11 @@ function formatAgentProcessFailure(exitCode: number | null, combinedLog: string)
       l
     )
   );
-  const detail = hit ?? (tail || "(no output)");
+  const noOutputHint =
+    !tail && !hit
+      ? " If stderr was empty, check `claude` / npx, auth (~/.claude.json), and that the CLI accepts `-p` with prompt on stdin."
+      : "";
+  const detail = hit ?? (tail || `(no output)${noOutputHint}`);
   const codePart = exitCode == null ? "exited abnormally (no code)" : `exit code ${exitCode}`;
   return `Agent failed (${codePart}): ${detail}`;
 }
@@ -173,9 +192,43 @@ export function runAgentForNodeRaw(params: AgentNodeRunParams): Promise<{ exitCo
 
     const child = spawn(spec.command, spec.args, {
       cwd: params.cwd,
-      env: { ...process.env },
-      stdio: ["ignore", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        ...(params.agent === "claude" ? { NPM_CONFIG_LOGLEVEL: "error" } : {}),
+      },
+      stdio: params.agent === "claude" ? ["pipe", "pipe", "pipe"] : ["ignore", "pipe", "pipe"],
     });
+
+    let claudeStdinWriter: { writeLine: (line: string) => void } | null = null;
+    if (params.agent === "claude") {
+      const stdin = child.stdin;
+      if (!stdin) {
+        reject(new Error("Claude Code: stdin pipe is missing"));
+        return;
+      }
+      try {
+        if (useClaudeStreamJson) {
+          claudeStdinWriter = createStdinJsonlWriter(stdin);
+          for (const handshakeLine of buildClaudeStreamJsonStdinHandshake(params.prompt)) {
+            claudeStdinWriter.writeLine(handshakeLine);
+          }
+        } else {
+          const body = params.prompt;
+          const written = stdin.write(body, "utf8");
+          if (!written && body.length > 0) {
+            stdin.once("drain", function claudeStdinEndAfterDrain() {
+              stdin.end();
+            });
+          } else {
+            stdin.end();
+          }
+        }
+      } catch (err) {
+        child.kill("SIGTERM");
+        reject(err instanceof Error ? err : new Error(String(err)));
+        return;
+      }
+    }
 
     const onAbort = () => {
       child.kill("SIGTERM");
@@ -190,7 +243,8 @@ export function runAgentForNodeRaw(params: AgentNodeRunParams): Promise<{ exitCo
     }
 
     function attachNdjsonStdout(
-      processLine: (line: string) => { uiText: string | null; parseFragment: string | null }
+      processLine: (line: string) => { uiText: string | null; parseFragment: string | null },
+      options?: { interceptLine?: (line: string) => boolean }
     ): { flush: () => void; onData: (buf: Buffer) => void } {
       let carry = "";
       return {
@@ -199,12 +253,17 @@ export function runAgentForNodeRaw(params: AgentNodeRunParams): Promise<{ exitCo
           const lines = carry.split("\n");
           carry = lines.pop() ?? "";
           for (const line of lines) {
+            if (options?.interceptLine?.(line)) {
+              continue;
+            }
             const { uiText, parseFragment } = processLine(line);
             if (uiText) {
               params.onChunk(uiText, "stdout");
             }
             if (parseFragment) {
               pushCombined(parseFragment);
+            } else if (uiText) {
+              pushCombined(uiText);
             }
           }
         },
@@ -214,12 +273,17 @@ export function runAgentForNodeRaw(params: AgentNodeRunParams): Promise<{ exitCo
           if (!trimmed) {
             return;
           }
+          if (options?.interceptLine?.(trimmed)) {
+            return;
+          }
           const { uiText, parseFragment } = processLine(trimmed);
           if (uiText) {
             params.onChunk(uiText, "stdout");
           }
           if (parseFragment) {
             pushCombined(parseFragment);
+          } else if (uiText) {
+            pushCombined(uiText);
           }
         },
       };
@@ -255,7 +319,15 @@ export function runAgentForNodeRaw(params: AgentNodeRunParams): Promise<{ exitCo
       });
     } else if (useClaudeStreamJson) {
       let stderrAcc = "";
-      const ndjson = attachNdjsonStdout(processClaudeStreamJsonLine);
+      const controlWrite = claudeStdinWriter?.writeLine;
+      const ndjson = attachNdjsonStdout(processClaudeStreamJsonLine, {
+        interceptLine(line: string): boolean {
+          if (!controlWrite) {
+            return false;
+          }
+          return tryRespondToClaudeStdoutControlLine(line, controlWrite);
+        },
+      });
       child.stdout?.on("data", (buf: Buffer) => {
         traceAgentPipeData(params.agent, "stdout", buf.length);
         ndjson.onData(buf);
