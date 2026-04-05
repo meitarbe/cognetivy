@@ -119,7 +119,7 @@ import updateNotifier from "update-notifier";
 import * as p from "@clack/prompts";
 import { openCliDocsInBrowser } from "./cli-docs.js";
 import { getCloudAppUrl, buildCloudOnboardingUrl } from "./onboarding-url.js";
-import { runLocalStudioForeground } from "./local-studio-entry.js";
+import { runLocalStudioForeground, resolveLocalStudioBrowserBase } from "./local-studio-entry.js";
 import { createLocalStudioServer, type LocalStudioServerHandle } from "./local-server/local-studio-server.js";
 import { resolveLocalStudioStaticRoot, localStudioBundleHasCliAuth } from "./local-server/static-root.js";
 import { parsePayload, formatFromFilePath, stringifyPayload, type PayloadFormat } from "./payload-parse.js";
@@ -198,7 +198,7 @@ program
   .option("--interface", "Open CLI reference in browser (same as `cognetivy docs`)")
   .option(
     "--dev",
-    "Point at local backend: API http://localhost:3000 and app http://localhost:5174. Same URL is injected into local studio so browser sign-in hits your Nest server. Run backend (and vite app for hosted login) first."
+    "Point at local backend: API http://localhost:3000 and app http://localhost:5174. Opens the Vite dev studio (same port) with ?session=…; run `npm run dev` in cloud-studio first. Proxy /ws and /api/local to the CLI (see cloud-studio vite.config). Set COGNETIVY_USE_BUNDLED_STUDIO=1 to open the bundled UI on port 3848 instead."
   )
   .option(
     "--api-url <url>",
@@ -214,6 +214,7 @@ Environment (cloud):
 
 Local studio (default command):
   COGNETIVY_LOCAL_PORT   Bind port for local HTTP + WebSocket (default: 3848).
+  COGNETIVY_LOCAL_STUDIO_URL  Open this origin with ?session=… (e.g. http://localhost:5174 for Vite HMR). Vite proxies /ws and /api/local to the CLI. With cognetivy --dev, defaults to http://localhost:5174 unless set; COGNETIVY_USE_BUNDLED_STUDIO=1 opens the bundled UI on COGNETIVY_LOCAL_PORT instead.
   COGNETIVY_OPEN_APP     Set to 0 or false to skip opening the browser.
   COGNETIVY_EXECUTOR_LOG       Set to 0 or false to hide executor status lines on stderr (run phases, nodes, HITL; not agent tool output).
   COGNETIVY_PARALLEL_ISOLATION copy (default) or none — per parallel PROMPT node, copy workspace into .cognetivy/exec-islands/<run>/<node>/ (skips node_modules, .git, dist, …) or share the parent cwd.
@@ -230,6 +231,13 @@ program.hook("preAction", () => {
   } else if (opts.dev) {
     process.env.COGNETIVY_API_URL = DEV_API_URL;
     process.env.COGNETIVY_APP_URL = DEV_APP_URL;
+    const useBundledStudio =
+      process.env.COGNETIVY_USE_BUNDLED_STUDIO === "1" ||
+      process.env.COGNETIVY_USE_BUNDLED_STUDIO === "true";
+    const existingStudioUrl = (process.env.COGNETIVY_LOCAL_STUDIO_URL ?? "").trim();
+    if (!useBundledStudio && !existingStudioUrl) {
+      process.env.COGNETIVY_LOCAL_STUDIO_URL = DEV_APP_URL;
+    }
   }
 });
 
@@ -1598,7 +1606,7 @@ async function runDefaultOnboardingFlow(cwd: string): Promise<void> {
         "Tip: Run `npm run build:local-studio` in this package so sign-in opens local studio instead of the hosted app."
       );
     }
-    const authAppUrl = loginServerHandle ? loginServerHandle.baseUrl : getCloudAppUrl();
+    const authAppUrl = loginServerHandle ? resolveLocalStudioBrowserBase(loginServerHandle) : getCloudAppUrl();
     console.log(loginServerHandle ? "Opening browser to sign in (local studio)…" : "Opening browser to sign in…");
     const result = await runLoginFlow({ appUrl: authAppUrl });
     if (result.error) {
