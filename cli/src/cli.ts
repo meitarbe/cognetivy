@@ -119,6 +119,9 @@ import updateNotifier from "update-notifier";
 import * as p from "@clack/prompts";
 import { openCliDocsInBrowser } from "./cli-docs.js";
 import { getCloudAppUrl, buildCloudOnboardingUrl } from "./onboarding-url.js";
+import { runLocalStudioForeground } from "./local-studio-entry.js";
+import { createLocalStudioServer, type LocalStudioServerHandle } from "./local-server/local-studio-server.js";
+import { resolveLocalStudioStaticRoot, localStudioBundleHasCliAuth } from "./local-server/static-root.js";
 import { parsePayload, formatFromFilePath, stringifyPayload, type PayloadFormat } from "./payload-parse.js";
 import type { Command } from "commander";
 
@@ -189,7 +192,7 @@ const DEV_APP_URL = "http://localhost:5174";
 program
   .name("cognetivy")
   .description(
-    "Cognetivy – workflows, runs, and collections. Default: open the app in your browser. Use `cognetivy auth status` to check API key; `cognetivy auth login` to sign in and get an API key."
+    "Cognetivy – workflows, runs, and collections. Default: start the local studio backend (browser + executor). Use `cognetivy auth status` to check API key; `cognetivy auth login` to sign in and get an API key."
   )
   .version(getCurrentVersionSync())
   .option("--interface", "Open CLI reference in browser (same as `cognetivy docs`)")
@@ -201,6 +204,10 @@ Environment (cloud):
   COGNETIVY_API_KEY    API key for cloud run/event (create at app → Settings). When set, run/event use cloud by default.
   COGNETIVY_APP_URL    URL opened by default command (default: https://alpha.cognetivy.com).
   COGNETIVY_API_URL    Cloud API base URL (default: http://localhost:3000 in dev, https://bm.cognetivy.com otherwise). Use for local backend or custom deployment.
+
+Local studio (default command):
+  COGNETIVY_LOCAL_PORT Bind port for local HTTP + WebSocket (default: 3848).
+  COGNETIVY_OPEN_APP   Set to 0 or false to skip opening the browser.
 
 Use \`cognetivy auth status\` to see current auth and URLs. Use \`--dev\` to point cloud at http://localhost:3000.
 `
@@ -1513,7 +1520,7 @@ program
   });
 
 const DEFAULT_BEHAVIOR_DESCRIPTION =
-  "Guided onboarding: sign in if needed, install or update platform skills (Cursor, Claude Code, etc.), ensure at least one cloud workflow (template picker if needed), then open the Cognetivy app in your browser.";
+  "Guided onboarding: sign in if needed, install or update platform skills (Cursor, Claude Code, etc.), ensure at least one cloud workflow (template picker if needed), then start the local studio (browser + WebSocket executor).";
 
 program
   .command("docs")
@@ -1551,16 +1558,32 @@ async function runDefaultOnboardingFlow(cwd: string): Promise<void> {
 
   const authenticated = await isCloudAuthenticated();
 
+  let loginServerHandle: LocalStudioServerHandle | undefined;
   if (!authenticated) {
     p.note("Sign in once; your API key is stored locally. Workflows and runs live in Cognetivy cloud.", "Cognetivy");
-    const appUrl = getCloudAppUrl();
-    console.log("Opening browser to sign in…");
-    const result = await runLoginFlow({ appUrl });
+    const staticRoot = resolveLocalStudioStaticRoot();
+    const canAuthViaLocalStudio = localStudioBundleHasCliAuth(staticRoot);
+    if (canAuthViaLocalStudio) {
+      loginServerHandle = await createLocalStudioServer({ workspaceCwd: cwd });
+    } else {
+      console.log(
+        "Tip: Run `npm run build:local-studio` in this package so sign-in opens local studio instead of the hosted app."
+      );
+    }
+    const authAppUrl = loginServerHandle ? loginServerHandle.baseUrl : getCloudAppUrl();
+    console.log(loginServerHandle ? "Opening browser to sign in (local studio)…" : "Opening browser to sign in…");
+    const result = await runLoginFlow({ appUrl: authAppUrl });
     if (result.error) {
+      if (loginServerHandle) {
+        await loginServerHandle.close();
+      }
       console.error(result.error);
       process.exit(1);
     }
     if (!result.code) {
+      if (loginServerHandle) {
+        await loginServerHandle.close();
+      }
       console.error("No authorization code received.");
       process.exit(1);
     }
@@ -1572,12 +1595,18 @@ async function runDefaultOnboardingFlow(cwd: string): Promise<void> {
     });
     if (!res.ok) {
       const text = await res.text();
+      if (loginServerHandle) {
+        await loginServerHandle.close();
+      }
       console.error(text || res.statusText);
       process.exit(1);
     }
     const data = (await res.json()) as { api_key?: string };
     const apiKey = data?.api_key ?? "";
     if (!apiKey) {
+      if (loginServerHandle) {
+        await loginServerHandle.close();
+      }
       console.error("No API key in response.");
       process.exit(1);
     }
@@ -1642,10 +1671,7 @@ async function runDefaultOnboardingFlow(cwd: string): Promise<void> {
     cloudCurrentWorkflowId = index?.cloud_current_workflow_id ?? cloudWorkflowList[0]?.id ?? null;
   }
 
-  const appUrl = getCloudAppUrl();
-  const url = buildCloudOnboardingUrl(appUrl, cloudCurrentWorkflowId);
-  await openUrl(url);
-  printOpenedUrlMessage(url, { workflow: Boolean(cloudCurrentWorkflowId) });
+  await runLocalStudioForeground(cwd, { existingHandle: loginServerHandle });
 }
 
 program.action(async () => {
@@ -1656,9 +1682,7 @@ program.action(async () => {
   }
   const cwd = process.cwd();
   if (!process.stdin.isTTY) {
-    const appUrl = getCloudAppUrl();
-    await openUrl(appUrl);
-    printOpenedUrlMessage(appUrl, { workflow: false });
+    await runLocalStudioForeground(cwd);
     return;
   }
   await runDefaultOnboardingFlow(cwd);

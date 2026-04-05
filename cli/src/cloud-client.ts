@@ -115,6 +115,21 @@ export async function cloudGetRun(runId: string): Promise<{ id: string; status: 
   return cloudFetch<{ id: string; status: string; workflowId: string }>(`/runs/${runId}`);
 }
 
+/** Full run payload from GET /runs/:id (includes workflow version nodes and node results). */
+export interface CloudRunDetail {
+  id: string;
+  status: string;
+  workflowId: string;
+  workflowVersionId: string;
+  workflowVersion?: { id: string; nodes: unknown[] };
+  input?: unknown;
+  nodeResults?: Array<{ id: string; nodeId: string; status: string }>;
+}
+
+export async function cloudGetRunDetail(runId: string): Promise<CloudRunDetail> {
+  return cloudFetch<CloudRunDetail>(`/runs/${encodeURIComponent(runId)}`);
+}
+
 export async function cloudGetNext(runId: string): Promise<{
   next_step: CloudNextStep;
   current_node_id?: string;
