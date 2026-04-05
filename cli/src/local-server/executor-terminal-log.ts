@@ -124,6 +124,15 @@ export function writeExecutorTerminalLog(msg: WsServerMessage): void {
       }
       return;
     }
+    case "workflow.generate": {
+      if (msg.phase === "agent_log") {
+        return;
+      }
+      const wf = msg.workflowId ? ` id=${msg.workflowId}` : "";
+      const detail = msg.message ? ` — ${truncateText(msg.message, 240)}` : "";
+      console.error(`[${PREFIX}] workflow.generate ${msg.phase}${wf}${detail}`);
+      return;
+    }
     default:
       return;
   }

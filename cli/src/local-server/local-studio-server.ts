@@ -8,6 +8,10 @@ import express from "express";
 import { randomBytes } from "node:crypto";
 import { WebSocketServer, type WebSocket } from "ws";
 import { executeWorkflowRun } from "../executor/workflow-executor.js";
+import {
+  formatWorkflowValidationError,
+  runWorkflowGenerateFromBrief,
+} from "../executor/workflow-generate-runner.js";
 import { ExecutionStore } from "../local-db/execution-store.js";
 import { HitlCoordinator } from "./hitl-coordinator.js";
 import { getCloudApiUrl } from "../cloud-client.js";
@@ -45,6 +49,7 @@ export function createLocalStudioServer(options: LocalStudioServerOptions = {}):
     const hitl = new HitlCoordinator();
     const clients = new Set<WebSocket>();
     const runJobs = new Map<string, RunJob>();
+    let workflowGenerateInFlight = false;
 
     function broadcast(msg: WsServerMessage): void {
       writeExecutorTerminalLog(msg);
@@ -141,6 +146,75 @@ export function createLocalStudioServer(options: LocalStudioServerOptions = {}):
           }
           writeExecutorTerminalNote(`HITL response submitted run=${runId} node=${nodeId}`);
           hitl.respond(runId, nodeId, payload);
+          return;
+        }
+
+        if (body.type === "workflow.generate") {
+          const brief = typeof body.brief === "string" ? body.brief.trim() : "";
+          if (!brief) {
+            ws.send(
+              serverMessage({
+                v: 1,
+                type: "error",
+                code: "BAD_PAYLOAD",
+                message: "workflow.generate requires a non-empty brief",
+              })
+            );
+            return;
+          }
+          if (workflowGenerateInFlight) {
+            ws.send(
+              serverMessage({
+                v: 1,
+                type: "error",
+                code: "BUSY",
+                message: "Workflow generation is already in progress.",
+              })
+            );
+            return;
+          }
+          const agent = body.agent === "codex" ? "codex" : "claude";
+          const nameHint = typeof body.name === "string" && body.name.trim() ? body.name.trim() : undefined;
+          const descriptionHint =
+            typeof body.description === "string" && body.description.trim()
+              ? body.description.trim()
+              : undefined;
+          workflowGenerateInFlight = true;
+          writeExecutorTerminalNote(`Workflow generate: agent=${agent} brief_len=${brief.length}`);
+          broadcast({ v: 1, type: "workflow.generate", phase: "started" });
+          broadcast({ v: 1, type: "workflow.generate", phase: "agent_running" });
+          void (async function runWorkflowGenerateJob() {
+            try {
+              const result = await runWorkflowGenerateFromBrief({
+                brief,
+                nameHint,
+                descriptionHint,
+                agent,
+                cwd: workspaceCwd,
+                onChunk: (text, stream) => {
+                  broadcast({ v: 1, type: "workflow.generate", phase: "agent_log", chunk: text, stream });
+                },
+                onPhase: (phase) => {
+                  broadcast({ v: 1, type: "workflow.generate", phase });
+                },
+              });
+              broadcast({
+                v: 1,
+                type: "workflow.generate",
+                phase: "complete",
+                workflowId: result.workflowId,
+              });
+            } catch (err) {
+              broadcast({
+                v: 1,
+                type: "workflow.generate",
+                phase: "failed",
+                message: formatWorkflowValidationError(err),
+              });
+            } finally {
+              workflowGenerateInFlight = false;
+            }
+          })();
           return;
         }
 

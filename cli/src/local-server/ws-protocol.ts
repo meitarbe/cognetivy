@@ -8,14 +8,16 @@ export type WsClientMessageType =
   | "hello"
   | "run.start"
   | "run.cancel"
-  | "hitl.response";
+  | "hitl.response"
+  | "workflow.generate";
 
 export type WsServerMessageType =
   | "welcome"
   | "run.event"
   | "log.append"
   | "hitl.request"
-  | "error";
+  | "error"
+  | "workflow.generate";
 
 export interface WsEnvelopeBase {
   v: typeof WS_PROTOCOL_VERSION;
@@ -51,7 +53,20 @@ export interface WsHitlResponseMessage extends WsEnvelopeBase {
   payload: Record<string, unknown>;
 }
 
-export type WsClientMessage = WsHelloMessage | WsRunStartMessage | WsRunCancelMessage | WsHitlResponseMessage;
+export interface WsWorkflowGenerateClientMessage extends WsEnvelopeBase {
+  type: "workflow.generate";
+  brief: string;
+  name?: string;
+  description?: string;
+  agent?: "claude" | "codex";
+}
+
+export type WsClientMessage =
+  | WsHelloMessage
+  | WsRunStartMessage
+  | WsRunCancelMessage
+  | WsHitlResponseMessage
+  | WsWorkflowGenerateClientMessage;
 
 export interface WsWelcomeMessage extends WsEnvelopeBase {
   type: "welcome";
@@ -90,12 +105,33 @@ export interface WsErrorMessage extends WsEnvelopeBase {
   runId?: string;
 }
 
+export type WsWorkflowGeneratePhase =
+  | "started"
+  | "agent_running"
+  /** Streaming subprocess output (stdout/stderr) while the coding agent runs */
+  | "agent_log"
+  | "parsing"
+  | "validating"
+  | "creating"
+  | "complete"
+  | "failed";
+
+export interface WsWorkflowGenerateServerMessage extends WsEnvelopeBase {
+  type: "workflow.generate";
+  phase: WsWorkflowGeneratePhase;
+  workflowId?: string;
+  message?: string;
+  chunk?: string;
+  stream?: "stdout" | "stderr";
+}
+
 export type WsServerMessage =
   | WsWelcomeMessage
   | WsRunEventMessage
   | WsLogAppendMessage
   | WsHitlRequestMessage
-  | WsErrorMessage;
+  | WsErrorMessage
+  | WsWorkflowGenerateServerMessage;
 
 export function serverMessage(msg: WsServerMessage): string {
   return JSON.stringify(msg);

@@ -2,6 +2,7 @@
  * Spawn Claude Code or Codex with a text prompt; parse collection payload from stdout.
  */
 import { spawn } from "node:child_process";
+import { processCodexJsonlLine } from "./codex-jsonl-stream.js";
 
 export type ExecutorAgentKind = "claude" | "codex";
 
@@ -12,7 +13,11 @@ function npxCommand(): string {
   return process.platform === "win32" ? "npx.cmd" : "npx";
 }
 
-function buildSpawn(agent: ExecutorAgentKind, prompt: string): { command: string; args: string[] } {
+function buildSpawn(
+  agent: ExecutorAgentKind,
+  prompt: string,
+  options?: { codexJsonlStdout?: boolean }
+): { command: string; args: string[] } {
   switch (agent) {
     case "claude": {
       const useGlobal = process.env.COGNETIVY_CLAUDE_USE_GLOBAL === "1" || process.env.AGENT_BRIDGE_CLAUDE_USE_GLOBAL === "1";
@@ -38,11 +43,14 @@ function buildSpawn(agent: ExecutorAgentKind, prompt: string): { command: string
         args: ["-y", CLAUDE_CODE_PACKAGE, ...tail],
       };
     }
-    case "codex":
-      return {
-        command: "codex",
-        args: ["exec", "--sandbox", "workspace-write", "--ephemeral", prompt],
-      };
+    case "codex": {
+      const args = ["exec"];
+      if (options?.codexJsonlStdout) {
+        args.push("--json");
+      }
+      args.push("--sandbox", "workspace-write", "--ephemeral", prompt);
+      return { command: "codex", args };
+    }
     default:
       throw new Error(`Unknown agent: ${agent}`);
   }
@@ -57,6 +65,12 @@ export interface AgentNodeRunParams {
   prompt: string;
   onChunk: (text: string, stream: "stdout" | "stderr") => void;
   signal?: AbortSignal;
+  /**
+   * Codex only: use `codex exec --json` and parse JSONL on stdout so each completed item
+   * is forwarded as it arrives (incremental “thinking” in Studio). Plain exec buffers a
+   * formatted transcript until the model finishes a block.
+   */
+  codexJsonlStdout?: boolean;
 }
 
 export interface AgentNodeRunResult {
@@ -113,13 +127,22 @@ export function buildAgentSystemPromptSuffix(
 
 export function runAgentForNodeRaw(params: AgentNodeRunParams): Promise<{ exitCode: number | null; combinedLog: string }> {
   return new Promise((resolve, reject) => {
-    const spec = buildSpawn(params.agent, params.prompt);
+    const useCodexJsonl = params.agent === "codex" && Boolean(params.codexJsonlStdout);
+    const spec = buildSpawn(params.agent, params.prompt, { codexJsonlStdout: useCodexJsonl });
+
     let combined = "";
-    const append = (chunk: string, stream: "stdout" | "stderr") => {
-      combined += chunk;
+    const pushCombined = (frag: string) => {
+      if (!frag) {
+        return;
+      }
+      combined += frag;
       if (combined.length > MAX_LOG_CHARS) {
         combined = combined.slice(-MAX_LOG_CHARS);
       }
+    };
+
+    const appendPipeChunk = (chunk: string, stream: "stdout" | "stderr") => {
+      pushCombined(chunk);
       params.onChunk(chunk, stream);
     };
 
@@ -141,26 +164,73 @@ export function runAgentForNodeRaw(params: AgentNodeRunParams): Promise<{ exitCo
       params.signal.addEventListener("abort", onAbort, { once: true });
     }
 
-    child.stdout?.on("data", (buf: Buffer) => {
-      append(buf.toString("utf8"), "stdout");
-    });
-    child.stderr?.on("data", (buf: Buffer) => {
-      append(buf.toString("utf8"), "stderr");
-    });
+    if (useCodexJsonl) {
+      let jsonlCarry = "";
+      let stderrAcc = "";
+      child.stdout?.on("data", (buf: Buffer) => {
+        jsonlCarry += buf.toString("utf8");
+        const lines = jsonlCarry.split("\n");
+        jsonlCarry = lines.pop() ?? "";
+        for (const line of lines) {
+          const { uiText, parseFragment } = processCodexJsonlLine(line);
+          if (uiText) {
+            params.onChunk(uiText, "stdout");
+          }
+          if (parseFragment) {
+            pushCombined(parseFragment);
+          }
+        }
+      });
+      child.stderr?.on("data", (buf: Buffer) => {
+        const s = buf.toString("utf8");
+        stderrAcc += s;
+        params.onChunk(s, "stderr");
+      });
+      child.on("error", (err) => {
+        if (params.signal) params.signal.removeEventListener("abort", onAbort);
+        reject(err);
+      });
+      child.on("close", (code) => {
+        if (params.signal) params.signal.removeEventListener("abort", onAbort);
+        if (params.signal?.aborted) {
+          reject(new Error("Aborted"));
+          return;
+        }
+        if (jsonlCarry.trim()) {
+          const { uiText, parseFragment } = processCodexJsonlLine(jsonlCarry);
+          if (uiText) {
+            params.onChunk(uiText, "stdout");
+          }
+          if (parseFragment) {
+            pushCombined(parseFragment);
+          }
+        }
+        const withStderr =
+          stderrAcc.trim().length > 0 ? `${combined}\n--- stderr ---\n${stderrAcc}` : combined;
+        resolve({ exitCode: code, combinedLog: withStderr });
+      });
+    } else {
+      child.stdout?.on("data", (buf: Buffer) => {
+        appendPipeChunk(buf.toString("utf8"), "stdout");
+      });
+      child.stderr?.on("data", (buf: Buffer) => {
+        appendPipeChunk(buf.toString("utf8"), "stderr");
+      });
 
-    child.on("error", (err) => {
-      if (params.signal) params.signal.removeEventListener("abort", onAbort);
-      reject(err);
-    });
+      child.on("error", (err) => {
+        if (params.signal) params.signal.removeEventListener("abort", onAbort);
+        reject(err);
+      });
 
-    child.on("close", (code) => {
-      if (params.signal) params.signal.removeEventListener("abort", onAbort);
-      if (params.signal?.aborted) {
-        reject(new Error("Aborted"));
-        return;
-      }
-      resolve({ exitCode: code, combinedLog: combined });
-    });
+      child.on("close", (code) => {
+        if (params.signal) params.signal.removeEventListener("abort", onAbort);
+        if (params.signal?.aborted) {
+          reject(new Error("Aborted"));
+          return;
+        }
+        resolve({ exitCode: code, combinedLog: combined });
+      });
+    }
   });
 }
 
