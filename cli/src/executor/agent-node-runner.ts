@@ -2,6 +2,7 @@
  * Spawn Claude Code or Codex with a text prompt; parse collection payload from stdout.
  */
 import { spawn } from "node:child_process";
+import { processClaudeStreamJsonLine } from "./claude-stream-json-line.js";
 import { processCodexJsonlLine } from "./codex-jsonl-stream.js";
 
 export type ExecutorAgentKind = "claude" | "codex";
@@ -16,12 +17,13 @@ function npxCommand(): string {
 function buildSpawn(
   agent: ExecutorAgentKind,
   prompt: string,
-  options?: { codexJsonlStdout?: boolean }
+  options?: { codexJsonlStdout?: boolean; claudeStreamJsonStdout?: boolean }
 ): { command: string; args: string[] } {
   switch (agent) {
     case "claude": {
       const useGlobal = process.env.COGNETIVY_CLAUDE_USE_GLOBAL === "1" || process.env.AGENT_BRIDGE_CLAUDE_USE_GLOBAL === "1";
       const bare = process.env.COGNETIVY_CLAUDE_BARE === "1" || process.env.AGENT_BRIDGE_CLAUDE_BARE === "1";
+      const useStreamJson = Boolean(options?.claudeStreamJsonStdout);
       const tail: string[] = [
         "-p",
         prompt,
@@ -30,8 +32,11 @@ function buildSpawn(
         "--allowedTools",
         "Bash,Read,Edit",
         "--output-format",
-        "text",
+        useStreamJson ? "stream-json" : "text",
       ];
+      if (useStreamJson) {
+        tail.push("--include-partial-messages");
+      }
       if (bare) {
         tail.unshift("--bare");
       }
@@ -66,11 +71,15 @@ export interface AgentNodeRunParams {
   onChunk: (text: string, stream: "stdout" | "stderr") => void;
   signal?: AbortSignal;
   /**
-   * Codex only: use `codex exec --json` and parse JSONL on stdout so each completed item
-   * is forwarded as it arrives (incremental “thinking” in Studio). Plain exec buffers a
-   * formatted transcript until the model finishes a block.
+   * Codex: use `codex exec --json` and parse JSONL on stdout (incremental tool/thinking UI).
+   * Default true for codex.
    */
   codexJsonlStdout?: boolean;
+  /**
+   * Claude: use `--output-format stream-json --include-partial-messages` and parse NDJSON lines.
+   * Default true for claude unless `COGNETIVY_CLAUDE_STREAM_JSON=0` or this flag is false.
+   */
+  claudeStreamJsonStdout?: boolean;
 }
 
 export interface AgentNodeRunResult {
@@ -128,7 +137,15 @@ export function buildAgentSystemPromptSuffix(
 export function runAgentForNodeRaw(params: AgentNodeRunParams): Promise<{ exitCode: number | null; combinedLog: string }> {
   return new Promise((resolve, reject) => {
     const useCodexJsonl = params.agent === "codex" && Boolean(params.codexJsonlStdout);
-    const spec = buildSpawn(params.agent, params.prompt, { codexJsonlStdout: useCodexJsonl });
+    const claudeStreamEnvOff = process.env.COGNETIVY_CLAUDE_STREAM_JSON === "0";
+    const useClaudeStreamJson =
+      params.agent === "claude" &&
+      params.claudeStreamJsonStdout !== false &&
+      !claudeStreamEnvOff;
+    const spec = buildSpawn(params.agent, params.prompt, {
+      codexJsonlStdout: useCodexJsonl,
+      claudeStreamJsonStdout: useClaudeStreamJson,
+    });
 
     let combined = "";
     const pushCombined = (frag: string) => {
@@ -164,22 +181,47 @@ export function runAgentForNodeRaw(params: AgentNodeRunParams): Promise<{ exitCo
       params.signal.addEventListener("abort", onAbort, { once: true });
     }
 
-    if (useCodexJsonl) {
-      let jsonlCarry = "";
-      let stderrAcc = "";
-      child.stdout?.on("data", (buf: Buffer) => {
-        jsonlCarry += buf.toString("utf8");
-        const lines = jsonlCarry.split("\n");
-        jsonlCarry = lines.pop() ?? "";
-        for (const line of lines) {
-          const { uiText, parseFragment } = processCodexJsonlLine(line);
+    function attachNdjsonStdout(
+      processLine: (line: string) => { uiText: string | null; parseFragment: string | null }
+    ): { flush: () => void; onData: (buf: Buffer) => void } {
+      let carry = "";
+      return {
+        onData(buf: Buffer) {
+          carry += buf.toString("utf8");
+          const lines = carry.split("\n");
+          carry = lines.pop() ?? "";
+          for (const line of lines) {
+            const { uiText, parseFragment } = processLine(line);
+            if (uiText) {
+              params.onChunk(uiText, "stdout");
+            }
+            if (parseFragment) {
+              pushCombined(parseFragment);
+            }
+          }
+        },
+        flush() {
+          const trimmed = carry.trim();
+          carry = "";
+          if (!trimmed) {
+            return;
+          }
+          const { uiText, parseFragment } = processLine(trimmed);
           if (uiText) {
             params.onChunk(uiText, "stdout");
           }
           if (parseFragment) {
             pushCombined(parseFragment);
           }
-        }
+        },
+      };
+    }
+
+    if (useCodexJsonl) {
+      let stderrAcc = "";
+      const ndjson = attachNdjsonStdout(processCodexJsonlLine);
+      child.stdout?.on("data", (buf: Buffer) => {
+        ndjson.onData(buf);
       });
       child.stderr?.on("data", (buf: Buffer) => {
         const s = buf.toString("utf8");
@@ -196,15 +238,33 @@ export function runAgentForNodeRaw(params: AgentNodeRunParams): Promise<{ exitCo
           reject(new Error("Aborted"));
           return;
         }
-        if (jsonlCarry.trim()) {
-          const { uiText, parseFragment } = processCodexJsonlLine(jsonlCarry);
-          if (uiText) {
-            params.onChunk(uiText, "stdout");
-          }
-          if (parseFragment) {
-            pushCombined(parseFragment);
-          }
+        ndjson.flush();
+        const withStderr =
+          stderrAcc.trim().length > 0 ? `${combined}\n--- stderr ---\n${stderrAcc}` : combined;
+        resolve({ exitCode: code, combinedLog: withStderr });
+      });
+    } else if (useClaudeStreamJson) {
+      let stderrAcc = "";
+      const ndjson = attachNdjsonStdout(processClaudeStreamJsonLine);
+      child.stdout?.on("data", (buf: Buffer) => {
+        ndjson.onData(buf);
+      });
+      child.stderr?.on("data", (buf: Buffer) => {
+        const s = buf.toString("utf8");
+        stderrAcc += s;
+        params.onChunk(s, "stderr");
+      });
+      child.on("error", (err) => {
+        if (params.signal) params.signal.removeEventListener("abort", onAbort);
+        reject(err);
+      });
+      child.on("close", (code) => {
+        if (params.signal) params.signal.removeEventListener("abort", onAbort);
+        if (params.signal?.aborted) {
+          reject(new Error("Aborted"));
+          return;
         }
+        ndjson.flush();
         const withStderr =
           stderrAcc.trim().length > 0 ? `${combined}\n--- stderr ---\n${stderrAcc}` : combined;
         resolve({ exitCode: code, combinedLog: withStderr });
@@ -235,7 +295,13 @@ export function runAgentForNodeRaw(params: AgentNodeRunParams): Promise<{ exitCo
 }
 
 export async function runAgentForNode(params: AgentNodeRunParams): Promise<AgentNodeRunResult> {
-  const { exitCode, combinedLog } = await runAgentForNodeRaw(params);
+  const useCodexJsonl = params.codexJsonlStdout ?? (params.agent === "codex");
+  const useClaudeStream = params.claudeStreamJsonStdout ?? (params.agent === "claude");
+  const { exitCode, combinedLog } = await runAgentForNodeRaw({
+    ...params,
+    codexJsonlStdout: useCodexJsonl,
+    claudeStreamJsonStdout: useClaudeStream,
+  });
   if (exitCode !== 0 && exitCode !== null) {
     throw new Error(formatAgentProcessFailure(exitCode, combinedLog));
   }

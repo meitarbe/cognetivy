@@ -252,6 +252,7 @@ export async function runWorkflowExecutorNode(p: RunWorkflowExecutorNodeParams):
       cwd: agentCwd,
       agent,
       prompt: promptText,
+      codexJsonlStdout: agent === "codex",
       onChunk: (chunk, stream) => {
         log(runId, nodeId, stream, chunk);
       },
