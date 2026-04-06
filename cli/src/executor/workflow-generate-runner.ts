@@ -14,11 +14,17 @@ import {
   resolveCloudOrganizationId,
 } from "../cloud-client.js";
 import { runAgentForNodeRaw, type ExecutorAgentKind } from "./agent-node-runner.js";
-import { isExecutorTerminalLogEnabled, writeExecutorTerminalNote } from "../local-server/executor-terminal-log.js";
+import {
+  isExecutorTerminalLogEnabled,
+  isWorkflowGenerateDebugEnabled,
+  writeExecutorTerminalNote,
+  writeWorkflowGenerateDebug,
+} from "../local-server/executor-terminal-log.js";
 import {
   WORKFLOW_GENERATE_OUTPUT_MARKER,
   buildWorkflowGenerateFullPrompt,
 } from "./workflow-generate-prompt.js";
+import { extractFirstJsonObjectFromText } from "./json-extract.js";
 
 function pickStrArray(v: unknown): string[] {
   if (!Array.isArray(v)) {
@@ -65,19 +71,87 @@ function normalizeWorkflowNode(raw: unknown, index: number): WorkflowNode {
   return node;
 }
 
-export function parseWorkflowFileJsonFromAgentLog(log: string): unknown {
-  const idx = log.lastIndexOf(WORKFLOW_GENERATE_OUTPUT_MARKER);
-  if (idx < 0) {
-    throw new Error(
-      `Agent output must include ${WORKFLOW_GENERATE_OUTPUT_MARKER} followed by JSON.`
-    );
+/** Strip UI prefixes that were incorrectly concatenated into combinedLog (thinking deltas) so markers stay findable. */
+function normalizeWorkflowAgentLogForMarker(raw: string): string {
+  return raw.replace(/〈thinking〉\n/g, "");
+}
+
+function countSubstringOccurrences(haystack: string, needle: string): number {
+  if (!needle) {
+    return 0;
   }
-  const jsonPart = log.slice(idx + WORKFLOW_GENERATE_OUTPUT_MARKER.length).trim();
-  try {
-    return JSON.parse(jsonPart) as unknown;
-  } catch {
-    throw new Error("Failed to parse JSON after workflow file marker.");
+  let count = 0;
+  let pos = 0;
+  while (true) {
+    const i = haystack.indexOf(needle, pos);
+    if (i < 0) {
+      break;
+    }
+    count += 1;
+    pos = i + needle.length;
   }
+  return count;
+}
+
+function logWorkflowGenerateCombinedLogDiagnostics(agent: ExecutorAgentKind, rawCombinedLog: string): void {
+  if (!isWorkflowGenerateDebugEnabled()) {
+    return;
+  }
+  const marker = WORKFLOW_GENERATE_OUTPUT_MARKER;
+  const normalized = normalizeWorkflowAgentLogForMarker(rawCombinedLog);
+  const rawOcc = countSubstringOccurrences(rawCombinedLog, marker);
+  const normOcc = countSubstringOccurrences(normalized, marker);
+  const thinkingStrippedChars = rawCombinedLog.length - normalized.length;
+  writeWorkflowGenerateDebug(
+    `agent=${agent} combinedLog raw_chars=${rawCombinedLog.length} normalized_chars=${normalized.length} ` +
+      `marker_occurrences_raw=${rawOcc} marker_occurrences_normalized=${normOcc} thinking_prefixes_stripped_chars≈${thinkingStrippedChars}`
+  );
+  if (normOcc === 0) {
+    const tail = normalized.slice(-1200).replace(/\r?\n/g, "\\n");
+    writeWorkflowGenerateDebug(`no_marker tail_snippet=${tail}`);
+    return;
+  }
+  const lastIdx = normalized.lastIndexOf(marker);
+  const after = normalized.slice(lastIdx + marker.length);
+  const jsonProbe = extractFirstJsonObjectFromText(after.trim());
+  writeWorkflowGenerateDebug(
+    `last_marker_at=${lastIdx} after_marker_chars=${after.length} first_brace_object_extracted=${jsonProbe != null} ` +
+      `extracted_json_chars=${jsonProbe?.length ?? 0}`
+  );
+  if (jsonProbe) {
+    const head = jsonProbe.slice(0, 160).replace(/\r?\n/g, "\\n");
+    writeWorkflowGenerateDebug(`extracted_json_head=${JSON.stringify(head)}`);
+  }
+}
+
+export function parseWorkflowFileJsonFromAgentLog(rawLog: string): unknown {
+  const log = normalizeWorkflowAgentLogForMarker(rawLog);
+  const marker = WORKFLOW_GENERATE_OUTPUT_MARKER;
+  let searchEnd = log.length;
+  let lastParseError: Error | null = null;
+  while (searchEnd >= 0) {
+    const idx = log.lastIndexOf(marker, searchEnd);
+    if (idx < 0) {
+      break;
+    }
+    const afterMarker = log.slice(idx + marker.length).trim();
+    const jsonStr = extractFirstJsonObjectFromText(afterMarker);
+    if (jsonStr) {
+      try {
+        return JSON.parse(jsonStr) as unknown;
+      } catch (err) {
+        lastParseError = err instanceof Error ? err : new Error(String(err));
+      }
+    }
+    if (idx === 0) {
+      break;
+    }
+    searchEnd = idx - 1;
+  }
+  if (lastParseError) {
+    throw new Error(`Failed to parse JSON after workflow file marker: ${lastParseError.message}`);
+  }
+  throw new Error(`Agent output must include ${marker} followed by a JSON object.`);
 }
 
 function validateKindsForNodes(
@@ -193,42 +267,117 @@ export async function runWorkflowGenerateFromBrief(
   let onChunkCalls = 0;
   let onChunkBytes = 0;
   const sink = onChunk ?? (() => {});
-  const { exitCode, combinedLog } = await runAgentForNodeRaw({
-    cwd,
-    agent,
-    prompt,
-    onChunk: (text: string, stream: "stdout" | "stderr") => {
-      onChunkCalls += 1;
-      onChunkBytes += text.length;
-      sink(text, stream);
-    },
-    signal,
-    /** Codex plain exec buffers transcript; `--json` emits each item as it completes. */
-    codexJsonlStdout: useCodexJsonl,
-    claudeStreamJsonStdout: useClaudeStreamJson,
-  });
+
+  if (isExecutorTerminalLogEnabled()) {
+    writeExecutorTerminalNote(
+      `workflow.generate awaiting agent subprocess agent=${agent} (pid logs when child spawns)`
+    );
+  }
+
+  let heartbeat: ReturnType<typeof setInterval> | undefined;
+  const heartbeatStartedMs = Date.now();
+  if (isExecutorTerminalLogEnabled()) {
+    const heartbeatSecRaw = Number(process.env.COGNETIVY_WORKFLOW_GENERATE_HEARTBEAT_SEC);
+    const heartbeatSec = Number.isFinite(heartbeatSecRaw) && heartbeatSecRaw > 0 ? heartbeatSecRaw : 20;
+    const intervalMs = Math.max(5000, Math.round(heartbeatSec * 1000));
+    heartbeat = setInterval(function workflowGenerateHeartbeat() {
+      const elapsedS = Math.round((Date.now() - heartbeatStartedMs) / 1000);
+      writeExecutorTerminalNote(
+        `workflow.generate agent still running elapsed_s=${elapsedS} onChunk_calls=${onChunkCalls} onChunk_bytes=${onChunkBytes}`
+      );
+    }, intervalMs);
+  }
+
+  let exitCode: number | null;
+  let combinedLog: string;
+  try {
+    const result = await runAgentForNodeRaw({
+      cwd,
+      agent,
+      prompt,
+      onChunk: (text: string, stream: "stdout" | "stderr") => {
+        onChunkCalls += 1;
+        onChunkBytes += text.length;
+        sink(text, stream);
+      },
+      signal,
+      /** Codex plain exec buffers transcript; `--json` emits each item as it completes. */
+      codexJsonlStdout: useCodexJsonl,
+      claudeStreamJsonStdout: useClaudeStreamJson,
+    });
+    exitCode = result.exitCode;
+    combinedLog = result.combinedLog;
+  } finally {
+    if (heartbeat) {
+      clearInterval(heartbeat);
+    }
+  }
 
   if (isExecutorTerminalLogEnabled()) {
     writeExecutorTerminalNote(
       `workflow.generate agent subprocess done onChunk_calls=${onChunkCalls} onChunk_bytes=${onChunkBytes} combined_log_chars=${combinedLog.length}`
     );
   }
+  if (isWorkflowGenerateDebugEnabled()) {
+    writeWorkflowGenerateDebug(
+      `subprocess exitCode=${exitCode === null ? "null" : String(exitCode)} onChunk_calls=${onChunkCalls} onChunk_bytes=${onChunkBytes}`
+    );
+    logWorkflowGenerateCombinedLogDiagnostics(agent, combinedLog);
+  }
 
   if (exitCode !== 0 && exitCode !== null) {
     const tail = combinedLog.trim().slice(-2000);
+    if (isWorkflowGenerateDebugEnabled()) {
+      writeWorkflowGenerateDebug(`nonzero_exit tail_chars=${tail.length}`);
+    }
     throw new Error(`Agent exited with code ${exitCode}.${tail ? `\n--- tail ---\n${tail}` : ""}`);
   }
 
   onPhase?.("parsing");
-  const parsed = parseWorkflowFileJsonFromAgentLog(combinedLog);
+  let parsed: unknown;
+  try {
+    parsed = parseWorkflowFileJsonFromAgentLog(combinedLog);
+  } catch (parseErr) {
+    if (isWorkflowGenerateDebugEnabled()) {
+      writeWorkflowGenerateDebug(`parseWorkflowFileJsonFromAgentLog failed: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}`);
+    }
+    throw parseErr;
+  }
+  if (isWorkflowGenerateDebugEnabled()) {
+    const name = parsed && typeof parsed === "object" && "name" in (parsed as object) ? String((parsed as { name?: unknown }).name ?? "") : "";
+    writeWorkflowGenerateDebug(`parse ok workflow_name=${name.slice(0, 120)}`);
+  }
+
   onPhase?.("validating");
-  const payload = parseAndValidateWorkflowFullPayload(parsed);
+  let payload: CloudCreateWorkflowFullInput;
+  try {
+    payload = parseAndValidateWorkflowFullPayload(parsed);
+  } catch (valErr) {
+    if (isWorkflowGenerateDebugEnabled()) {
+      writeWorkflowGenerateDebug(`validation failed: ${valErr instanceof Error ? valErr.message : String(valErr)}`);
+    }
+    throw valErr;
+  }
+
   onPhase?.("creating");
+  if (isWorkflowGenerateDebugEnabled()) {
+    writeWorkflowGenerateDebug("resolveCloudOrganizationId + POST /workflows/full starting");
+  }
+  const t0 = Date.now();
   const organizationId = await resolveCloudOrganizationId();
+  if (isWorkflowGenerateDebugEnabled()) {
+    writeWorkflowGenerateDebug(`organizationId resolved len=${organizationId.length} in ${Date.now() - t0}ms`);
+  }
+  const t1 = Date.now();
   const created = await cloudCreateWorkflowFull({
     ...payload,
     organizationId,
   });
+  if (isWorkflowGenerateDebugEnabled()) {
+    writeWorkflowGenerateDebug(
+      `cloudCreateWorkflowFull done workflowId=${created.id} versionId=${created.versionId ?? "null"} in ${Date.now() - t1}ms`
+    );
+  }
   return { workflowId: created.id, versionId: created.versionId ?? null };
 }
 

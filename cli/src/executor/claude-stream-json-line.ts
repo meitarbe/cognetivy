@@ -6,8 +6,16 @@
 export interface ClaudeStreamJsonLineResult {
   /** Text to show in Studio (null = skip) */
   uiText: string | null;
-  /** Text that belongs in combined agent output for marker parsing (null = UI-only noise) */
+  /**
+   * Raw token text for combinedLog (markers, JSON). For thinking/reasoning deltas this is the same
+   * raw text as in the stream — not the `〈thinking〉` UI prefix — so strings like COGNETIVY_WORKFLOW_FILE_JSON= stay contiguous.
+   */
   parseFragment: string | null;
+  /**
+   * When true, the stream-json session emitted a terminal `result` line (matches vibe-kanban `CLIMessage::Result`).
+   * The executor must close child stdin so Claude Code exits instead of waiting for more input.
+   */
+  endStdin?: boolean;
 }
 
 function textFromDelta(delta: Record<string, unknown>): { text: string; thinking: boolean } | null {
@@ -108,17 +116,17 @@ export function processClaudeStreamJsonLine(line: string): ClaudeStreamJsonLineR
     return { uiText: `〈${rawName}〉\n`, parseFragment: null };
   }
 
-  if (topType === "result") {
+  if (topType === "result" || topType === "Result") {
     const err = o.error;
     if (typeof err === "string" && err.trim()) {
-      return { uiText: `〈error〉\n${err.trim()}\n`, parseFragment: null };
+      return { uiText: `〈error〉\n${err.trim()}\n`, parseFragment: null, endStdin: true };
     }
     const res = o.result;
     if (typeof res === "string" && res.trim()) {
       const t = res.trim();
-      return { uiText: `${t}\n`, parseFragment: t };
+      return { uiText: `${t}\n`, parseFragment: t, endStdin: true };
     }
-    return { uiText: null, parseFragment: null };
+    return { uiText: null, parseFragment: null, endStdin: true };
   }
 
   const ev = streamEventPayload(o);
@@ -129,7 +137,8 @@ export function processClaudeStreamJsonLine(line: string): ClaudeStreamJsonLineR
       const got = textFromDelta(delta as Record<string, unknown>);
       if (got) {
         const display = got.thinking ? `〈thinking〉\n${got.text}` : got.text;
-        return { uiText: display, parseFragment: got.thinking ? null : got.text };
+        /** Raw `got.text` for combinedLog so markers (e.g. COGNETIVY_WORKFLOW_FILE_JSON=) stay contiguous; UI still shows 〈thinking〉. */
+        return { uiText: display, parseFragment: got.text };
       }
     }
     if (evType === "message_start" && ev.message && typeof ev.message === "object") {
@@ -159,7 +168,7 @@ export function processClaudeStreamJsonLine(line: string): ClaudeStreamJsonLineR
     const got = textFromDelta(o.delta as Record<string, unknown>);
     if (got) {
       const display = got.thinking ? `〈thinking〉\n${got.text}` : got.text;
-      return { uiText: display, parseFragment: got.thinking ? null : got.text };
+      return { uiText: display, parseFragment: got.text };
     }
   }
 

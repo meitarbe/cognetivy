@@ -10,6 +10,8 @@ import {
 } from "./claude-code-stdio-protocol.js";
 import { processClaudeStreamJsonLine } from "./claude-stream-json-line.js";
 import { processCodexJsonlLine } from "./codex-jsonl-stream.js";
+import { extractFirstJsonValueFromText, stripLeadingMarkdownFence } from "./json-extract.js";
+import { WORKFLOW_GENERATE_OUTPUT_MARKER } from "./workflow-generate-prompt.js";
 
 export type ExecutorAgentKind = "claude" | "codex";
 
@@ -78,7 +80,35 @@ function buildSpawn(
 }
 
 const COLLECTION_MARKER = "COGNETIVY_COLLECTION_JSON=";
-const MAX_LOG_CHARS = 500_000;
+
+function getAgentCombinedLogMaxChars(): number {
+  const n = Number(process.env.COGNETIVY_AGENT_COMBINED_LOG_MAX_CHARS);
+  return Number.isFinite(n) && n >= 50_000 ? Math.floor(n) : 1_500_000;
+}
+
+function trimAgentCombinedLogBuffer(s: string): string {
+  const maxChars = getAgentCombinedLogMaxChars();
+  if (s.length <= maxChars) {
+    return s;
+  }
+  const m1 = s.lastIndexOf(COLLECTION_MARKER);
+  const m2 = s.lastIndexOf(WORKFLOW_GENERATE_OUTPUT_MARKER);
+  const markerPos = Math.max(m1, m2);
+  if (markerPos >= 0) {
+    const headBeforeMarker = 16_000;
+    const from = Math.max(0, markerPos - headBeforeMarker);
+    const suffix = s.slice(from);
+    if (suffix.length <= maxChars) {
+      return suffix;
+    }
+    return suffix.slice(-maxChars);
+  }
+  return s.slice(-maxChars);
+}
+
+function combinedHasAgentPayloadMarker(combined: string): boolean {
+  return combined.includes(COLLECTION_MARKER) || combined.includes(WORKFLOW_GENERATE_OUTPUT_MARKER);
+}
 
 function traceAgentPipeData(agent: ExecutorAgentKind, label: "stdout" | "stderr", byteLength: number): void {
   if (!isExecutorTerminalLogEnabled() || process.env.COGNETIVY_AGENT_STDOUT_TRACE !== "1") {
@@ -132,17 +162,26 @@ function formatAgentProcessFailure(exitCode: number | null, combinedLog: string)
   return `Agent failed (${codePart}): ${detail}`;
 }
 
-function parseCollectionPayloadFromLog(log: string): unknown {
+export function parseCollectionPayloadFromLog(log: string): unknown {
   const idx = log.lastIndexOf(COLLECTION_MARKER);
   if (idx < 0) {
     throw new Error(
       `Agent output must end with ${COLLECTION_MARKER} followed by JSON (array of items or one object).`
     );
   }
-  const jsonPart = log.slice(idx + COLLECTION_MARKER.length).trim();
+  let tail = log.slice(idx + COLLECTION_MARKER.length).trim();
+  tail = stripLeadingMarkdownFence(tail);
   try {
-    return JSON.parse(jsonPart) as unknown;
+    return JSON.parse(tail) as unknown;
   } catch {
+    const extracted = extractFirstJsonValueFromText(tail);
+    if (extracted) {
+      try {
+        return JSON.parse(extracted) as unknown;
+      } catch {
+        // fall through
+      }
+    }
     throw new Error("Failed to parse JSON after COGNETIVY_COLLECTION_JSON=");
   }
 }
@@ -155,9 +194,11 @@ export function buildAgentSystemPromptSuffix(
   const schemaHint = options?.schemaProvidedInline
     ? ` Match the JSON Schema under "Required output shape" exactly (required keys and types).`
     : " Items must satisfy the workflow collection schema (traceability fields if required by schema).";
+  const proseHint =
+    " Each collection item: every string-typed property must be a single Markdown string (lists and structure go inside that string as Markdown). Never put JSON arrays in a string field; never use a JSON array where the schema expects a string—only Markdown text.";
   return (
     `\n\n---\nWhen finished, print the exact line ${COLLECTION_MARKER} immediately followed by JSON on the same line or the next lines: ` +
-    `a JSON array of collection item objects, or a single object.${kindHint}${schemaHint}`
+    `a JSON array of collection item objects, or a single object (outer JSON is only for wrapping items).${kindHint}${schemaHint}${proseHint}`
   );
 }
 
@@ -180,8 +221,8 @@ export function runAgentForNodeRaw(params: AgentNodeRunParams): Promise<{ exitCo
         return;
       }
       combined += frag;
-      if (combined.length > MAX_LOG_CHARS) {
-        combined = combined.slice(-MAX_LOG_CHARS);
+      if (combined.length > getAgentCombinedLogMaxChars()) {
+        combined = trimAgentCombinedLogBuffer(combined);
       }
     };
 
@@ -198,6 +239,25 @@ export function runAgentForNodeRaw(params: AgentNodeRunParams): Promise<{ exitCo
       },
       stdio: params.agent === "claude" ? ["pipe", "pipe", "pipe"] : ["ignore", "pipe", "pipe"],
     });
+
+    child.once("spawn", function logAgentChildSpawn() {
+      if (!isExecutorTerminalLogEnabled()) {
+        return;
+      }
+      const argv0 = spec.args[0] ?? "";
+      writeExecutorTerminalNote(
+        `agent subprocess spawned pid=${child.pid ?? "?"} command=${spec.command} argv0=${argv0} arg_count=${spec.args.length}`
+      );
+    });
+
+    function logAgentChildClosed(code: number | null, signal: NodeJS.Signals | null): void {
+      if (!isExecutorTerminalLogEnabled()) {
+        return;
+      }
+      writeExecutorTerminalNote(
+        `agent subprocess closed agent=${params.agent} exitCode=${code === null ? "null" : String(code)} signal=${signal ?? ""}`
+      );
+    }
 
     let claudeStdinWriter: { writeLine: (line: string) => void } | null = null;
     if (params.agent === "claude") {
@@ -242,29 +302,37 @@ export function runAgentForNodeRaw(params: AgentNodeRunParams): Promise<{ exitCo
       params.signal.addEventListener("abort", onAbort, { once: true });
     }
 
+    type NdjsonLineOutcome = { uiText: string | null; parseFragment: string | null; endStdin?: boolean };
+
     function attachNdjsonStdout(
-      processLine: (line: string) => { uiText: string | null; parseFragment: string | null },
-      options?: { interceptLine?: (line: string) => boolean }
+      processLine: (line: string) => NdjsonLineOutcome,
+      options?: { interceptLine?: (line: string) => boolean; onEndStdin?: () => void }
     ): { flush: () => void; onData: (buf: Buffer) => void } {
       let carry = "";
+      function handleParsedLine(line: string): void {
+        if (options?.interceptLine?.(line)) {
+          return;
+        }
+        const { uiText, parseFragment, endStdin } = processLine(line);
+        if (uiText) {
+          params.onChunk(uiText, "stdout");
+        }
+        if (parseFragment) {
+          pushCombined(parseFragment);
+        } else if (uiText) {
+          pushCombined(uiText);
+        }
+        if (endStdin) {
+          options?.onEndStdin?.();
+        }
+      }
       return {
         onData(buf: Buffer) {
           carry += buf.toString("utf8");
           const lines = carry.split("\n");
           carry = lines.pop() ?? "";
           for (const line of lines) {
-            if (options?.interceptLine?.(line)) {
-              continue;
-            }
-            const { uiText, parseFragment } = processLine(line);
-            if (uiText) {
-              params.onChunk(uiText, "stdout");
-            }
-            if (parseFragment) {
-              pushCombined(parseFragment);
-            } else if (uiText) {
-              pushCombined(uiText);
-            }
+            handleParsedLine(line);
           }
         },
         flush() {
@@ -273,18 +341,7 @@ export function runAgentForNodeRaw(params: AgentNodeRunParams): Promise<{ exitCo
           if (!trimmed) {
             return;
           }
-          if (options?.interceptLine?.(trimmed)) {
-            return;
-          }
-          const { uiText, parseFragment } = processLine(trimmed);
-          if (uiText) {
-            params.onChunk(uiText, "stdout");
-          }
-          if (parseFragment) {
-            pushCombined(parseFragment);
-          } else if (uiText) {
-            pushCombined(uiText);
-          }
+          handleParsedLine(trimmed);
         },
       };
     }
@@ -306,7 +363,8 @@ export function runAgentForNodeRaw(params: AgentNodeRunParams): Promise<{ exitCo
         if (params.signal) params.signal.removeEventListener("abort", onAbort);
         reject(err);
       });
-      child.on("close", (code) => {
+      child.on("close", (code, signal) => {
+        logAgentChildClosed(code, signal);
         if (params.signal) params.signal.removeEventListener("abort", onAbort);
         if (params.signal?.aborted) {
           reject(new Error("Aborted"));
@@ -320,6 +378,67 @@ export function runAgentForNodeRaw(params: AgentNodeRunParams): Promise<{ exitCo
     } else if (useClaudeStreamJson) {
       let stderrAcc = "";
       const controlWrite = claudeStdinWriter?.writeLine;
+      let payloadIdleTimer: ReturnType<typeof setTimeout> | null = null;
+      function clearClaudePayloadIdleTimer(): void {
+        if (payloadIdleTimer != null) {
+          clearTimeout(payloadIdleTimer);
+          payloadIdleTimer = null;
+        }
+      }
+      let claudeStdinClosed = false;
+      function scheduleClaudeStreamJsonStdinEnd(): void {
+        clearClaudePayloadIdleTimer();
+        if (claudeStdinClosed) {
+          return;
+        }
+        const stdin = child.stdin;
+        if (!stdin) {
+          return;
+        }
+        claudeStdinClosed = true;
+        /**
+         * Claude Code with `--input-format=stream-json` waits for stdin EOF to exit after the
+         * final `{"type":"result",...}` line (vibe-kanban stops reading there too). Defer `end()` so
+         * any pending `createStdinJsonlWriter` queue drains and control_response lines flush first.
+         */
+        setImmediate(function endClaudeStdinAfterResult() {
+          try {
+            if (!stdin.writableEnded) {
+              stdin.end();
+            }
+          } catch {
+            // ignore — process may already be tearing down
+          }
+        });
+      }
+      /**
+       * Sometimes the CLI never emits a top-level `result` NDJSON line after the model prints the
+       * payload (markers appear only in streamed text deltas). If stdout goes quiet while the log
+       * already contains COGNETIVY_* markers, close stdin so the child can exit.
+       */
+      function scheduleIdleStdinEndIfPayloadPresent(): void {
+        clearClaudePayloadIdleTimer();
+        if (claudeStdinClosed) {
+          return;
+        }
+        if (!combinedHasAgentPayloadMarker(combined)) {
+          return;
+        }
+        const idleMsRaw = Number(process.env.COGNETIVY_CLAUDE_STREAM_JSON_IDLE_END_MS);
+        const idleMs = Number.isFinite(idleMsRaw) && idleMsRaw >= 1000 ? idleMsRaw : 6000;
+        payloadIdleTimer = setTimeout(function claudeStreamJsonIdleEndStdin() {
+          payloadIdleTimer = null;
+          if (claudeStdinClosed || !combinedHasAgentPayloadMarker(combined)) {
+            return;
+          }
+          if (isExecutorTerminalLogEnabled()) {
+            writeExecutorTerminalNote(
+              `agent claude stream-json: stdin.end after ${idleMs}ms stdout idle (payload marker present; no result line)`
+            );
+          }
+          scheduleClaudeStreamJsonStdinEnd();
+        }, idleMs);
+      }
       const ndjson = attachNdjsonStdout(processClaudeStreamJsonLine, {
         interceptLine(line: string): boolean {
           if (!controlWrite) {
@@ -327,10 +446,12 @@ export function runAgentForNodeRaw(params: AgentNodeRunParams): Promise<{ exitCo
           }
           return tryRespondToClaudeStdoutControlLine(line, controlWrite);
         },
+        onEndStdin: scheduleClaudeStreamJsonStdinEnd,
       });
       child.stdout?.on("data", (buf: Buffer) => {
         traceAgentPipeData(params.agent, "stdout", buf.length);
         ndjson.onData(buf);
+        scheduleIdleStdinEndIfPayloadPresent();
       });
       child.stderr?.on("data", (buf: Buffer) => {
         traceAgentPipeData(params.agent, "stderr", buf.length);
@@ -342,7 +463,9 @@ export function runAgentForNodeRaw(params: AgentNodeRunParams): Promise<{ exitCo
         if (params.signal) params.signal.removeEventListener("abort", onAbort);
         reject(err);
       });
-      child.on("close", (code) => {
+      child.on("close", (code, signal) => {
+        clearClaudePayloadIdleTimer();
+        logAgentChildClosed(code, signal);
         if (params.signal) params.signal.removeEventListener("abort", onAbort);
         if (params.signal?.aborted) {
           reject(new Error("Aborted"));
@@ -368,7 +491,8 @@ export function runAgentForNodeRaw(params: AgentNodeRunParams): Promise<{ exitCo
         reject(err);
       });
 
-      child.on("close", (code) => {
+      child.on("close", (code, signal) => {
+        logAgentChildClosed(code, signal);
         if (params.signal) params.signal.removeEventListener("abort", onAbort);
         if (params.signal?.aborted) {
           reject(new Error("Aborted"));

@@ -148,6 +148,70 @@ const addFormats = (
 const ajv = new Ajv({ allErrors: true });
 addFormats(ajv);
 
+/** Ignore tiny strings to avoid false positives (e.g. short examples). */
+const MIN_JSON_BLOB_STRING_CHARS = 15;
+
+function stringLooksLikeTopLevelJsonObjectOrArray(s: string): boolean {
+  const t = s.trim();
+  if (t.length < MIN_JSON_BLOB_STRING_CHARS) {
+    return false;
+  }
+  const c = t[0];
+  if (c !== "{" && c !== "[") {
+    return false;
+  }
+  try {
+    const v = JSON.parse(t) as unknown;
+    return v !== null && typeof v === "object";
+  } catch {
+    return false;
+  }
+}
+
+function collectJsonBlobStringPaths(value: unknown, basePath: string, out: string[]): void {
+  if (typeof value === "string") {
+    if (stringLooksLikeTopLevelJsonObjectOrArray(value)) {
+      out.push(basePath.length > 0 ? basePath : "(root)");
+    }
+    return;
+  }
+  if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      const p = basePath.length > 0 ? `${basePath}.${k}` : k;
+      collectJsonBlobStringPaths(v, p, out);
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) {
+      collectJsonBlobStringPaths(value[i], `${basePath}[${i}]`, out);
+    }
+  }
+}
+
+/**
+ * Reject string values that look like JSON documents pasted into prose/table fields.
+ * Skipped for kinds like run_input where users (not the coding agent) supply payloads.
+ */
+export function assertProseFieldsNotJsonLikeStrings(payload: unknown, kind?: string): void {
+  if (kind != null && TRACEABILITY_EXCLUDED_KINDS.has(kind)) {
+    return;
+  }
+  const paths: string[] = [];
+  collectJsonBlobStringPaths(payload, "", paths);
+  if (paths.length === 0) {
+    return;
+  }
+  const details = paths.map(
+    (p) => `${p}: value looks like a JSON object/array in a string field (use Markdown prose, not embedded JSON)`
+  );
+  throw new CollectionValidationError(
+    `Collection item validation failed: ${details.join("; ")}`,
+    kind,
+    details
+  );
+}
+
 /**
  * Validate payload against merged item schema. Returns { valid, errors? }.
  */
@@ -179,6 +243,7 @@ export function validateCollectionItemPayload(
       result.errors
     );
   }
+  assertProseFieldsNotJsonLikeStrings(payload, kind);
 }
 
 /**
@@ -196,6 +261,16 @@ export function validateCollectionItemsPayload(
     if (!result.valid) {
       const errs = result.errors ?? [];
       allErrors.push(`item[${i}]: ${errs.join("; ")}`);
+      continue;
+    }
+    try {
+      assertProseFieldsNotJsonLikeStrings(payloads[i], kind);
+    } catch (err) {
+      if (err instanceof CollectionValidationError) {
+        allErrors.push(`item[${i}]: ${err.message}`);
+      } else {
+        throw err;
+      }
     }
   }
   if (allErrors.length > 0) {

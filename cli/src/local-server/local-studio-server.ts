@@ -16,7 +16,7 @@ import { ExecutionStore } from "../local-db/execution-store.js";
 import { HitlCoordinator } from "./hitl-coordinator.js";
 import { getCloudApiUrl } from "../cloud-client.js";
 import { resolveLocalStudioStaticRoot } from "./static-root.js";
-import { writeExecutorTerminalLog, writeExecutorTerminalNote } from "./executor-terminal-log.js";
+import { writeExecutorTerminalLog, writeExecutorTerminalNote, writeWorkflowGenerateDebug } from "./executor-terminal-log.js";
 import {
   serverMessage,
   WS_PROTOCOL_VERSION,
@@ -230,9 +230,11 @@ export function createLocalStudioServer(options: LocalStudioServerOptions = {}):
                   broadcastWorkflowGenerateAgentLog(text, stream, broadcast);
                 },
                 onPhase: (phase) => {
+                  writeWorkflowGenerateDebug(`phase broadcast: ${phase}`);
                   broadcast({ v: 1, type: "workflow.generate", phase });
                 },
               });
+              writeWorkflowGenerateDebug(`job complete workflowId=${result.workflowId}`);
               broadcast({
                 v: 1,
                 type: "workflow.generate",
@@ -240,11 +242,13 @@ export function createLocalStudioServer(options: LocalStudioServerOptions = {}):
                 workflowId: result.workflowId,
               });
             } catch (err) {
+              const msg = formatWorkflowValidationError(err);
+              writeWorkflowGenerateDebug(`job failed: ${msg}`);
               broadcast({
                 v: 1,
                 type: "workflow.generate",
                 phase: "failed",
-                message: formatWorkflowValidationError(err),
+                message: msg,
               });
             } finally {
               workflowGenerateInFlight = false;

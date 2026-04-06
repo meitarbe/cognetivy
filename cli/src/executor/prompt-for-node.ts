@@ -53,6 +53,9 @@ export async function buildPromptForPromptNode(
         2
       )}\n\`\`\``
     );
+    parts.push(
+      `\n**Content style (strict):** For **every property whose schema type is string** (summaries, reasoning, bodies, excerpts, etc.), the value must be **one Markdown string only**. Put headings, bullet lists, numbered lists, and paragraphs **inside that single string** (line breaks allowed). Do **not** use a JSON array of strings for prose, and do **not** put a JSON array where the schema expects a string (wrong: ["a","b"]; right: one string whose content is Markdown bullets, each item on its own line). Do **not** paste a whole JSON object or array into a string field. The only JSON structure is the outer COGNETIVY_COLLECTION_JSON= payload; if the schema says string, never output a JSON array in that property.`
+    );
     if (collectionSpec.validationFeedback?.trim()) {
       parts.push(buildValidationRetryPromptSection(collectionSpec.validationFeedback.trim()));
     }

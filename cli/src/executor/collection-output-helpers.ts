@@ -81,6 +81,8 @@ export function formatAgentValidationFeedback(err: unknown): string {
 export function buildValidationRetryPromptSection(feedback: string): string {
   return (
     `\n\n---\n**Your previous output was rejected (validation).** Fix the JSON so it matches the schema exactly.\n` +
-    `Errors:\n${feedback}\n\nRe-run the task and end with COGNETIVY_COLLECTION_JSON= again with corrected JSON.`
+    `Errors:\n${feedback}\n\nRe-run the task and end with COGNETIVY_COLLECTION_JSON= again with corrected JSON. ` +
+    `If the error mentions string fields that look like JSON, rewrite those values as Markdown prose (or use proper object/array properties in the schema), not JSON text inside strings. ` +
+    `If you used JSON arrays for list-like content inside a field that must be a string, replace them with one Markdown string (bullets/newlines), not \`["…"]\`.`
   );
 }

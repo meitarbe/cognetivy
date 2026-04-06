@@ -17,10 +17,12 @@ Before the machine-readable JSON, write a **Plan** so operators can follow your 
 ${WORKFLOW_GENERATE_OUTPUT_MARKER}
 Immediately after that prefix, output a single JSON object (you may continue the JSON on following lines). No markdown code fences around the JSON.
 
+Emit that prefix **exactly once**. Do not repeat ## Workflow JSON or the prefix after the JSON; no duplicate workflow blocks.
+
 The Plan section is mandatory. Do not skip it even if the JSON is long.
 
 The JSON object MUST include:
-- "name": string — short workflow title.
+- "name": string — short **human-readable** workflow title (e.g. "Competitor landscape review", "PR impact summary"). Use normal words and spacing; **do not** use snake_case, slug-style identifiers, or ALL_CAPS machine ids—those belong in node ids, not the workflow name.
 - "description": optional string.
 - "nodes": array. Each node object MUST have:
   - "id": unique non-empty string (snake_case recommended).
@@ -33,7 +35,10 @@ The JSON object MUST include:
   { "name"?: string, "description": string, "item_schema": <JSON Schema for one item, usually type "object" with properties> }
   If items need traceability, include properties like "name", "citations", "derived_from", "reasoning" as appropriate.
 
+**run_input schema (must be lean):** The "run_input" kind defines the form at run start. In kinds.run_input.item_schema, define **only 1–3 properties** in the properties map (not counting optional system fields). Prefer short string fields (Markdown) or simple enums; avoid wide forms or deep nested objects. Fewer, clearer inputs are better than many optional fields.
+
 Hard rules:
+- Workflow "name" is a display title for people: readable words, not snake_case.
 - The dataflow graph must be acyclic (no dependency cycles through collections).
 - At least one collection kind must appear across the workflow.
 - Include "run_input" in kinds if any node uses input_collections containing "run_input".

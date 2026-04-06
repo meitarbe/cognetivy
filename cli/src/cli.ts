@@ -217,6 +217,10 @@ Local studio (default command):
   COGNETIVY_LOCAL_STUDIO_URL  Open this origin with ?session=… (e.g. http://localhost:5174 for Vite HMR). Vite proxies /ws and /api/local to the CLI. With cognetivy --dev, defaults to http://localhost:5174 unless set; COGNETIVY_USE_BUNDLED_STUDIO=1 opens the bundled UI on COGNETIVY_LOCAL_PORT instead.
   COGNETIVY_OPEN_APP     Set to 0 or false to skip opening the browser.
   COGNETIVY_EXECUTOR_LOG       Set to 0 or false to hide executor status lines on stderr (run phases, nodes, HITL; not agent tool output).
+  COGNETIVY_WORKFLOW_GENERATE_DEBUG  Set to 1 — stderr diagnostics for “Generate workflow” (marker counts, combinedLog, parse/validation, cloud create timing).
+  COGNETIVY_WORKFLOW_GENERATE_HEARTBEAT_SEC  Interval (seconds) for “agent still running …” lines while Generate workflow waits on the child (default 20; min 5).
+  COGNETIVY_CLAUDE_STREAM_JSON_IDLE_END_MS  Claude stream-json: ms of stdout silence after a COGNETIVY_* payload marker before closing stdin (default 6000) if the CLI never sends a terminal result line.
+  COGNETIVY_AGENT_COMBINED_LOG_MAX_CHARS  Max characters of merged agent stdout kept for marker parsing (default 1500000); when trimming, prefers retaining text from the last COGNETIVY_COLLECTION_JSON= / COGNETIVY_WORKFLOW_FILE_JSON=.
   COGNETIVY_PARALLEL_ISOLATION copy (default) or none — per parallel PROMPT node, copy workspace into .cognetivy/exec-islands/<run>/<node>/ (skips node_modules, .git, dist, …) or share the parent cwd.
 
 Examples: \`cognetivy --dev\` (local API), \`cognetivy --api-url http://127.0.0.1:3000\`. Use \`cognetivy auth status\` to see resolved URLs.
