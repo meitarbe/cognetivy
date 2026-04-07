@@ -101,6 +101,8 @@ export async function runWorkflowExecutorNode(p: RunWorkflowExecutorNodeParams):
     const payload = await hitl.waitForResponse(runId, nodeId);
     checkAbort();
     const rawPayload = payload.collectionPayload ?? payload.items ?? payload;
+    const outputFromUi =
+      typeof payload.output === "string" && payload.output.trim() !== "" ? payload.output.trim() : undefined;
     const outKinds = node.output_collections ?? [];
     if (outKinds.length > 1) {
       throw new Error("Multi-output human nodes require a future protocol version.");
@@ -112,6 +114,7 @@ export async function runWorkflowExecutorNode(p: RunWorkflowExecutorNodeParams):
       await cloudCompleteNode(runId, nodeId, {
         collectionKind: outKinds[0],
         collectionPayload: rawPayload as object | object[],
+        ...(outputFromUi ? { output: outputFromUi } : {}),
       });
     } else {
       await cloudCompleteNode(runId, nodeId, {
