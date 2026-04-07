@@ -11,16 +11,16 @@ import {
 } from "../dist/workspace.js";
 
 describe("thin .cognetivy workspace", () => {
-  it("ensureMinimalWorkspace creates workflows/index.json with no local default workflow", async () => {
+  it("ensureMinimalWorkspace creates only the workspace root (no workflows/index.json)", async () => {
     const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "cognetivy-thin-"));
     await ensureMinimalWorkspace(cwd, { noGitignore: true });
     assert.strictEqual(await workspaceExists(cwd), true);
-    const index = await readWorkflowIndex(cwd);
-    assert.strictEqual(index.current_workflow_id, "");
-    assert.deepStrictEqual(index.workflows, []);
+    await assert.rejects(async () => {
+      await readWorkflowIndex(cwd);
+    });
   });
 
-  it("second ensureMinimalWorkspace does not overwrite existing index", async () => {
+  it("ensureMinimalWorkspace does not overwrite an existing workflows/index.json", async () => {
     const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "cognetivy-thin-"));
     await ensureMinimalWorkspace(cwd, { noGitignore: true });
     const indexPath = getWorkspacePaths(cwd).workflowsIndexPath;
@@ -29,6 +29,7 @@ describe("thin .cognetivy workspace", () => {
       cloud_current_workflow_id: "wf_preserved",
       workflows: [],
     };
+    await fs.mkdir(path.dirname(indexPath), { recursive: true });
     await fs.writeFile(indexPath, `${JSON.stringify(patched, null, 2)}\n`, "utf-8");
     await ensureMinimalWorkspace(cwd, { noGitignore: true });
     const after = await readWorkflowIndex(cwd);

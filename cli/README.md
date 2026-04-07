@@ -38,27 +38,19 @@ Open a terminal in your project folder (or an empty folder) and run:
 ```bash
 npx cognetivy
 ```
-An installer will open in the terminal:
+Cognetivy will guide you through sign-in (if needed) and open Studio in your browser.
 
 ---
 
-### Step 2 - Use the installer
+### Step 2 - Studio opens
 
-1. In the installer, choose your coding agent (Claude Code, Cursor, OpenClaw, etc.)
-2. Cognetivy will create a `.cognetivy/` workspace in the current folder.
-3. Cognetivy will install its skills into the workspace.
-
----
-
-### Step 3 - Studio opens
-
-When the installer finishes, Cognetivy Studio opens in your browser.
+Cognetivy Studio opens in your browser.
 
 - You’ll see the read-only UI: workflow, runs, and collections.
 
 ---
 
-### Step 4 - Ask your agent to create a workflow and run it
+### Step 3 - Ask your agent to create a workflow and run it
 
 In another chat window, ask your agent to create a workflow and run it.
 
@@ -99,12 +91,12 @@ Use `"args": ["mcp", "--workspace", "/path/to/folder/with/.cognetivy"]` if the w
 
 | Command | Description |
 |--------|-------------|
-| `npx cognetivy` | Run installer and open Studio (first time) or open Studio |
+| `npx cognetivy` | Guided onboarding and open Studio |
 | `cognetivy workflow get` | Print current workflow |
 | `cognetivy run start --input <file>` | Start a run |
 | `cognetivy studio` | Open Studio in the browser |
 | `cognetivy mcp` | Start MCP server (for your editor) |
-| `cognetivy install cursor` | Install skills into Cursor (`claude`, `agents`, `gemini`, `qwen`, `factory`, `opencode`, `openclaw`, `workspace` also supported) |
+| `cognetivy install cursor` | (Optional) install skills into Cursor (`claude`, `agents`, `gemini`, `qwen`, `factory`, `opencode`, `openclaw`, `workspace` also supported) |
 
 ---
 

@@ -16,6 +16,7 @@ import { mergeKindTemplate } from "./kind-templates.js";
 import { listWorkflowTemplates, listWorkflowTemplatesForPicker, materializeWorkflowTemplate } from "./workflow-templates.js";
 import { applyWorkflowTemplateToCloud } from "./workflow-template-apply.js";
 import type { CollectionSchemaConfig, WorkflowIndexRecord, EventPayload } from "./models.js";
+import { createMinimalWorkflowIndex } from "./default-workflow.js";
 import { runMcpServer } from "./mcp.js";
 import {
   cloudCreateRun,
@@ -112,7 +113,6 @@ import {
 } from "./skills.js";
 import {
   getCurrentVersionSync,
-  readInstalledSkillsVersion,
   isNewerVersion,
 } from "./skills-version.js";
 import updateNotifier from "update-notifier";
@@ -283,8 +283,7 @@ authCmd
       console.log("");
       console.log("To use cloud run/event: run `cognetivy auth login` to sign in in the browser and save an API key.");
     } else {
-      console.log("");
-      console.log("To use in Cursor (skills + MCP): run `cognetivy install cursor` in your project.");
+      // Keep output focused on cloud usage; skills/MCP setup is documented in README and `cognetivy mcp`.
     }
   });
 
@@ -333,7 +332,6 @@ authCmd
     console.log("Next:");
     console.log("  • Run `cognetivy auth whoami` to see your user.");
     console.log("  • Run `cognetivy` to open the app, or use `run start` / `run status` with cloud.");
-    console.log("  • To use Cognetivy in Cursor (skills + MCP): run `cognetivy install cursor` in your project.");
   });
 
 authCmd
@@ -404,23 +402,13 @@ authCmd
 
 program
   .command("init")
-  .description("Initialize .cognetivy workspace and run interactive skill installer (same as cognetivy install). Use --workspace-only to only create the workspace.")
-  .option("--no-gitignore", "Do not add .gitignore snippet for runs/events/collections")
-  .option("--force", "Passed to skill install when using the interactive installer (overwrite existing skills)")
-  .option("--workspace-only", "Only create .cognetivy workspace; do not prompt for skill installation")
-  .action(async (opts: { gitignore?: boolean; force?: boolean; workspaceOnly?: boolean }) => {
+  .description("Initialize .cognetivy workspace (local state for runs/events/collections).")
+  .option("--no-gitignore", "(Deprecated) No longer modifies .gitignore")
+  .action(async (opts: { gitignore?: boolean }) => {
     const cwd = process.cwd();
-    const noGitignore = opts.gitignore === false;
-    if (opts.workspaceOnly) {
-      await ensureMinimalWorkspace(cwd, { noGitignore });
-      console.log("Initialized cognetivy workspace at .cognetivy/");
-      return;
-    }
-    const { runInstallTUI } = await import("./install-tui.js");
-    await runInstallTUI({ cwd, force: opts.force, init: true, noGitignore });
-    const appUrl = getCloudAppUrl();
-    await openUrl(appUrl);
-    printOpenedUrlMessage(appUrl, { workflow: false });
+    void opts;
+    await ensureMinimalWorkspace(cwd);
+    console.log("Initialized cognetivy workspace at .cognetivy/");
   });
 
 const workflowCmd = program
@@ -521,7 +509,7 @@ workflowCmd
         console.error(`Version: ${result.versionId}`);
       }
       await ensureMinimalWorkspace(cwd);
-      const index = await readWorkflowIndex(cwd);
+      const index = (await readWorkflowIndexOptional(cwd)) ?? createMinimalWorkflowIndex();
       await writeWorkflowIndex({ ...index, cloud_current_workflow_id: result.id }, cwd);
       return;
     }
@@ -555,7 +543,7 @@ workflowCmd
       process.exit(1);
     }
     await ensureMinimalWorkspace(cwd);
-    const index = await readWorkflowIndex(cwd);
+    const index = (await readWorkflowIndexOptional(cwd)) ?? createMinimalWorkflowIndex();
     await writeWorkflowIndex({ ...index, cloud_current_workflow_id: opts.workflow }, cwd);
     console.log(opts.workflow);
   });
@@ -1553,7 +1541,7 @@ program
   });
 
 const DEFAULT_BEHAVIOR_DESCRIPTION =
-  "Guided onboarding: sign in if needed, install or update platform skills (Cursor, Claude Code, etc.), ensure at least one cloud workflow (template picker if needed), then start the local studio (browser + WebSocket executor).";
+  "Guided onboarding: sign in if needed, ensure at least one cloud workflow (template picker if needed), then start the local studio (browser + WebSocket executor).";
 
 program
   .command("docs")
@@ -1652,24 +1640,6 @@ async function runDefaultOnboardingFlow(cwd: string): Promise<void> {
     }
     writeStoredApiKey(apiKey);
     console.log("Logged in. API key saved.");
-  }
-
-  const { runInstallTUI } = await import("./install-tui.js");
-  const installedVersion = await readInstalledSkillsVersion(cwd);
-  const currentVersion = getCurrentVersionSync();
-
-  if (installedVersion == null) {
-    await runInstallTUI({ cwd, init: true, skipTemplate: true });
-  } else if (isNewerVersion(currentVersion, installedVersion)) {
-    const shouldUpdate = await p.confirm({
-      message: `Skills were installed with v${installedVersion}; you're on v${currentVersion}. Update skill files? (Your .cognetivy skills folder is not removed.)`,
-      initialValue: true,
-    });
-    if (p.isCancel(shouldUpdate)) {
-      p.cancel("Skipped skill update.");
-    } else if (shouldUpdate) {
-      await runInstallTUI({ cwd, force: true, init: false });
-    }
   }
 
   await ensureMinimalWorkspace(cwd);

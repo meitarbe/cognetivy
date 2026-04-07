@@ -28,7 +28,7 @@ export function getWorkspacePaths(cwd: string = process.cwd()): WorkspacePaths {
 
 export async function workspaceExists(cwd: string = process.cwd()): Promise<boolean> {
   try {
-    await fs.access(getWorkspacePaths(cwd).workflowsIndexPath);
+    await fs.access(getWorkspacePaths(cwd).root);
     return true;
   } catch {
     return false;
@@ -51,26 +51,9 @@ async function writeIndexRaw(index: WorkflowIndexRecord, cwd: string): Promise<v
   await fs.writeFile(paths.workflowsIndexPath, `${JSON.stringify(index, null, 2)}\n`, "utf-8");
 }
 
-async function maybeAppendGitignoreSnippet(cwd: string): Promise<void> {
-  const gitignorePath = path.join(cwd, ".gitignore");
-  const snippet = "\n# Cognetivy\n.cognetivy/skills/.cache\n";
-  try {
-    let content = "";
-    try {
-      content = await fs.readFile(gitignorePath, "utf-8");
-    } catch {
-      // no .gitignore
-    }
-    if (!content.includes(".cognetivy/skills/.cache")) {
-      await fs.appendFile(gitignorePath, snippet, "utf-8");
-    }
-  } catch {
-    // ignore
-  }
-}
-
 /**
- * Thin workspace: `.cognetivy/workflows/index.json` for cloud workflow pointer; skills under `.cognetivy/skills`.
+ * Minimal workspace root. Does not create workflow index or modify .gitignore.
+ * (Some commands will create `.cognetivy/workflows/index.json` lazily only when needed.)
  */
 export async function ensureMinimalWorkspace(
   cwd: string = process.cwd(),
@@ -78,12 +61,7 @@ export async function ensureMinimalWorkspace(
 ): Promise<WorkspacePaths> {
   const paths = getWorkspacePaths(cwd);
   await fs.mkdir(paths.root, { recursive: true });
-  if (!(await workspaceExists(cwd))) {
-    await writeIndexRaw(createMinimalWorkflowIndex(), cwd);
-  }
-  if (!options.noGitignore) {
-    await maybeAppendGitignoreSnippet(cwd);
-  }
+  void options; // kept for backwards compatibility; .gitignore is no longer modified here
   return paths;
 }
 
@@ -92,7 +70,8 @@ export async function ensureWorkspace(
   cwd: string = process.cwd(),
   options: { force?: boolean; noGitignore?: boolean } = {}
 ): Promise<WorkspacePaths> {
-  return ensureMinimalWorkspace(cwd, { noGitignore: options.noGitignore });
+  void options;
+  return ensureMinimalWorkspace(cwd);
 }
 
 export async function requireWorkspace(cwd: string = process.cwd()): Promise<WorkspacePaths> {
