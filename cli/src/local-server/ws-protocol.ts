@@ -9,7 +9,8 @@ export type WsClientMessageType =
   | "run.start"
   | "run.cancel"
   | "hitl.response"
-  | "workflow.generate";
+  | "workflow.generate"
+  | "agent.check";
 
 export type WsServerMessageType =
   | "welcome"
@@ -17,7 +18,8 @@ export type WsServerMessageType =
   | "log.append"
   | "hitl.request"
   | "error"
-  | "workflow.generate";
+  | "workflow.generate"
+  | "agent.check.result";
 
 export interface WsEnvelopeBase {
   v: typeof WS_PROTOCOL_VERSION;
@@ -61,12 +63,19 @@ export interface WsWorkflowGenerateClientMessage extends WsEnvelopeBase {
   agent?: "claude" | "codex";
 }
 
+export interface WsAgentCheckClientMessage extends WsEnvelopeBase {
+  type: "agent.check";
+  agent: "claude" | "codex";
+  cwd?: string;
+}
+
 export type WsClientMessage =
   | WsHelloMessage
   | WsRunStartMessage
   | WsRunCancelMessage
   | WsHitlResponseMessage
-  | WsWorkflowGenerateClientMessage;
+  | WsWorkflowGenerateClientMessage
+  | WsAgentCheckClientMessage;
 
 export interface WsWelcomeMessage extends WsEnvelopeBase {
   type: "welcome";
@@ -125,13 +134,23 @@ export interface WsWorkflowGenerateServerMessage extends WsEnvelopeBase {
   stream?: "stdout" | "stderr";
 }
 
+export interface WsAgentCheckResultServerMessage extends WsEnvelopeBase {
+  type: "agent.check.result";
+  agent: "claude" | "codex";
+  ok: boolean;
+  message: string;
+  stdoutTail?: string;
+  stderrTail?: string;
+}
+
 export type WsServerMessage =
   | WsWelcomeMessage
   | WsRunEventMessage
   | WsLogAppendMessage
   | WsHitlRequestMessage
   | WsErrorMessage
-  | WsWorkflowGenerateServerMessage;
+  | WsWorkflowGenerateServerMessage
+  | WsAgentCheckResultServerMessage;
 
 export function serverMessage(msg: WsServerMessage): string {
   return JSON.stringify(msg);

@@ -12,9 +12,10 @@ import {
   formatWorkflowValidationError,
   runWorkflowGenerateFromBrief,
 } from "../executor/workflow-generate-runner.js";
+import { runAgentForNodeRaw } from "../executor/agent-node-runner.js";
 import { ExecutionStore } from "../local-db/execution-store.js";
 import { HitlCoordinator } from "./hitl-coordinator.js";
-import { getCloudApiUrl } from "../cloud-client.js";
+import { getCloudApiUrl, isCloudAuthenticated, resolveCloudOrganizationId } from "../cloud-client.js";
 import { resolveLocalStudioStaticRoot } from "./static-root.js";
 import { writeExecutorTerminalLog, writeExecutorTerminalNote, writeWorkflowGenerateDebug } from "./executor-terminal-log.js";
 import {
@@ -23,8 +24,12 @@ import {
   type WsClientMessage,
   type WsServerMessage,
 } from "./ws-protocol.js";
+import { listWorkflowTemplates } from "../workflow-templates.js";
+import { applyWorkflowTemplateToCloud } from "../workflow-template-apply.js";
 
 const DEFAULT_PORT = 3848;
+const AGENT_CHECK_TIMEOUT_MS = 20_000;
+const AGENT_CHECK_TAIL_MAX_CHARS = 3_000;
 
 /** Large single `data` events from the agent process become one huge WS payload; split so the UI can paint between chunks. */
 const WORKFLOW_GENERATE_AGENT_LOG_BROADCAST_MAX = 2_048;
@@ -54,6 +59,64 @@ function broadcastWorkflowGenerateAgentLog(
     }
   }
   sendNext();
+}
+
+function splitStdoutStderrTail(text: string): { stdoutTail?: string; stderrTail?: string } {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return {};
+  }
+  const stderrIdx = trimmed.lastIndexOf("\n--- stderr ---\n");
+  if (stderrIdx < 0) {
+    return {
+      stdoutTail: trimmed.length > AGENT_CHECK_TAIL_MAX_CHARS ? trimmed.slice(-AGENT_CHECK_TAIL_MAX_CHARS) : trimmed,
+    };
+  }
+  const stdoutPart = trimmed.slice(0, stderrIdx).trim();
+  const stderrPart = trimmed.slice(stderrIdx + "\n--- stderr ---\n".length).trim();
+  return {
+    stdoutTail:
+      stdoutPart.length > AGENT_CHECK_TAIL_MAX_CHARS ? stdoutPart.slice(-AGENT_CHECK_TAIL_MAX_CHARS) : stdoutPart,
+    stderrTail:
+      stderrPart.length > AGENT_CHECK_TAIL_MAX_CHARS ? stderrPart.slice(-AGENT_CHECK_TAIL_MAX_CHARS) : stderrPart,
+  };
+}
+
+async function runAgentPromptCheck(options: {
+  agent: "claude" | "codex";
+  cwd: string;
+}): Promise<{ ok: boolean; message: string; stdoutTail?: string; stderrTail?: string }> {
+  const abortController = new AbortController();
+  const timeoutId = setTimeout(function agentCheckTimeout() {
+    abortController.abort();
+  }, AGENT_CHECK_TIMEOUT_MS);
+  try {
+    const prompt =
+      "Say exactly: COGNETIVY_AGENT_OK=1";
+    const result = await runAgentForNodeRaw({
+      agent: options.agent,
+      cwd: options.cwd,
+      prompt,
+      signal: abortController.signal,
+      onChunk: function noop() {
+        // no-op: check is summarized in result tails only
+      },
+      codexJsonlStdout: true,
+      claudeStreamJsonStdout: true,
+    });
+    const tails = splitStdoutStderrTail(result.combinedLog);
+    const ok = result.exitCode === 0 || result.exitCode === null;
+    return {
+      ok,
+      message: ok ? "Agent launched successfully." : `Agent exited with code ${String(result.exitCode)}.`,
+      ...tails,
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { ok: false, message };
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 export interface LocalStudioServerOptions {
@@ -99,8 +162,50 @@ export function createLocalStudioServer(options: LocalStudioServerOptions = {}):
     const app = express();
     const staticRoot = resolveLocalStudioStaticRoot();
 
+    app.use(express.json({ limit: "1mb" }));
+
     app.get("/api/local/session", (_req, res) => {
       res.json({ ok: true, token: sessionToken, wsPath: "/ws", protocolVersion: WS_PROTOCOL_VERSION });
+    });
+
+    app.get("/api/local/templates", (_req, res) => {
+      // Intentionally exclude "Default workflow" from UI onboarding.
+      res.json({ ok: true, templates: listWorkflowTemplates() });
+    });
+
+    app.post("/api/local/templates/apply", async (req, res) => {
+      try {
+        const authed = await isCloudAuthenticated();
+        if (!authed) {
+          res.status(401).json({ ok: false, error: "Not authenticated. Run `cognetivy auth login` and refresh." });
+          return;
+        }
+        const templateId = typeof req.body?.templateId === "string" ? req.body.templateId.trim() : "";
+        const workflowName = typeof req.body?.name === "string" ? req.body.name.trim() : undefined;
+        const workflowDescription =
+          typeof req.body?.description === "string" ? req.body.description.trim() : undefined;
+        if (!templateId) {
+          res.status(400).json({ ok: false, error: "templateId is required" });
+          return;
+        }
+        const organizationId = await resolveCloudOrganizationId();
+        const result = await applyWorkflowTemplateToCloud({
+          organizationId,
+          templateId,
+          cwd: workspaceCwd,
+          workflowName,
+          workflowDescription,
+        });
+        res.json({
+          ok: true,
+          workflowId: result.workflowId,
+          versionId: result.versionId,
+          template: result.template,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        res.status(500).json({ ok: false, error: message });
+      }
     });
 
     app.use(
@@ -253,6 +358,27 @@ export function createLocalStudioServer(options: LocalStudioServerOptions = {}):
             } finally {
               workflowGenerateInFlight = false;
             }
+          })();
+          return;
+        }
+
+        if (body.type === "agent.check") {
+          const agent = body.agent === "codex" ? "codex" : "claude";
+          const cwd = typeof body.cwd === "string" && body.cwd.trim() ? path.resolve(body.cwd) : workspaceCwd;
+          writeExecutorTerminalNote(`Agent check: agent=${agent} cwd=${cwd}`);
+          void (async function runAgentCheckJob() {
+            const result = await runAgentPromptCheck({ agent, cwd });
+            ws.send(
+              serverMessage({
+                v: 1,
+                type: "agent.check.result",
+                agent,
+                ok: result.ok,
+                message: result.message,
+                stdoutTail: result.stdoutTail,
+                stderrTail: result.stderrTail,
+              })
+            );
           })();
           return;
         }

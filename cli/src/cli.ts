@@ -1541,7 +1541,7 @@ program
   });
 
 const DEFAULT_BEHAVIOR_DESCRIPTION =
-  "Guided onboarding: sign in if needed, ensure at least one cloud workflow (template picker if needed), then start the local studio (browser + WebSocket executor).";
+  "Guided onboarding: sign in if needed, then start the local studio (browser + WebSocket executor).";
 
 program
   .command("docs")
@@ -1658,25 +1658,7 @@ async function runDefaultOnboardingFlow(cwd: string): Promise<void> {
 
   let cloudCurrentWorkflowId: string | null = null;
   if (!hasWorkflow) {
-    const templates = listWorkflowTemplatesForPicker();
-    const templateSelection = await p.select({
-      message: "Pick a workflow template to get started",
-      options: templates.map((t) => ({ value: t.id, label: t.name, hint: `${t.category} · ${t.node_count} nodes` })),
-    });
-    if (p.isCancel(templateSelection)) {
-      p.cancel("Skipped template.");
-    } else {
-      const templateId = templateSelection as string;
-      try {
-        const orgId = await resolveCloudOrganizationId();
-        const result = await applyWorkflowTemplateToCloud({ organizationId: orgId, templateId, cwd });
-        cloudCurrentWorkflowId = result.workflowId;
-        p.note(`Created workflow "${result.template.name}" (${result.workflowId}) in cloud.`, "Template applied");
-      } catch (err) {
-        console.error(err instanceof Error ? err.message : String(err));
-        process.exit(1);
-      }
-    }
+    // Template onboarding moved to Local Studio UI.
   } else if (cloudCurrentWorkflowId == null) {
     cloudCurrentWorkflowId = index?.cloud_current_workflow_id ?? cloudWorkflowList[0]?.id ?? null;
   }
