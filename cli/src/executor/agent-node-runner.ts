@@ -2,6 +2,8 @@
  * Spawn Claude Code or Codex with a text prompt; parse collection payload from stdout.
  */
 import { spawn } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
 import { isExecutorTerminalLogEnabled, writeExecutorTerminalNote } from "../local-server/executor-terminal-log.js";
 import {
   buildClaudeStreamJsonStdinHandshake,
@@ -22,8 +24,24 @@ function npxCommand(): string {
   return process.platform === "win32" ? "npx.cmd" : "npx";
 }
 
+function shouldSkipCodexGitRepoCheck(cwd: string): boolean {
+  const env = (process.env.COGNETIVY_CODEX_SKIP_GIT_REPO_CHECK ?? "").trim();
+  if (env === "1") return true;
+  if (env === "0") return false;
+  /**
+   * Default: auto-skip when running in an isolated workspace copy that intentionally excludes `.git`.
+   * Codex uses "inside a git repo" as its trust boundary; without `.git`, it refuses to run.
+   */
+  try {
+    return !fs.existsSync(path.join(cwd, ".git"));
+  } catch {
+    return true;
+  }
+}
+
 function buildSpawn(
   agent: ExecutorAgentKind,
+  cwd: string,
   prompt: string,
   options?: { codexJsonlStdout?: boolean; claudeStreamJsonStdout?: boolean }
 ): { command: string; args: string[] } {
@@ -70,6 +88,9 @@ function buildSpawn(
       const args = ["exec"];
       if (options?.codexJsonlStdout) {
         args.push("--json");
+      }
+      if (shouldSkipCodexGitRepoCheck(cwd)) {
+        args.push("--skip-git-repo-check");
       }
       args.push("--sandbox", "workspace-write", "--ephemeral", prompt);
       return { command: "codex", args };
@@ -210,7 +231,7 @@ export function runAgentForNodeRaw(params: AgentNodeRunParams): Promise<{ exitCo
       params.agent === "claude" &&
       params.claudeStreamJsonStdout !== false &&
       !claudeStreamEnvOff;
-    const spec = buildSpawn(params.agent, params.prompt, {
+    const spec = buildSpawn(params.agent, params.cwd, params.prompt, {
       codexJsonlStdout: useCodexJsonl,
       claudeStreamJsonStdout: useClaudeStreamJson,
     });
