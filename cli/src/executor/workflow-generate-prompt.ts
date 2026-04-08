@@ -22,16 +22,16 @@ Emit that prefix **exactly once**. Do not repeat ## Workflow JSON or the prefix 
 The Plan section is mandatory. Do not skip it even if the JSON is long.
 
 The JSON object MUST include:
-- "name": string — short **human-readable** workflow title (e.g. "Competitor landscape review", "PR impact summary"). Use normal words and spacing; **do not** use snake_case, slug-style identifiers, or ALL_CAPS machine ids—those belong in node ids, not the workflow name.
+- "name": string - short **human-readable** workflow title (e.g. "Competitor landscape review", "PR impact summary"). Use normal words and spacing; **do not** use snake_case, slug-style identifiers, or ALL_CAPS machine ids-those belong in node ids, not the workflow name.
 - "description": optional string.
 - "nodes": array. Each node object MUST have:
   - "id": unique non-empty string (snake_case recommended).
   - "type": either "PROMPT" or "HUMAN_IN_THE_LOOP".
-  - "input_collections": string[] — collection kinds this node reads (use ["run_input"] when the step only needs the run's input payload).
-  - "output_collections": string[] — kinds this node writes (often one kind per PROMPT).
-  - "prompt": string — concrete instructions for that step.
+  - "input_collections": string[] - collection kinds this node reads (use ["run_input"] when the step only needs the run's input payload).
+  - "output_collections": string[] - kinds this node writes (often one kind per PROMPT).
+  - "prompt": string - concrete instructions for that step.
   - Optional: "description", "minimum_rows", "required_skills" (string array).
-- "kinds": REQUIRED object — one entry per **every** collection kind name that appears in ANY node's input_collections or output_collections. Keys are kind names. Each value:
+- "kinds": REQUIRED object - one entry per **every** collection kind name that appears in ANY node's input_collections or output_collections. Keys are kind names. Each value:
   { "name"?: string, "description": string, "item_schema": <JSON Schema for one item, usually type "object" with properties> }
   If items need traceability, include properties like "name", "citations", "derived_from", "reasoning" as appropriate.
 

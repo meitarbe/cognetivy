@@ -82,7 +82,7 @@ export function processCodexJsonlLine(line: string): CodexJsonlLineResult {
         parts.push(`out ${out}`);
       }
       if (parts.length > 0) {
-        return { uiText: `\n— tokens: ${parts.join(", ")} —\n`, parseFragment: null };
+        return { uiText: `\n- tokens: ${parts.join(", ")} -\n`, parseFragment: null };
       }
     }
     return { uiText: null, parseFragment: null };

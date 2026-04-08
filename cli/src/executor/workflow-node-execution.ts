@@ -35,9 +35,9 @@ export interface RunWorkflowExecutorNodeParams {
   /** Working directory for the agent subprocess (isolated copy when running in parallel). */
   agentCwd: string;
   /**
-   * full — emit node_start, cloudStartNode, persist started.
-   * resume — same run loop tick as an in-progress node; no start API.
-   * parallel_branch — cloudStart already done for the batch; emit node_start for UI only.
+   * full - emit node_start, cloudStartNode, persist started.
+   * resume - same run loop tick as an in-progress node; no start API.
+   * parallel_branch - cloudStart already done for the batch; emit node_start for UI only.
    */
   serverStart: ExecutorNodeServerStart;
   store: ExecutionStore;

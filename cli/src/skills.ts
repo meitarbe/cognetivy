@@ -510,7 +510,7 @@ Workflows, runs, and collections on **Cognetivy Cloud**. Run commands from **pro
 
 ## Workflow
 
-**Get by id:** \`workflow get --workflow <id> [--version <version_id>]\` — always pass \`--workflow\` explicitly (no "selected" workflow for agents). **Create:** \`workflow create\` (--name or --file/stdin). **Update version:** \`workflow set --file <path>\` or stdin. **List/search:** Use \`workflow search [--q <query>]\` or \`workflow list [--q <query>]\` **only when the user explicitly asks to list or search workflows**; output is id, name, description only. Versions have nodes (collection→node→collection).
+**Get by id:** \`workflow get --workflow <id> [--version <version_id>]\` - always pass \`--workflow\` explicitly (no "selected" workflow for agents). **Create:** \`workflow create\` (--name or --file/stdin). **Update version:** \`workflow set --file <path>\` or stdin. **List/search:** Use \`workflow search [--q <query>]\` or \`workflow list [--q <query>]\` **only when the user explicitly asks to list or search workflows**; output is id, name, description only. Versions have nodes (collection→node→collection).
 
 **Workflow structure (required):**
 - **Single connected graph:** Do not create two or more disconnected subgraphs. All nodes must be part of one dataflow (every node reachable via input/output collections from the rest).

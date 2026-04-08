@@ -1,5 +1,5 @@
 /**
- * parseCollectionPayloadFromLog — markdown fences, arrays, trailing prose.
+ * parseCollectionPayloadFromLog - markdown fences, arrays, trailing prose.
  */
 import assert from "node:assert";
 import { describe, it } from "node:test";

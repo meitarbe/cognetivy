@@ -865,7 +865,11 @@ function createKindSchema(kind: string): CollectionSchemaConfig["kinds"][string]
   };
 }
 
-function buildCollectionSchema(workflowId: string, version: WorkflowVersionRecord): CollectionSchemaConfig {
+function buildCollectionSchema(
+  workflowId: string,
+  version: WorkflowVersionRecord,
+  runInputOverride?: { required?: string[]; properties: Record<string, { type: string; description: string }> }
+): CollectionSchemaConfig {
   const schema = createDefaultCollectionSchema(workflowId);
   const kinds = new Set<string>();
 
@@ -875,7 +879,20 @@ function buildCollectionSchema(workflowId: string, version: WorkflowVersionRecor
   }
 
   for (const kind of kinds) {
-    schema.kinds[kind] = createKindSchema(kind);
+    if (kind === "run_input" && runInputOverride) {
+      schema.kinds[kind] = {
+        name: "Run input",
+        description: "System collection containing the run input payload.",
+        item_schema: {
+          type: "object",
+          ...(runInputOverride.required?.length ? { required: runInputOverride.required } : {}),
+          properties: runInputOverride.properties,
+          additionalProperties: true,
+        },
+      };
+    } else {
+      schema.kinds[kind] = createKindSchema(kind);
+    }
   }
 
   return schema;
@@ -891,6 +908,12 @@ function materializeTemplateOrDefault(templateId: string): { template: WorkflowT
       category: "Getting started",
       description: "Starter workflow demonstrating collection → node → collection flow.",
       use_cases: ["Onboarding", "Quick start", "Smoke testing"],
+      run_input_schema: {
+        required: ["topic"],
+        properties: {
+          topic: { type: "string", description: "Topic or question for this run." },
+        },
+      },
       workflow: {
         nodes: defaultVersion.nodes,
       },
@@ -939,7 +962,7 @@ export async function applyWorkflowTemplateToCloud(
   }
 
   const { template: templateMeta, workflow: version } = materialized;
-  const schema = buildCollectionSchema("wf_template", version);
+  const schema = buildCollectionSchema("wf_template", version, templateMeta.run_input_schema);
   const kinds: Record<string, { name?: string; description: string; item_schema: Record<string, unknown> }> = {};
   for (const [kind, kindSchema] of Object.entries(schema.kinds)) {
     kinds[kind] = {

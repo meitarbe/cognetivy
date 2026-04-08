@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-/** After `tsc`, this file lives in dist/local-server/ — bundled studio is dist/local-studio */
+/** After `tsc`, this file lives in dist/local-server/ - bundled studio is dist/local-studio */
 export function resolveLocalStudioStaticRoot(): string {
   const fromDist = path.resolve(__dirname, "..", "local-studio");
   if (fs.existsSync(path.join(fromDist, "index.html"))) {

@@ -91,7 +91,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Studio: first-time onboarding modal.** On first visit, a modal explains that the Studio is read-only and that users should talk to their coding agent (in Cursor, Claude Code, etc.) to create workflows and start runs. Includes a "Don't show this again" checkbox (persisted in localStorage).
 - **Studio: onboarding chat simulation.** The modal shows an animated simulation of a conversation: user asks for a competitor-analysis workflow (research from external sources, extract key points, comparison report), starts a run, then asks for a new workflow version; the "Coding Agent" responds in plain language (no CLI commands). Typing animation and a single "Thinking…" state in a fixed bottom bar; simulation is clearly labeled so users do not type in the modal.
-- **Studio: onboarding copy and disclaimer.** Prominent note that "This app does not run the AI; it only displays what your AI does via Cognetivy"; simulation callout and header stress "Do not type here—use your editor's chat."
+- **Studio: onboarding copy and disclaimer.** Prominent note that "This app does not run the AI; it only displays what your AI does via Cognetivy"; simulation callout and header stress "Do not type here-use your editor's chat."
 - **Studio: Checkbox component.** Radix-based checkbox in `components/ui/checkbox.tsx` for the onboarding "never show again" option.
 - **Studio: `useOnboardingVisibility` hook.** Hook and localStorage key `cognetivy-onboarding-dismissed` to control one-time vs. permanent dismiss of the onboarding modal.
 

@@ -216,7 +216,7 @@ export function buildAgentSystemPromptSuffix(
     ? ` Match the JSON Schema under "Required output shape" exactly (required keys and types).`
     : " Items must satisfy the workflow collection schema (traceability fields if required by schema).";
   const proseHint =
-    " Each collection item: every string-typed property must be a single Markdown string (lists and structure go inside that string as Markdown). Never put JSON arrays in a string field; never use a JSON array where the schema expects a string—only Markdown text.";
+    " Each collection item: every string-typed property must be a single Markdown string (lists and structure go inside that string as Markdown). Never put JSON arrays in a string field; never use a JSON array where the schema expects a string-only Markdown text.";
   return (
     `\n\n---\nWhen finished, print the exact line ${COLLECTION_MARKER} immediately followed by JSON on the same line or the next lines: ` +
     `a JSON array of collection item objects, or a single object (outer JSON is only for wrapping items).${kindHint}${schemaHint}${proseHint}`
@@ -428,7 +428,7 @@ export function runAgentForNodeRaw(params: AgentNodeRunParams): Promise<{ exitCo
               stdin.end();
             }
           } catch {
-            // ignore — process may already be tearing down
+            // ignore - process may already be tearing down
           }
         });
       }

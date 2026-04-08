@@ -3,12 +3,12 @@
  * Disable with COGNETIVY_EXECUTOR_LOG=0 or false.
  *
  * Optional workflow.generate / agent streaming diagnostics:
- * - COGNETIVY_WORKFLOW_GENERATE_CHUNK_LOG=1 — log each agent_log WS payload (stream + byte size).
- * - COGNETIVY_WORKFLOW_GENERATE_DEBUG=1 — marker counts, combinedLog stats, parse/cloud phases (stderr).
- * - COGNETIVY_WORKFLOW_GENERATE_HEARTBEAT_SEC — while awaiting the agent subprocess during “Generate workflow”, log elapsed seconds and chunk stats every N seconds (default 20; min 5 when executor log is on).
- * - COGNETIVY_CLAUDE_STREAM_JSON_IDLE_END_MS — Claude stream-json: if stdout goes quiet for this many ms after COGNETIVY_COLLECTION_JSON= / COGNETIVY_WORKFLOW_FILE_JSON= appears, close stdin (fallback when no `{"type":"result"}` line). Default 6000; min 1000.
- * - COGNETIVY_AGENT_COMBINED_LOG_MAX_CHARS — max retained characters of agent stdout for parsing (default 1_500_000). When over limit, prefers keeping from the last COGNETIVY_* marker so large JSON is not truncated mid-payload.
- * - COGNETIVY_AGENT_STDOUT_TRACE=1 — log each child_process stdout/stderr `data` event size (raw OS pipe).
+ * - COGNETIVY_WORKFLOW_GENERATE_CHUNK_LOG=1 - log each agent_log WS payload (stream + byte size).
+ * - COGNETIVY_WORKFLOW_GENERATE_DEBUG=1 - marker counts, combinedLog stats, parse/cloud phases (stderr).
+ * - COGNETIVY_WORKFLOW_GENERATE_HEARTBEAT_SEC - while awaiting the agent subprocess during “Generate workflow”, log elapsed seconds and chunk stats every N seconds (default 20; min 5 when executor log is on).
+ * - COGNETIVY_CLAUDE_STREAM_JSON_IDLE_END_MS - Claude stream-json: if stdout goes quiet for this many ms after COGNETIVY_COLLECTION_JSON= / COGNETIVY_WORKFLOW_FILE_JSON= appears, close stdin (fallback when no `{"type":"result"}` line). Default 6000; min 1000.
+ * - COGNETIVY_AGENT_COMBINED_LOG_MAX_CHARS - max retained characters of agent stdout for parsing (default 1_500_000). When over limit, prefers keeping from the last COGNETIVY_* marker so large JSON is not truncated mid-payload.
+ * - COGNETIVY_AGENT_STDOUT_TRACE=1 - log each child_process stdout/stderr `data` event size (raw OS pipe).
  */
 import type { WsServerMessage } from "./ws-protocol.js";
 
@@ -57,7 +57,7 @@ export function writeExecutorTerminalNote(note: string): void {
 
 function formatRunEventLine(msg: Extract<WsServerMessage, { type: "run.event" }>): string | null {
   const { phase, runId, nodeId, payload } = msg;
-  const rid = runId.trim() ? runId : "—";
+  const rid = runId.trim() ? runId : "-";
   const nid = nodeId ? ` node=${nodeId}` : "";
 
   if (phase === "error") {
@@ -140,7 +140,7 @@ export function writeExecutorTerminalLog(msg: WsServerMessage): void {
     }
     case "hitl.request": {
       const kind = msg.expectedCollectionKind ? ` kind=${msg.expectedCollectionKind}` : "";
-      console.error(`[${PREFIX}] HITL run=${msg.runId} node=${msg.nodeId}${kind} — ${msg.title}`);
+      console.error(`[${PREFIX}] HITL run=${msg.runId} node=${msg.nodeId}${kind} - ${msg.title}`);
       return;
     }
     case "run.event": {
@@ -160,7 +160,7 @@ export function writeExecutorTerminalLog(msg: WsServerMessage): void {
         return;
       }
       const wf = msg.workflowId ? ` id=${msg.workflowId}` : "";
-      const detail = msg.message ? ` — ${truncateText(msg.message, 240)}` : "";
+      const detail = msg.message ? ` - ${truncateText(msg.message, 240)}` : "";
       console.error(`[${PREFIX}] workflow.generate ${msg.phase}${wf}${detail}`);
       return;
     }

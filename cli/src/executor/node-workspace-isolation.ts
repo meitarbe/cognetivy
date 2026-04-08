@@ -2,8 +2,8 @@
  * Per-node working directories for parallel executor runs (isolated agent writes).
  *
  * COGNETIVY_PARALLEL_ISOLATION:
- *   copy (default) — copy workspace into .cognetivy/exec-islands/<runId>/<nodeId>/ (skips heavy dirs)
- *   none — use the parent workspace cwd (no isolation; faster, not isolated)
+ *   copy (default) - copy workspace into .cognetivy/exec-islands/<runId>/<nodeId>/ (skips heavy dirs)
+ *   none - use the parent workspace cwd (no isolation; faster, not isolated)
  */
 import fs from "node:fs/promises";
 import path from "node:path";

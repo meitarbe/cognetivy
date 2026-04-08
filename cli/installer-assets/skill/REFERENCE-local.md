@@ -16,7 +16,7 @@
 - `cognetivy run status --run <run_id> [--json]` - run state, nodes, collections, next_step.
 - `cognetivy run step --run <run_id> [--node <node_id>] [--collection-kind <kind>]` - start next node (no --node) or complete node (--node, optional payload via stdin); prints next_step.
 
-**next_step fields (use for scoped fetch):** `action`, `node_id`, `runnable_node_ids`, `hint`, `output_collections`, `collection_kind`. When present: `input_collections` (single node — fetch only these kinds with collection get); `input_collections_by_node` (parallel — for each node_id, fetch only `input_collections_by_node[node_id]`).
+**next_step fields (use for scoped fetch):** `action`, `node_id`, `runnable_node_ids`, `hint`, `output_collections`, `collection_kind`. When present: `input_collections` (single node - fetch only these kinds with collection get); `input_collections_by_node` (parallel - for each node_id, fetch only `input_collections_by_node[node_id]`).
 
 Resume/stop-continue rules:
 - If the CLI response includes `current_node_id` (or `current_node_ids`), you must only follow `next_step.action === "complete_node"` and complete `next_step.node_id` (which must match `current_node_id` when single).

@@ -8,7 +8,7 @@ export interface ClaudeStreamJsonLineResult {
   uiText: string | null;
   /**
    * Raw token text for combinedLog (markers, JSON). For thinking/reasoning deltas this is the same
-   * raw text as in the stream — not the `〈thinking〉` UI prefix — so strings like COGNETIVY_WORKFLOW_FILE_JSON= stay contiguous.
+   * raw text as in the stream - not the `〈thinking〉` UI prefix - so strings like COGNETIVY_WORKFLOW_FILE_JSON= stay contiguous.
    */
   parseFragment: string | null;
   /**
