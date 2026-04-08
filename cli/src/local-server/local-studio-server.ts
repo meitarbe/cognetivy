@@ -267,7 +267,7 @@ export function createLocalStudioServer(options: LocalStudioServerOptions = {}):
           }
           authed = true;
           clients.add(ws);
-          ws.send(serverMessage({ v: 1, type: "welcome", sessionOk: true }));
+          ws.send(serverMessage({ v: 1, type: "welcome", sessionOk: true, cwd: workspaceCwd }));
           return;
         }
 

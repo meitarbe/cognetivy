@@ -1069,7 +1069,7 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
           output_collections: ["price_data"],
           minimum_rows: 5,
           required_skills: SKILLS,
-          prompt: "Structure the price and volume data from the run input into one record per key technical element: (1) price overview — current price, 52-week range, ATH/ATL; (2) moving averages — 20/50/200 MA levels and price position relative to each; (3) volume profile — average daily volume and recent volume patterns; (4) key support levels with price and basis; (5) key resistance levels with price and basis. Add additional records for major gap zones or other notable price levels.",
+          prompt: "Structure the price and volume data from the run input into one record per key technical element: (1) price overview - current price, 52-week range, ATH/ATL; (2) moving averages - 20/50/200 MA levels and price position relative to each; (3) volume profile - average daily volume and recent volume patterns; (4) key support levels with price and basis; (5) key resistance levels with price and basis. Add additional records for major gap zones or other notable price levels.",
         },
         {
           id: "trend_indicator_analysis",

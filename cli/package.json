@@ -12,7 +12,7 @@
     "sync:core": "node ./scripts/sync-core-source.mjs",
     "prebuild": "npm run build:core && npm run sync:core",
     "build:local-studio": "npm run build:local --prefix ../../cloud-studio",
-    "build": "npm run prebuild && tsc && node ./scripts/copy-installer-assets.mjs && build:local-studio && node ./scripts/copy-local-studio-assets.mjs",
+    "build": "npm run prebuild && tsc && node ./scripts/copy-installer-assets.mjs && node ./scripts/copy-local-studio-assets.mjs",
     "prepare": "npm run build",
     "test": "npm run build && node --test test/*.test.mjs",
     "test:live": "npx tsc && COGNETIVY_LIVE_CLAUDE=1 node --test test/claude-stream-stdio-smoke.test.mjs",

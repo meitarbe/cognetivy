@@ -80,6 +80,8 @@ export type WsClientMessage =
 export interface WsWelcomeMessage extends WsEnvelopeBase {
   type: "welcome";
   sessionOk: boolean;
+  /** Workspace working directory the CLI executor will use for agent subprocesses */
+  cwd?: string;
 }
 
 export interface WsRunEventMessage extends WsEnvelopeBase {

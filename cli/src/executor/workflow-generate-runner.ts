@@ -255,6 +255,8 @@ export async function runWorkflowGenerateFromBrief(
   const prompt = buildWorkflowGenerateFullPrompt({ brief, nameHint, descriptionHint });
 
   const claudeStreamJsonDisabled = process.env.COGNETIVY_CLAUDE_STREAM_JSON === "0";
+  // Codex --json mode emits item.completed events as each reasoning/tool/message item finishes,
+  // giving incremental UI updates. Plain mode dumps everything at the end AND echoes the full prompt.
   const useCodexJsonl = agent === "codex";
   const useClaudeStreamJson = agent === "claude" && !claudeStreamJsonDisabled;
 
@@ -274,18 +276,15 @@ export async function runWorkflowGenerateFromBrief(
     );
   }
 
-  let heartbeat: ReturnType<typeof setInterval> | undefined;
-  const heartbeatStartedMs = Date.now();
+  let silenceHeartbeat: ReturnType<typeof setInterval> | undefined;
   if (isExecutorTerminalLogEnabled()) {
-    const heartbeatSecRaw = Number(process.env.COGNETIVY_WORKFLOW_GENERATE_HEARTBEAT_SEC);
-    const heartbeatSec = Number.isFinite(heartbeatSecRaw) && heartbeatSecRaw > 0 ? heartbeatSecRaw : 20;
-    const intervalMs = Math.max(5000, Math.round(heartbeatSec * 1000));
-    heartbeat = setInterval(function workflowGenerateHeartbeat() {
-      const elapsedS = Math.round((Date.now() - heartbeatStartedMs) / 1000);
+    const startedMs = Date.now();
+    silenceHeartbeat = setInterval(function workflowGenerateProgressLog() {
+      const elapsedS = Math.round((Date.now() - startedMs) / 1000);
       writeExecutorTerminalNote(
         `workflow.generate agent still running elapsed_s=${elapsedS} onChunk_calls=${onChunkCalls} onChunk_bytes=${onChunkBytes}`
       );
-    }, intervalMs);
+    }, 8_000);
   }
 
   let exitCode: number | null;
@@ -308,9 +307,7 @@ export async function runWorkflowGenerateFromBrief(
     exitCode = result.exitCode;
     combinedLog = result.combinedLog;
   } finally {
-    if (heartbeat) {
-      clearInterval(heartbeat);
-    }
+    clearInterval(silenceHeartbeat);
   }
 
   if (isExecutorTerminalLogEnabled()) {
