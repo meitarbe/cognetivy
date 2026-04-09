@@ -103,6 +103,8 @@ export interface CloudCreateRunInput {
   workflowVersionId?: string;
   name?: string;
   input: Record<string, unknown>;
+  /** Matches backend `NodeExecutionAgentKind` (e.g. local Claude Code vs Codex). */
+  executorAgent?: "CODEX" | "CLAUDE_CODE";
 }
 
 export interface CloudNextStep {

@@ -5,7 +5,8 @@
   "types": "dist/index.d.ts",
   "private": true,
   "scripts": {
-    "build": "tsc"
+    "build": "tsc",
+    "test": "npm run build && node --test dist/next-step-downstream.spec.js"
   },
   "devDependencies": {
     "ajv": "^8.18.0",

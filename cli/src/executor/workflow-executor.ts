@@ -114,6 +114,7 @@ export async function executeWorkflowRun(params: ExecuteWorkflowParams): Promise
       workflowVersionId,
       name,
       input,
+      executorAgent: agent === "codex" ? "CODEX" : agent === "claude" ? "CLAUDE_CODE" : undefined,
     });
     runId = created.run_id;
     onRunCreated?.(runId);

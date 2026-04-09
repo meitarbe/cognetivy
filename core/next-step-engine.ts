@@ -38,9 +38,10 @@ function inputCollectionReady(
 }
 
 /**
- * Topological order of workflow nodes (DAG): A comes before B if B consumes a collection produced by A.
+ * Directed edges producerId -> consumerId: consumer depends on producer's outputs
+ * (same graph as used for topological sort).
  */
-export function topologicalNodeOrder(nodes: WorkflowNode[]): WorkflowNode[] {
+export function buildProducerToConsumerEdges(nodes: WorkflowNode[]): Map<string, Set<string>> {
   const idToNode = new Map(nodes.map((n) => [n.id, n]));
   const collectionToProducers = new Map<string, string[]>();
   for (const n of nodes) {
@@ -63,6 +64,43 @@ export function topologicalNodeOrder(nodes: WorkflowNode[]): WorkflowNode[] {
       }
     }
   }
+  return outEdges;
+}
+
+/**
+ * All workflow node ids reachable from `fromNodeId` following producer→consumer edges,
+ * including `fromNodeId`. Used for "re-run from node" reset scope.
+ * Returns [] if `fromNodeId` is not a node in the graph.
+ */
+export function getDownstreamNodeIds(nodes: WorkflowNode[], fromNodeId: string): string[] {
+  const idSet = new Set(nodes.map((n) => n.id));
+  if (!idSet.has(fromNodeId)) {
+    return [];
+  }
+  const outEdges = buildProducerToConsumerEdges(nodes);
+  const visited = new Set<string>();
+  const queue = [fromNodeId];
+  const order: string[] = [];
+  while (queue.length > 0) {
+    const id = queue.shift()!;
+    if (visited.has(id)) continue;
+    visited.add(id);
+    order.push(id);
+    for (const consumerId of outEdges.get(id) ?? []) {
+      if (!visited.has(consumerId)) {
+        queue.push(consumerId);
+      }
+    }
+  }
+  return order;
+}
+
+/**
+ * Topological order of workflow nodes (DAG): A comes before B if B consumes a collection produced by A.
+ */
+export function topologicalNodeOrder(nodes: WorkflowNode[]): WorkflowNode[] {
+  const idToNode = new Map(nodes.map((n) => [n.id, n]));
+  const outEdges = buildProducerToConsumerEdges(nodes);
   const inDegree: Record<string, number> = {};
   for (const n of nodes) inDegree[n.id] = 0;
   for (const n of nodes) {
