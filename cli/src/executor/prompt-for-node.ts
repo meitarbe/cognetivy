@@ -46,6 +46,18 @@ export async function buildPromptForPromptNode(
     }
     const desc = collectionSpec.kindDescription.trim() || "(no kind description)";
     parts.push(`\nKind description: ${desc}`);
+    const minRows = node.minimum_rows;
+    if (typeof minRows === "number" && Number.isInteger(minRows) && minRows >= 1) {
+      if (minRows > 1) {
+        parts.push(
+          `\n**Minimum rows (workflow contract):** Produce **at least ${minRows}** separate collection items for this step (one JSON object per item). Prefer a **JSON array** of length ≥ ${minRows}. If you emit fewer than ${minRows} items, the run will fail validation.`
+        );
+      } else {
+        parts.push(
+          `\n**Minimum rows (workflow contract):** Produce **exactly one** collection item (one JSON object, or a one-element array).`
+        );
+      }
+    }
     parts.push(
       `\nYour COGNETIVY_COLLECTION_JSON value must be one JSON object or an array of objects. Each object must validate against this schema (includes required "name" and traceability fields the API enforces):\n\n\`\`\`json\n${JSON.stringify(
         collectionSpec.mergedItemSchema,
@@ -64,6 +76,10 @@ export async function buildPromptForPromptNode(
     parts.push(
       buildAgentSystemPromptSuffix(outKinds[0], {
         schemaProvidedInline: collectionSpec != null,
+        minimumRows:
+          typeof node.minimum_rows === "number" && Number.isInteger(node.minimum_rows) && node.minimum_rows >= 1
+            ? node.minimum_rows
+            : undefined,
       })
     );
   } else if (outKinds.length === 0) {

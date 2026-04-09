@@ -54,6 +54,18 @@ function normalizeWorkflowNode(raw: unknown, index: number): WorkflowNode {
   const prompt = typeof o.prompt === "string" ? o.prompt : undefined;
   const description = typeof o.description === "string" ? o.description : undefined;
   const minimum_rows = typeof o.minimum_rows === "number" ? o.minimum_rows : undefined;
+  if (minimum_rows !== undefined) {
+    if (!Number.isInteger(minimum_rows) || minimum_rows < 1) {
+      throw new Error(
+        `Node "${id}" has invalid minimum_rows (${String(o.minimum_rows)}): must be a positive integer (≥ 1).`
+      );
+    }
+  }
+  if (typeStr === WorkflowNodeType.Prompt && minimum_rows === undefined) {
+    throw new Error(
+      `Node "${id}" is PROMPT and must include integer "minimum_rows" (≥ 1). Use > 1 when the step produces multiple items; use 1 for a single aggregate row.`
+    );
+  }
   const required_skills = pickStrArray(o.required_skills ?? o.requiredSkills);
   const required_mcps = pickStrArray(o.required_mcps ?? o.requiredMcps);
 

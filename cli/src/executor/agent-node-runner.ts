@@ -209,7 +209,7 @@ export function parseCollectionPayloadFromLog(log: string): unknown {
 
 export function buildAgentSystemPromptSuffix(
   expectedKind: string | undefined,
-  options?: { schemaProvidedInline?: boolean }
+  options?: { schemaProvidedInline?: boolean; minimumRows?: number }
 ): string {
   const kindHint = expectedKind ? ` Output kind name: "${expectedKind}".` : "";
   const schemaHint = options?.schemaProvidedInline
@@ -217,9 +217,19 @@ export function buildAgentSystemPromptSuffix(
     : " Items must satisfy the workflow collection schema (traceability fields if required by schema).";
   const proseHint =
     " Each collection item: every string-typed property must be a single Markdown string (lists and structure go inside that string as Markdown). Never put JSON arrays in a string field; never use a JSON array where the schema expects a string-only Markdown text.";
+  const min = options?.minimumRows;
+  let countHint = "";
+  if (typeof min === "number" && Number.isInteger(min) && min >= 1) {
+    if (min > 1) {
+      countHint = ` **Row count:** This node requires **at least ${min} collection items**. Output a **JSON array** with **${min} or more** objects (not a single object). Each object is one row.`;
+    } else {
+      countHint =
+        " **Row count:** This node requires **exactly one** collection row: output **one** JSON object, or a **one-element** JSON array containing that object.";
+    }
+  }
   return (
     `\n\n---\nWhen finished, print the exact line ${COLLECTION_MARKER} immediately followed by JSON on the same line or the next lines: ` +
-    `a JSON array of collection item objects, or a single object (outer JSON is only for wrapping items).${kindHint}${schemaHint}${proseHint}`
+    `a JSON array of collection item objects, or a single object (outer JSON is only for wrapping items).${countHint}${kindHint}${schemaHint}${proseHint}`
   );
 }
 

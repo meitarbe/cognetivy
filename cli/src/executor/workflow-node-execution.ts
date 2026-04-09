@@ -186,6 +186,12 @@ export async function runWorkflowExecutorNode(p: RunWorkflowExecutorNodeParams):
 
       try {
         const items = normalizeToCollectionItems(agentResult.collectionPayload);
+        const minRows = node.minimum_rows;
+        if (typeof minRows === "number" && Number.isInteger(minRows) && minRows >= 1 && items.length < minRows) {
+          throw new Error(
+            `Collection item count below minimum_rows: need at least ${minRows} item(s), got ${items.length}. Output a JSON array with at least ${minRows} objects after COGNETIVY_COLLECTION_JSON=.`
+          );
+        }
         validateCollectionItemsPayload(items, baseSpec.itemSchemaRaw, baseSpec.kind);
       } catch (valErr) {
         validationFeedback = formatAgentValidationFeedback(valErr);

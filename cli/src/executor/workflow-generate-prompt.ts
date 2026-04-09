@@ -30,10 +30,16 @@ The JSON object MUST include:
   - "input_collections": string[] - collection kinds this node reads (use ["run_input"] when the step only needs the run's input payload).
   - "output_collections": string[] - kinds this node writes (often one kind per PROMPT).
   - "prompt": string - concrete instructions for that step.
-  - Optional: "description", "minimum_rows", "required_skills" (string array).
+  - Optional: "description", "required_skills" (string array).
+- **minimum_rows (required for every PROMPT node):** Integer **≥ 1**. It is the minimum number of collection **items** this step must produce in a single run.
+  - If the step emits **multiple** rows (e.g. one record per entity, per week, per keyword, per finding), set **minimum_rows to an integer greater than 1**—typically **≥ 3** for list-like outputs, or match the expected count (e.g. 12 for a 12-week calendar).
+  - If the step emits a **single** aggregate artifact (one consolidated report or document as **one** row), set **minimum_rows to 1**.
+  - Do **not** leave minimum_rows unset for PROMPT nodes.
 - "kinds": REQUIRED object - one entry per **every** collection kind name that appears in ANY node's input_collections or output_collections. Keys are kind names. Each value:
   { "name"?: string, "description": string, "item_schema": <JSON Schema for one item, usually type "object" with properties> }
   If items need traceability, include properties like "name", "citations", "derived_from", "reasoning" as appropriate.
+
+**Collection item_schema (avoid huge blobs):** Prefer structured, bounded fields: short strings, enums, arrays of short strings (e.g. \`key_points\`, \`bullets\`), and IDs. **Do not** define properties named \`summary\`, \`executive_summary\`, \`full_text\`, or similar that invite unbounded long prose—split into sections, bullet lists, or capped string fields with clear max length in the description.
 
 **run_input schema (must be lean):** The "run_input" kind defines the form at run start. In kinds.run_input.item_schema, define **only 1–3 properties** in the properties map (not counting optional system fields). Prefer short string fields (Markdown) or simple enums; avoid wide forms or deep nested objects. Fewer, clearer inputs are better than many optional fields.
 
