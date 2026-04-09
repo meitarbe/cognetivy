@@ -17,6 +17,12 @@ import { WORKFLOW_GENERATE_OUTPUT_MARKER } from "./workflow-generate-prompt.js";
 
 export type ExecutorAgentKind = "claude" | "codex";
 
+export interface AgentUsageTokens {
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+}
+
 const CLAUDE_CODE_PACKAGE =
   process.env.COGNETIVY_CLAUDE_PACKAGE?.trim() || process.env.AGENT_BRIDGE_CLAUDE_PACKAGE?.trim() || "@anthropic-ai/claude-code@2.1.62";
 
@@ -160,6 +166,10 @@ export interface AgentNodeRunResult {
   exitCode: number | null;
   combinedLog: string;
   collectionPayload: unknown;
+  /** Best-known model name (provider-reported when available). */
+  model?: string;
+  /** Provider-reported usage when available (otherwise omitted). */
+  providerUsage?: AgentUsageTokens;
 }
 
 const AGENT_ERR_SNIPPET = 1200;
@@ -233,7 +243,12 @@ export function buildAgentSystemPromptSuffix(
   );
 }
 
-export function runAgentForNodeRaw(params: AgentNodeRunParams): Promise<{ exitCode: number | null; combinedLog: string }> {
+export function runAgentForNodeRaw(params: AgentNodeRunParams): Promise<{
+  exitCode: number | null;
+  combinedLog: string;
+  model?: string;
+  providerUsage?: AgentUsageTokens;
+}> {
   return new Promise((resolve, reject) => {
     const useCodexJsonl = params.agent === "codex" && Boolean(params.codexJsonlStdout);
     const claudeStreamEnvOff = process.env.COGNETIVY_CLAUDE_STREAM_JSON === "0";
@@ -333,18 +348,32 @@ export function runAgentForNodeRaw(params: AgentNodeRunParams): Promise<{ exitCo
       params.signal.addEventListener("abort", onAbort, { once: true });
     }
 
-    type NdjsonLineOutcome = { uiText: string | null; parseFragment: string | null; endStdin?: boolean };
+    type NdjsonLineOutcome = {
+      uiText: string | null;
+      parseFragment: string | null;
+      endStdin?: boolean;
+      model?: string;
+      usage?: AgentUsageTokens;
+    };
 
     function attachNdjsonStdout(
       processLine: (line: string) => NdjsonLineOutcome,
       options?: { interceptLine?: (line: string) => boolean; onEndStdin?: () => void }
-    ): { flush: () => void; onData: (buf: Buffer) => void } {
+    ): { flush: () => void; onData: (buf: Buffer) => void; getMeta: () => { model?: string; usage?: AgentUsageTokens } } {
       let carry = "";
+      let metaModel: string | undefined;
+      let metaUsage: AgentUsageTokens | undefined;
       function handleParsedLine(line: string): void {
         if (options?.interceptLine?.(line)) {
           return;
         }
-        const { uiText, parseFragment, endStdin } = processLine(line);
+        const { uiText, parseFragment, endStdin, model, usage } = processLine(line);
+        if (typeof model === "string" && model.trim()) {
+          metaModel = model.trim();
+        }
+        if (usage && typeof usage === "object") {
+          metaUsage = { ...(metaUsage ?? {}), ...usage };
+        }
         if (uiText) {
           params.onChunk(uiText, "stdout");
         }
@@ -374,6 +403,9 @@ export function runAgentForNodeRaw(params: AgentNodeRunParams): Promise<{ exitCo
           }
           handleParsedLine(trimmed);
         },
+        getMeta() {
+          return { ...(metaModel ? { model: metaModel } : {}), ...(metaUsage ? { usage: metaUsage } : {}) };
+        },
       };
     }
 
@@ -402,9 +434,15 @@ export function runAgentForNodeRaw(params: AgentNodeRunParams): Promise<{ exitCo
           return;
         }
         ndjson.flush();
+        const meta = ndjson.getMeta();
         const withStderr =
           stderrAcc.trim().length > 0 ? `${combined}\n--- stderr ---\n${stderrAcc}` : combined;
-        resolve({ exitCode: code, combinedLog: withStderr });
+        resolve({
+          exitCode: code,
+          combinedLog: withStderr,
+          ...(meta.model ? { model: meta.model } : {}),
+          ...(meta.usage ? { providerUsage: meta.usage } : {}),
+        });
       });
     } else if (useClaudeStreamJson) {
       let stderrAcc = "";
@@ -503,9 +541,15 @@ export function runAgentForNodeRaw(params: AgentNodeRunParams): Promise<{ exitCo
           return;
         }
         ndjson.flush();
+        const meta = ndjson.getMeta();
         const withStderr =
           stderrAcc.trim().length > 0 ? `${combined}\n--- stderr ---\n${stderrAcc}` : combined;
-        resolve({ exitCode: code, combinedLog: withStderr });
+        resolve({
+          exitCode: code,
+          combinedLog: withStderr,
+          ...(meta.model ? { model: meta.model } : {}),
+          ...(meta.usage ? { providerUsage: meta.usage } : {}),
+        });
       });
     } else {
       child.stdout?.on("data", (buf: Buffer) => {
@@ -538,7 +582,7 @@ export function runAgentForNodeRaw(params: AgentNodeRunParams): Promise<{ exitCo
 export async function runAgentForNode(params: AgentNodeRunParams): Promise<AgentNodeRunResult> {
   const useCodexJsonl = params.codexJsonlStdout ?? (params.agent === "codex");
   const useClaudeStream = params.claudeStreamJsonStdout ?? (params.agent === "claude");
-  const { exitCode, combinedLog } = await runAgentForNodeRaw({
+  const { exitCode, combinedLog, model, providerUsage } = await runAgentForNodeRaw({
     ...params,
     codexJsonlStdout: useCodexJsonl,
     claudeStreamJsonStdout: useClaudeStream,
@@ -548,7 +592,13 @@ export async function runAgentForNode(params: AgentNodeRunParams): Promise<Agent
   }
   try {
     const collectionPayload = parseCollectionPayloadFromLog(combinedLog);
-    return { exitCode, combinedLog, collectionPayload };
+    return {
+      exitCode,
+      combinedLog,
+      collectionPayload,
+      ...(model ? { model } : {}),
+      ...(providerUsage ? { providerUsage } : {}),
+    };
   } catch (parseErr) {
     const msg = parseErr instanceof Error ? parseErr.message : String(parseErr);
     const tail = combinedLog.trim().length > 0 ? `\n--- agent output (tail) ---\n${combinedLog.trim().slice(-AGENT_OUTPUT_TAIL)}` : "";

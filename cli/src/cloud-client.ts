@@ -168,6 +168,7 @@ export interface CloudCompleteNodeBody {
   collectionKind?: string;
   collectionPayload?: unknown;
   writes?: Array<{ kind: string; item_ids: string[] }>;
+  executionAttempt?: unknown;
 }
 
 export async function cloudCompleteNode(

@@ -16,6 +16,13 @@ export interface ClaudeStreamJsonLineResult {
    * The executor must close child stdin so Claude Code exits instead of waiting for more input.
    */
   endStdin?: boolean;
+  /** Model name (usually available on `system:init`). */
+  model?: string;
+  /**
+   * Provider-reported usage tokens (if Claude stream-json ever emits it in our observed lines).
+   * If not present, executor may fall back to estimation.
+   */
+  usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
 }
 
 function textFromDelta(delta: Record<string, unknown>): { text: string; thinking: boolean } | null {
@@ -100,7 +107,7 @@ export function processClaudeStreamJsonLine(line: string): ClaudeStreamJsonLineR
     if (sub === "init") {
       const model = typeof o.model === "string" && o.model.trim() ? o.model.trim() : "";
       const line = model ? `〈session · ${model}〉\n` : "〈session ready〉\n";
-      return { uiText: line, parseFragment: null };
+      return { uiText: line, parseFragment: null, ...(model ? { model } : {}) };
     }
     return { uiText: null, parseFragment: null };
   }

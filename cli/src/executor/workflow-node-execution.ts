@@ -17,6 +17,7 @@ import type { HitlCoordinator } from "../local-server/hitl-coordinator.js";
 import type { WsServerMessage } from "../local-server/ws-protocol.js";
 import { runAgentForNode, runAgentForNodeRaw, type ExecutorAgentKind } from "./agent-node-runner.js";
 import { buildPromptForPromptNode } from "./prompt-for-node.js";
+import { estimateTokensFromText } from "./token-estimation.js";
 
 function findNode(nodes: WorkflowNode[], nodeId: string): WorkflowNode | undefined {
   return nodes.find((n) => n.id === nodeId);
@@ -161,7 +162,7 @@ export async function runWorkflowExecutorNode(p: RunWorkflowExecutorNodeParams):
         payload: { agent, attempt: attempt + 1, maxAttempts: 2 },
       });
 
-      let agentResult: { exitCode: number | null; combinedLog: string; collectionPayload: unknown };
+      let agentResult: Awaited<ReturnType<typeof runAgentForNode>>;
       try {
         agentResult = await runAgentForNode({
           cwd: agentCwd,
@@ -214,6 +215,41 @@ export async function runWorkflowExecutorNode(p: RunWorkflowExecutorNodeParams):
         await cloudCompleteNode(runId, nodeId, {
           collectionKind: outKinds[0],
           collectionPayload: agentResult.collectionPayload as object | object[],
+          executionAttempt: {
+            attemptIndex: attempt + 1,
+            agentKind: agent === "codex" ? "CODEX" : "CLAUDE_CODE",
+            provider: agent === "codex" ? "openai" : "anthropic",
+            model: agentResult.model,
+            usageSource: agentResult.providerUsage ? "PROVIDER_REPORTED" : "ESTIMATED",
+            usage: (() => {
+              if (agentResult.providerUsage) {
+                return {
+                  inputTokens: agentResult.providerUsage.inputTokens,
+                  outputTokens: agentResult.providerUsage.outputTokens,
+                  totalTokens: agentResult.providerUsage.totalTokens,
+                };
+              }
+              const estIn = estimateTokensFromText(promptText);
+              const estOut = estimateTokensFromText(agentResult.combinedLog);
+              return {
+                inputTokens: estIn.tokens,
+                outputTokens: estOut.tokens,
+                totalTokens: estIn.tokens + estOut.tokens,
+              };
+            })(),
+            usageRaw: agentResult.providerUsage
+              ? { providerUsage: agentResult.providerUsage }
+              : (() => {
+                  const estIn = estimateTokensFromText(promptText);
+                  const estOut = estimateTokensFromText(agentResult.combinedLog);
+                  return {
+                    disclaimer:
+                      "Estimated tokens: provider did not report usage; estimated from text length (chars/4).",
+                    input: estIn.meta,
+                    output: estOut.meta,
+                  };
+                })(),
+          },
         });
       } catch (apiErr) {
         if (!isCloudCollectionValidationError(apiErr) || attempt === 1) {

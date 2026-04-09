@@ -7,6 +7,13 @@ export interface CodexJsonlLineResult {
   uiText: string | null;
   /** Text that belongs in combined agent output (for COGNETIVY_* markers), null if none */
   parseFragment: string | null;
+  /**
+   * Provider-reported usage tokens for the current turn, if present.
+   * Note: Codex `--json` typically reports this on `turn.completed`.
+   */
+  usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
+  /** Model name if Codex includes it on any event. */
+  model?: string;
 }
 
 function summarizeCodexCompletedItem(item: Record<string, unknown>): string | null {
@@ -59,15 +66,17 @@ export function processCodexJsonlLine(line: string): CodexJsonlLineResult {
 
   const o = parsed as Record<string, unknown>;
   const eventType = String(o.type ?? "");
+  const model =
+    typeof o.model === "string" && o.model.trim() ? o.model.trim() : undefined;
 
   // ── Lifecycle events ──────────────────────────────────────────────────────
 
   if (eventType === "thread.started") {
-    return { uiText: null, parseFragment: null };
+    return { uiText: null, parseFragment: null, ...(model ? { model } : {}) };
   }
 
   if (eventType === "turn.started") {
-    return { uiText: "[model started]\n", parseFragment: null };
+    return { uiText: "[model started]\n", parseFragment: null, ...(model ? { model } : {}) };
   }
 
   if (eventType === "turn.completed") {
@@ -76,14 +85,24 @@ export function processCodexJsonlLine(line: string): CodexJsonlLineResult {
       const u = usage as Record<string, unknown>;
       const inp = typeof u.input_tokens === "number" ? u.input_tokens : null;
       const out = typeof u.output_tokens === "number" ? u.output_tokens : null;
+      const tot = typeof u.total_tokens === "number" ? u.total_tokens : null;
       const parts: string[] = [];
       if (inp != null) parts.push(`in ${inp}`);
       if (out != null) parts.push(`out ${out}`);
       if (parts.length > 0) {
-        return { uiText: `[turn done · tokens: ${parts.join(", ")}]\n`, parseFragment: null };
+        return {
+          uiText: `[turn done · tokens: ${parts.join(", ")}]\n`,
+          parseFragment: null,
+          ...(model ? { model } : {}),
+          usage: {
+            ...(inp != null ? { inputTokens: inp } : {}),
+            ...(out != null ? { outputTokens: out } : {}),
+            ...(tot != null ? { totalTokens: tot } : {}),
+          },
+        };
       }
     }
-    return { uiText: "[turn done]\n", parseFragment: null };
+    return { uiText: "[turn done]\n", parseFragment: null, ...(model ? { model } : {}) };
   }
 
   // ── Streaming delta events (emitted while the model generates) ────────────
@@ -93,17 +112,17 @@ export function processCodexJsonlLine(line: string): CodexJsonlLineResult {
     // Check top-level delta/text fields
     const topText = extractTextFromEvent(o);
     if (topText) {
-      return { uiText: topText, parseFragment: topText };
+      return { uiText: topText, parseFragment: topText, ...(model ? { model } : {}) };
     }
     // Check nested item/delta object
     const nested = o.item ?? o.delta_item ?? o.output;
     if (nested && typeof nested === "object") {
       const nestedText = extractTextFromEvent(nested as Record<string, unknown>);
       if (nestedText) {
-        return { uiText: nestedText, parseFragment: nestedText };
+        return { uiText: nestedText, parseFragment: nestedText, ...(model ? { model } : {}) };
       }
     }
-    return { uiText: null, parseFragment: null };
+    return { uiText: null, parseFragment: null, ...(model ? { model } : {}) };
   }
 
   // ── Item completion events ────────────────────────────────────────────────
@@ -120,17 +139,17 @@ export function processCodexJsonlLine(line: string): CodexJsonlLineResult {
         itemType === "assistant_message" ||
         itemType === "model_message";
       if (isModelMessage) {
-        return { uiText: `${text}\n\n`, parseFragment: text };
+        return { uiText: `${text}\n\n`, parseFragment: text, ...(model ? { model } : {}) };
       }
       if (itemType === "reasoning" || itemType === "thinking") {
-        return { uiText: `〈${itemType}〉\n${text}\n\n`, parseFragment: null };
+        return { uiText: `〈${itemType}〉\n${text}\n\n`, parseFragment: null, ...(model ? { model } : {}) };
       }
       // Any other item type with text — show it
-      return { uiText: `${text}\n`, parseFragment: null };
+      return { uiText: `${text}\n`, parseFragment: null, ...(model ? { model } : {}) };
     }
 
     const summary = summarizeCodexCompletedItem(item);
-    return { uiText: summary, parseFragment: null };
+    return { uiText: summary, parseFragment: null, ...(model ? { model } : {}) };
   }
 
   // ── Item started — show a label so users see something immediately ─────────
@@ -139,14 +158,14 @@ export function processCodexJsonlLine(line: string): CodexJsonlLineResult {
     const item = o.item as Record<string, unknown>;
     const itemType = String(item.type ?? "");
     if (itemType === "reasoning" || itemType === "thinking") {
-      return { uiText: `〈${itemType} started…〉\n`, parseFragment: null };
+      return { uiText: `〈${itemType} started…〉\n`, parseFragment: null, ...(model ? { model } : {}) };
     }
     if (itemType && itemType !== "message" && itemType !== "agent_message") {
-      return { uiText: `· ${itemType} started\n`, parseFragment: null };
+      return { uiText: `· ${itemType} started\n`, parseFragment: null, ...(model ? { model } : {}) };
     }
-    return { uiText: null, parseFragment: null };
+    return { uiText: null, parseFragment: null, ...(model ? { model } : {}) };
   }
 
   // Drop all other events silently
-  return { uiText: null, parseFragment: null };
+  return { uiText: null, parseFragment: null, ...(model ? { model } : {}) };
 }
