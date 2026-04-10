@@ -10,7 +10,9 @@ export type WsClientMessageType =
   | "run.cancel"
   | "hitl.response"
   | "workflow.generate"
-  | "agent.check";
+  | "agent.check"
+  | "fs.list"
+  | "fs.read";
 
 export type WsServerMessageType =
   | "welcome"
@@ -19,7 +21,9 @@ export type WsServerMessageType =
   | "hitl.request"
   | "error"
   | "workflow.generate"
-  | "agent.check.result";
+  | "agent.check.result"
+  | "fs.list.result"
+  | "fs.read.result";
 
 export interface WsEnvelopeBase {
   v: typeof WS_PROTOCOL_VERSION;
@@ -69,13 +73,29 @@ export interface WsAgentCheckClientMessage extends WsEnvelopeBase {
   cwd?: string;
 }
 
+/** List directory entries under workspace cwd (path relative to cwd, "" = root). */
+export interface WsFsListClientMessage extends WsEnvelopeBase {
+  type: "fs.list";
+  path: string;
+  requestId?: string;
+}
+
+/** Read a UTF-8 text file under workspace cwd (e.g. load prompt from .md). */
+export interface WsFsReadClientMessage extends WsEnvelopeBase {
+  type: "fs.read";
+  path: string;
+  requestId?: string;
+}
+
 export type WsClientMessage =
   | WsHelloMessage
   | WsRunStartMessage
   | WsRunCancelMessage
   | WsHitlResponseMessage
   | WsWorkflowGenerateClientMessage
-  | WsAgentCheckClientMessage;
+  | WsAgentCheckClientMessage
+  | WsFsListClientMessage
+  | WsFsReadClientMessage;
 
 export interface WsWelcomeMessage extends WsEnvelopeBase {
   type: "welcome";
@@ -145,6 +165,27 @@ export interface WsAgentCheckResultServerMessage extends WsEnvelopeBase {
   stderrTail?: string;
 }
 
+export type WsFsEntryKind = "file" | "dir";
+
+export interface WsFsListResultServerMessage extends WsEnvelopeBase {
+  type: "fs.list.result";
+  requestId?: string;
+  ok: boolean;
+  /** Path relative to workspace cwd (POSIX-style segments for display). */
+  path: string;
+  entries?: { name: string; kind: WsFsEntryKind }[];
+  error?: string;
+}
+
+export interface WsFsReadResultServerMessage extends WsEnvelopeBase {
+  type: "fs.read.result";
+  requestId?: string;
+  ok: boolean;
+  path: string;
+  content?: string;
+  error?: string;
+}
+
 export type WsServerMessage =
   | WsWelcomeMessage
   | WsRunEventMessage
@@ -152,7 +193,9 @@ export type WsServerMessage =
   | WsHitlRequestMessage
   | WsErrorMessage
   | WsWorkflowGenerateServerMessage
-  | WsAgentCheckResultServerMessage;
+  | WsAgentCheckResultServerMessage
+  | WsFsListResultServerMessage
+  | WsFsReadResultServerMessage;
 
 export function serverMessage(msg: WsServerMessage): string {
   return JSON.stringify(msg);

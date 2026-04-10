@@ -14,6 +14,14 @@ export async function buildPromptForPromptNode(
 ): Promise<string> {
   const parts: string[] = [];
   parts.push(`You are executing workflow node "${node.id}".`);
+  const requiredSkills = (node.required_skills ?? []).filter(
+    (s): s is string => typeof s === "string" && s.trim().length > 0
+  );
+  if (requiredSkills.length > 0) {
+    parts.push(
+      `Required agent skills (use them if they are installed in this workspace; follow their instructions when relevant): ${requiredSkills.join(", ")}.`
+    );
+  }
   if (node.description) {
     parts.push(`Description: ${node.description}`);
   }

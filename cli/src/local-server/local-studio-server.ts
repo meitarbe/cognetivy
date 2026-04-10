@@ -24,6 +24,9 @@ import {
   type WsClientMessage,
   type WsServerMessage,
 } from "./ws-protocol.js";
+import { resolvePathUnderWorkspaceRoot, toDisplayRelativePath } from "./workspace-fs-safe.js";
+
+const FS_READ_MAX_BYTES = 512 * 1024;
 import { listWorkflowTemplates } from "../workflow-templates.js";
 import { applyWorkflowTemplateToCloud } from "../workflow-template-apply.js";
 
@@ -380,6 +383,177 @@ export function createLocalStudioServer(options: LocalStudioServerOptions = {}):
               })
             );
           })();
+          return;
+        }
+
+        if (body.type === "fs.list") {
+          const rel = typeof body.path === "string" ? body.path : "";
+          const requestId = typeof body.requestId === "string" ? body.requestId : undefined;
+          const abs = resolvePathUnderWorkspaceRoot(workspaceCwd, rel);
+          if (!abs) {
+            ws.send(
+              serverMessage({
+                v: 1,
+                type: "fs.list.result",
+                requestId,
+                ok: false,
+                path: rel.trim() || ".",
+                error: "Invalid or disallowed path",
+              } satisfies WsServerMessage)
+            );
+            return;
+          }
+          const pathDisplay = toDisplayRelativePath(workspaceCwd, abs);
+          try {
+            const stat = fs.statSync(abs);
+            if (!stat.isDirectory()) {
+              ws.send(
+                serverMessage({
+                  v: 1,
+                  type: "fs.list.result",
+                  requestId,
+                  ok: false,
+                  path: pathDisplay,
+                  error: "Not a directory",
+                } satisfies WsServerMessage)
+              );
+              return;
+            }
+            const dirents = fs.readdirSync(abs, { withFileTypes: true });
+            const entries = dirents
+              .map((d) => ({
+                name: d.name,
+                kind: d.isDirectory() ? ("dir" as const) : ("file" as const),
+              }))
+              .sort((a, b) => {
+                if (a.kind !== b.kind) {
+                  return a.kind === "dir" ? -1 : 1;
+                }
+                return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+              });
+            ws.send(
+              serverMessage({
+                v: 1,
+                type: "fs.list.result",
+                requestId,
+                ok: true,
+                path: pathDisplay,
+                entries,
+              } satisfies WsServerMessage)
+            );
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            ws.send(
+              serverMessage({
+                v: 1,
+                type: "fs.list.result",
+                requestId,
+                ok: false,
+                path: pathDisplay,
+                error: message,
+              } satisfies WsServerMessage)
+            );
+          }
+          return;
+        }
+
+        if (body.type === "fs.read") {
+          const rel = typeof body.path === "string" ? body.path.trim() : "";
+          const requestId = typeof body.requestId === "string" ? body.requestId : undefined;
+          if (!rel) {
+            ws.send(
+              serverMessage({
+                v: 1,
+                type: "fs.read.result",
+                requestId,
+                ok: false,
+                path: "",
+                error: "path is required",
+              } satisfies WsServerMessage)
+            );
+            return;
+          }
+          const abs = resolvePathUnderWorkspaceRoot(workspaceCwd, rel);
+          if (!abs) {
+            ws.send(
+              serverMessage({
+                v: 1,
+                type: "fs.read.result",
+                requestId,
+                ok: false,
+                path: rel,
+                error: "Invalid or disallowed path",
+              } satisfies WsServerMessage)
+            );
+            return;
+          }
+          const pathDisplay = toDisplayRelativePath(workspaceCwd, abs);
+          try {
+            const stat = fs.statSync(abs);
+            if (!stat.isFile()) {
+              ws.send(
+                serverMessage({
+                  v: 1,
+                  type: "fs.read.result",
+                  requestId,
+                  ok: false,
+                  path: pathDisplay,
+                  error: "Not a file",
+                } satisfies WsServerMessage)
+              );
+              return;
+            }
+            if (stat.size > FS_READ_MAX_BYTES) {
+              ws.send(
+                serverMessage({
+                  v: 1,
+                  type: "fs.read.result",
+                  requestId,
+                  ok: false,
+                  path: pathDisplay,
+                  error: `File too large (max ${FS_READ_MAX_BYTES} bytes)`,
+                } satisfies WsServerMessage)
+              );
+              return;
+            }
+            const buf = fs.readFileSync(abs);
+            if (buf.includes(0)) {
+              ws.send(
+                serverMessage({
+                  v: 1,
+                  type: "fs.read.result",
+                  requestId,
+                  ok: false,
+                  path: pathDisplay,
+                  error: "Binary file not supported",
+                } satisfies WsServerMessage)
+              );
+              return;
+            }
+            const content = buf.toString("utf8");
+            ws.send(
+              serverMessage({
+                v: 1,
+                type: "fs.read.result",
+                requestId,
+                ok: true,
+                path: pathDisplay,
+                content,
+              } satisfies WsServerMessage)
+            );
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            ws.send(
+              serverMessage({
+                v: 1,
+                type: "fs.read.result",
+                requestId,
+                ok: false,
+                path: pathDisplay,
+                error: message,
+              } satisfies WsServerMessage)
+            );
+          }
           return;
         }
 
