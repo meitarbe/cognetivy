@@ -1,6 +1,6 @@
 {
   "name": "cognetivy",
-  "version": "2.0.7",
+  "version": "2.0.9",
   "description": "Reasoning orchestration state: workflow structure, run logs, and versioned mutations",
   "type": "module",
   "main": "dist/index.js",

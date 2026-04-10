@@ -53,7 +53,7 @@ export function processCodexJsonlLine(line: string): CodexJsonlLineResult {
   try {
     parsed = JSON.parse(trimmed);
   } catch {
-    // Non-JSON line — forward as-is (e.g. Codex startup header lines)
+    // Non-JSON line - forward as-is (e.g. Codex startup header lines)
     return {
       uiText: `${trimmed}\n`,
       parseFragment: `${trimmed}\n`,
@@ -144,7 +144,7 @@ export function processCodexJsonlLine(line: string): CodexJsonlLineResult {
       if (itemType === "reasoning" || itemType === "thinking") {
         return { uiText: `〈${itemType}〉\n${text}\n\n`, parseFragment: null, ...(model ? { model } : {}) };
       }
-      // Any other item type with text — show it
+      // Any other item type with text - show it
       return { uiText: `${text}\n`, parseFragment: null, ...(model ? { model } : {}) };
     }
 
@@ -152,7 +152,7 @@ export function processCodexJsonlLine(line: string): CodexJsonlLineResult {
     return { uiText: summary, parseFragment: null, ...(model ? { model } : {}) };
   }
 
-  // ── Item started — show a label so users see something immediately ─────────
+  // ── Item started - show a label so users see something immediately ─────────
 
   if (eventType === "item.started" && o.item && typeof o.item === "object") {
     const item = o.item as Record<string, unknown>;

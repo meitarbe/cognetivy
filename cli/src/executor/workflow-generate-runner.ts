@@ -180,7 +180,7 @@ export function parseWorkflowFileJsonFromAgentLog(rawLog: string): unknown {
         /"nodes"\s*:/.test(afterMarker)
       ) {
         lastParseError = new Error(
-          "JSON after the workflow marker looks truncated (unbalanced braces). The agent output was cut off—try fewer nodes or leaner collection schemas, or increase the agent max output tokens (e.g. CLAUDE_CODE_MAX_OUTPUT_TOKENS)."
+          "JSON after the workflow marker looks truncated (unbalanced braces). The agent output was cut off-try fewer nodes or leaner collection schemas, or increase the agent max output tokens (e.g. CLAUDE_CODE_MAX_OUTPUT_TOKENS)."
         );
       }
     }
