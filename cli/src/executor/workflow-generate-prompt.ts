@@ -21,6 +21,13 @@ Emit that prefix **exactly once**. Do not repeat ## Workflow JSON or the prefix 
 
 The Plan section is mandatory. Do not skip it even if the JSON is long.
 
+**Output hygiene (mandatory — prevents failed runs):**
+- **No hidden reasoning in this reply.** Do **not** output \`〈thinking〉\`, \`<thinking>\`, \`〈session …〉\`, scratchpads, chain-of-thought, or any meta-narrative about what you are doing. Write only the **## Plan**, **## Workflow JSON**, the marker line, and the JSON. Reason **silently**; the operator only sees the deliverable.
+- **## Plan** must stay short: **5–10** bullet lines, **one line each** (no nested bullets, no essays). Summarize nodes and dataflow only.
+- **Complete JSON:** The object after the marker must be **valid JSON** end-to-end (matching braces). **Never** stop mid-object, mid-string, or mid-\`kinds\`. If the workflow would be too large for one response, **simplify**: fewer nodes, **leaner** \`item_schema\` (fewer properties, shorter \`description\` strings), shorter node \`prompt\` text—**do not** emit a truncated file.
+- **Large workflows (many nodes):** Prefer **reusing the same property shapes** across kinds where it fits. Cap each \`item_schema.properties\` to what is **necessary** (typically **≤ 8** properties per kind unless the user explicitly needs more). Put depth in **node prompts**, not in giant redundant schema text.
+- **required_skills** values must match the user's spelling **exactly** (e.g. \`first-principle-researcher\`, \`first-principle-analysis\`).
+
 The JSON object MUST include:
 - "name": string - short **human-readable** workflow title (e.g. "Competitor landscape review", "PR impact summary"). Use normal words and spacing; **do not** use snake_case, slug-style identifiers, or ALL_CAPS machine ids-those belong in node ids, not the workflow name.
 - "description": optional string.
@@ -30,7 +37,7 @@ The JSON object MUST include:
   - "input_collections": string[] - collection kinds this node reads (use ["run_input"] when the step only needs the run's input payload).
   - "output_collections": string[] - kinds this node writes (often one kind per PROMPT).
   - "prompt": string - concrete instructions for that step.
-  - Optional: "description", "required_skills" (string array).
+  - Optional: "description", "required_skills" (string array) - only when the user asked or a named skill highly fits (see **Skills on nodes** above).
 - **minimum_rows (required for every PROMPT node):** Integer **≥ 1**. It is the minimum number of collection **items** this step must produce in a single run.
   - If the step emits **multiple** rows (e.g. one record per entity, per week, per keyword, per finding), set **minimum_rows to an integer greater than 1**—typically **≥ 3** for list-like outputs, or match the expected count (e.g. 12 for a 12-week calendar).
   - If the step emits a **single** aggregate artifact (one consolidated report or document as **one** row), set **minimum_rows to 1**.
@@ -43,12 +50,18 @@ The JSON object MUST include:
 
 **run_input schema (must be lean):** The "run_input" kind defines the form at run start. In kinds.run_input.item_schema, define **only 1–3 properties** in the properties map (not counting optional system fields). Prefer short string fields (Markdown) or simple enums; avoid wide forms or deep nested objects. Fewer, clearer inputs are better than many optional fields.
 
+**Existing agents in the repo:** When you are working against the user's codebase and you can see **already-defined agents** (e.g. editor agent configs, saved system prompts, or similar instructions checked into the repo), you **may** write a node's \`prompt\` so it **matches or reuses the intent** of those agents—paraphrase or adapt; keep prompts bounded and do not dump huge files verbatim. Do this **only** when the user **explicitly asks** to tie the workflow to those agents or to reuse that setup, **or** when aligning with that existing agent **clearly and strongly** fits the workflow they described. If the brief is generic, use **standalone** prompts instead of guessing repo-specific agents.
+
+**Skills on nodes (\`required_skills\`):** Same decision bar: add \`required_skills\` **only** when the user **explicitly names** skills to require, **or** when a **concrete named** skill in the workspace would **highly** improve that step. **Do not** put skills on every node or "just in case." **Never** list \`"cognetivy"\` as a required skill.
+
 Hard rules:
+- Obey **Output hygiene** above; a run fails if reasoning tags leak into the reply or JSON is incomplete.
 - Workflow "name" is a display title for people: readable words, not snake_case.
 - The dataflow graph must be acyclic (no dependency cycles through collections).
 - At least one collection kind must appear across the workflow.
 - Include "run_input" in kinds if any node uses input_collections containing "run_input".
 - Use realistic prompts (goal, constraints, output shape).
+- **required_skills:** Follow **Skills on nodes** above; do not contradict those rules.
 
 Do not append prose after the closing brace of the JSON.`;
 }

@@ -24,7 +24,10 @@ import {
   WORKFLOW_GENERATE_OUTPUT_MARKER,
   buildWorkflowGenerateFullPrompt,
 } from "./workflow-generate-prompt.js";
-import { extractFirstJsonObjectFromText } from "./json-extract.js";
+import {
+  extractBalancedJsonValueAt,
+  extractFirstJsonObjectFromText,
+} from "./json-extract.js";
 
 function pickStrArray(v: unknown): string[] {
   if (!Array.isArray(v)) {
@@ -83,9 +86,24 @@ function normalizeWorkflowNode(raw: unknown, index: number): WorkflowNode {
   return node;
 }
 
-/** Strip UI prefixes that were incorrectly concatenated into combinedLog (thinking deltas) so markers stay findable. */
+/**
+ * Strip UI/session/thinking artifacts that get concatenated into the agent transcript so
+ * COGNETIVY_WORKFLOW_FILE_JSON= and JSON stay parseable.
+ */
 function normalizeWorkflowAgentLogForMarker(raw: string): string {
-  return raw.replace(/〈thinking〉\n/g, "");
+  let s = raw.replace(/〈session[^〉]*〉\s*/g, "");
+  let prev = "";
+  while (prev !== s) {
+    prev = s;
+    s = s.replace(/〈thinking〉[\s\S]*?(?=〈thinking〉|$)/g, "");
+  }
+  prev = "";
+  while (prev !== s) {
+    prev = s;
+    s = s.replace(/<thinking>[\s\S]*?<\/thinking>/gi, "");
+  }
+  s = s.replace(/〈thinking〉\n?/g, "");
+  return s;
 }
 
 function countSubstringOccurrences(haystack: string, needle: string): number {
@@ -153,6 +171,17 @@ export function parseWorkflowFileJsonFromAgentLog(rawLog: string): unknown {
         return JSON.parse(jsonStr) as unknown;
       } catch (err) {
         lastParseError = err instanceof Error ? err : new Error(String(err));
+      }
+    } else {
+      const brace = afterMarker.indexOf("{");
+      if (
+        brace >= 0 &&
+        extractBalancedJsonValueAt(afterMarker, brace) === null &&
+        /"nodes"\s*:/.test(afterMarker)
+      ) {
+        lastParseError = new Error(
+          "JSON after the workflow marker looks truncated (unbalanced braces). The agent output was cut off—try fewer nodes or leaner collection schemas, or increase the agent max output tokens (e.g. CLAUDE_CODE_MAX_OUTPUT_TOKENS)."
+        );
       }
     }
     if (idx === 0) {
