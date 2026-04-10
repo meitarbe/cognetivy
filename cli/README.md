@@ -1,4 +1,4 @@
-# Cognetivy
+# Cognetivy 2.0
 
 [![npm](https://img.shields.io/npm/v/cognetivy.svg)](https://www.npmjs.com/package/cognetivy)
 [![GitHub Repo stars](https://img.shields.io/github/stars/meitarbe/cognetivy?label=Stars&logo=github)](https://github.com/meitarbe/cognetivy/stargazers)
