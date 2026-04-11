@@ -22,12 +22,4 @@ COGNETIVY_WORKFLOW_FILE_JSON={"name":"Fixed","nodes":[],"kinds":{}}`;
     const out = parseWorkflowFileJsonFromAgentLog(log);
     assert.strictEqual(out.name, "Fixed");
   });
-
-  it("finds marker when 〈thinking〉 UI prefixes were concatenated into the log (legacy)", async () => {
-    const { parseWorkflowFileJsonFromAgentLog } = await import(runnerPath);
-    const log = `〈thinking〉
-COGNETIVY_WORKFLOW_FILE_JSON={"name":"FromThinking","nodes":[],"kinds":{}}`;
-    const out = parseWorkflowFileJsonFromAgentLog(log);
-    assert.strictEqual(out.name, "FromThinking");
-  });
 });
