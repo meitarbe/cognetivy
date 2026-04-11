@@ -468,18 +468,16 @@ export interface InstallSkillResult {
 
 const COGNETIVY_SKILL_NAME = "cognetivy";
 
-export type SkillMode = "local" | "cloud";
-
-/** Built-in skill (local mode): uses .cognetivy/ workspace; workflows and runs stored locally. */
-function getCognetivySkillContentLocal(): string {
+/** Built-in skill: Cognetivy Cloud CLI and app. */
+function getCognetivySkillContent(): string {
   return `---
 name: ${COGNETIVY_SKILL_NAME}
-description: Manage workflows, workflow versions, runs, step events, node results, and strict schema-backed collections in this project. Use when the user asks to start/complete a run, execute workflow nodes, log step_started/step_completed events, persist node results, or read/write structured data in collections. All operations run via the cognetivy CLI from the project root that contains .cognetivy/
+description: Manage workflows, runs, and collections on Cognetivy Cloud via the CLI. Use when the user asks to start/complete a run, execute workflow nodes, or read/write structured data. Sign in with cognetivy auth login; project root may contain .cognetivy/ for skills and default workflow pointer.
 ---
 
 # Cognetivy
 
-Workflows, runs, node results, and schema-backed collections. Run commands from **project root** (directory with \`.cognetivy/\`). Full CLI reference: [REFERENCE.md](REFERENCE.md).
+Workflows, runs, and collections on **Cognetivy Cloud**. Run commands from **project root** with \`COGNETIVY_API_KEY\` set (\`cognetivy auth login\`). Full CLI reference: [REFERENCE.md](REFERENCE.md).
 
 ---
 
@@ -512,7 +510,7 @@ Workflows, runs, node results, and schema-backed collections. Run commands from 
 
 ## Workflow
 
-**Get by id:** \`workflow get --workflow <id> [--version <version_id>]\` — always pass \`--workflow\` explicitly (no "selected" workflow for agents). **Create:** \`workflow create\` (--name or --file/stdin). **Update version:** \`workflow set --file <path>\` or stdin. **List/search:** Use \`workflow search [--q <query>]\` or \`workflow list [--q <query>]\` **only when the user explicitly asks to list or search workflows**; output is id, name, description only. Versions have nodes (collection→node→collection).
+**Get by id:** \`workflow get --workflow <id> [--version <version_id>]\` - always pass \`--workflow\` explicitly (no "selected" workflow for agents). **Create:** \`workflow create\` (--name or --file/stdin). **Update version:** \`workflow set --file <path>\` or stdin. **List/search:** Use \`workflow search [--q <query>]\` or \`workflow list [--q <query>]\` **only when the user explicitly asks to list or search workflows**; output is id, name, description only. Versions have nodes (collection→node→collection).
 
 **Workflow structure (required):**
 - **Single connected graph:** Do not create two or more disconnected subgraphs. All nodes must be part of one dataflow (every node reachable via input/output collections from the rest).
@@ -526,7 +524,7 @@ Workflows, runs, node results, and schema-backed collections. Run commands from 
 
 **Workflow:** \`workflow get --workflow <id>\`, \`workflow create\`, \`workflow set\` (file or stdin), \`workflow search [--q]\` (only when user asks to list/search). **Run:** \`run start\` (with \`--workflow\`, \`--input\` or \`--input-inline\`), \`run status --run <id>\`, \`run step --run <id> [--node N] [--collection-kind K] [--collection-file <path>]\` (payload from file or stdin; prefer file in agents), \`run complete --run <id>\`. Every run response includes \`COGNETIVY_NEXT_STEP\`; follow the hint. Prefer YAML for payloads (fewer tokens); JSON is accepted.
 
-**Low-level (scripts / debugging only):** \`event append\`, \`collection-schema get/set\`, \`collection list/get/set/append\`, \`node start/complete\`, \`node-result list/get/set\`. Not needed for the main run flow; use \`run step\` to complete nodes with output.
+**Low-level (scripts / debugging only):** \`event append\`, \`collection-schema get/set\`, \`collection list/get\`, \`node start\`. Prefer \`run step\` to complete nodes with output.
 
 **Traceability (enforced by schema):** Every kind (except \`run_input\`) has optional \`citations\`, \`derived_from\`, and \`reasoning\`. **Always populate these** so outputs are traceable:
 - **citations:** Array of sources: \`{ url?, title?, excerpt? }\` for external URLs (only verified), or \`{ item_ref: { kind, item_id } }\` for another collection item (e.g. a \`sources\` item). Enables "where did this come from?"
@@ -564,118 +562,28 @@ Workflows, runs, node results, and schema-backed collections. Run commands from 
 `;
 }
 
-/** Built-in skill (cloud mode): no .cognetivy/ required; workflows and runs on Cognetivy Cloud. Use --cloud on commands. */
-function getCognetivySkillContentCloud(): string {
-  return `---
-name: ${COGNETIVY_SKILL_NAME}
-description: Manage workflows, runs, and collections on Cognetivy Cloud. Use when the user asks to start/complete a run, execute workflow nodes, or read/write structured data. No local .cognetivy/ folder; use --cloud on CLI commands. Sign in with cognetivy login first.
----
+/** Full CLI reference (cloud API; use when COGNETIVY_API_KEY is set). */
+function getCognetivyReferenceContent(): string {
+  return `# Cognetivy CLI reference
 
-# Cognetivy (Cloud)
-
-Workflows, runs, and collections on **Cognetivy Cloud**. Run commands with \`--cloud\` (or rely on default when authenticated). Full reference: [REFERENCE.md](REFERENCE.md).
-
----
-
-## When to use this skill
-
-- User asks to start/complete a run, run the workflow, track steps, or persist ideas/sources/collections.
-- User refers to "cognetivy", "workflow", "run", "collections" in a cloud context.
-
----
-
-## Quick start (cloud run)
-
-1. **Sign in:** \`cognetivy login\` (once per machine).
-2. **Start:** \`cognetivy run start --workflow <workflow_id> --input <path>|--input-inline '{"key":"value"}' --name "Short name" --cloud\`
-3. **Step:** \`cognetivy run step --run <run_id> [--node <id>] [--collection-kind <kind>] --cloud\` (payload via --collection-file or stdin).
-4. **Complete:** \`cognetivy run complete --run <run_id> --cloud\`
-
-Every response includes \`COGNETIVY_NEXT_STEP\`; follow the hint. Use \`workflow get --workflow <id> --cloud\` to load the workflow. Parallel nodes: spawn one sub-agent per node when \`next_step.action === "run_nodes_parallel"\`.
-
----
-
-## Workflow (cloud)
-
-\`workflow list --cloud\`, \`workflow get --workflow <id> --cloud\`, \`workflow create --cloud\`, \`workflow set --file <path> --cloud\`. Always pass \`--workflow <id>\` on run commands.
-
----
-
-## Traceability
-
-Every collection kind (except \`run_input\`) has \`citations\`, \`derived_from\`, \`reasoning\`. Populate them. Every item must have a \`name\` field.
-`;
-}
-
-/** Full CLI reference (local mode). Use from project root (directory containing .cognetivy/). */
-function getCognetivyReferenceContentLocal(): string {
-  return `# Cognetivy CLI reference (local)
-
-Full command reference. Use from project root (directory containing \`.cognetivy/\`).
+Sign in: \`cognetivy auth login\`. Optional: \`.cognetivy/workflows/index.json\` stores default cloud workflow id.
 
 ## workflow
-- \`cognetivy workflow search [--q <query>]\` - search workflows (id, name, description only). **Use only when the user asks to list or search workflows.**
-- \`cognetivy workflow list [--q <query>]\` - list workflows (id, name, description only). Same as search; use only when user asks.
-- \`cognetivy workflow create --name <string> [--id <string>] [--description <string>]\` - create a workflow (creates v1 and default schema). Or use --file or stdin with name/description/nodes/kinds.
-- \`cognetivy workflow select --workflow <workflow_id>\` - select current workflow (for human use; agents should pass --workflow on each command).
-- \`cognetivy workflow versions [--workflow <workflow_id>]\` - list versions for a workflow.
-- \`cognetivy workflow get --workflow <id> [--version <version_id>] [--output-format yaml]\` - print a workflow version (JSON or YAML). Always pass --workflow for agents.
-- \`cognetivy workflow set [--file <path>] [--workflow <workflow_id>]\` - set workflow version from file or stdin (creates new version). **Workflow must be one connected graph with no cycles.** JSON or YAML.
+- \`workflow list\` / \`workflow search [--q]\`, \`workflow get --workflow <id>\`, \`workflow create\`, \`workflow set --file\`, \`workflow versions\`, \`workflow select --workflow <id>\`
 
 ## run
-- \`cognetivy run start --input <path> [--name <string>] ...\` - start run; prints run_id and COGNETIVY_NEXT_STEP. Use --input - for stdin or --input-inline for inline JSON.
-- \`cognetivy run status --run <run_id> [--json]\` - run state, nodes, collections, next_step.
-- \`cognetivy run step --run <run_id> [--node <node_id>] [--collection-kind <kind>] [--collection-file <path>]\` - start next node (no --node) or complete node (--node; payload from --collection-file or stdin; prefer file in agents); prints next_step.
-- \`cognetivy run complete --run <run_id>\`, \`run set-name --run <run_id> --name <string>\`.
-
-## node
-- \`cognetivy node start --run <run_id> --node <node_id>\` - step_started + started node result; prints COGNETIVY_NODE_RESULT_ID.
-- \`cognetivy node complete --run <run_id> --node <node_id> --status completed [--output ...] [--collection-kind <kind>]\` - node result + optional collection (omit --collection-file to read from stdin) + step_completed.
-
-## event
-- \`cognetivy event append --run <run_id> [--file <path>] [--by <string>]\` - append event (omit --file to read from stdin). Step events: data.step = node id.
+- \`run start --workflow <id> --input ... --name ...\`, \`run status --run <id>\`, \`run step --run <id>\`, \`run complete --run <id>\`
 
 ## collection-schema
-- \`cognetivy collection-schema get [--workflow <workflow_id>]\` - print workflow-scoped schema (kinds, item_schema, references).
-- \`cognetivy collection-schema set --file <path> [--workflow <workflow_id>]\` - set schema from JSON.
+- \`collection-schema get\`, \`collection-schema set --file\`
 
 ## collection
-- \`cognetivy collection list --run <run_id>\` - list kinds that have data for run.
-- \`cognetivy collection get --run <run_id> --kind <kind>\` - get all items of kind.
-- \`cognetivy collection set --run <run_id> --kind <kind> [--file <path>] --node <node_id> --node-result <node_result_id>\` - replace items (omit --file for stdin).
-- \`cognetivy collection append --run <run_id> --kind <kind> [--file <path>] --node <node_id> --node-result <node_result_id> [--id <id>]\` - append one item (omit --file for stdin).
-- **Mandatory \`name\`:** Every collection item must include a \`name\` field (enforced by API and CLI). Short display title; Studio shows it first. \`run_input\` gets a default name if omitted.
-- Traceability: every kind (except run_input) has \`citations\` (sources: url or item_ref), \`derived_from\` (item refs), \`reasoning\`; populate so outputs are traceable.
+- \`collection list --run <id>\`, \`collection get --run <id> --kind <kind>\`
 
-## node-result
-- \`cognetivy node-result list --run <run_id>\` - list node results for run.
-- \`cognetivy node-result get --run <run_id> --node <node_id>\` - get node result.
-- \`cognetivy node-result set --run <run_id> --node <node_id> --status <started|completed|failed|needs_human> [--id <node_result_id>] [--output-file <path> | --output <string>]\` - set node result.
+## event / node
+- \`event append --run <id>\`, \`node start --run <id> --node <id>\`
 
-## studio
-- \`cognetivy studio [--workspace <path>] [--port <port>]\` - open read-only Studio (workflow, runs, events, collections) in browser.
-`;
-}
-
-/** Full CLI reference (cloud mode). Use --cloud on commands when authenticated. */
-function getCognetivyReferenceContentCloud(): string {
-  return `# Cognetivy CLI reference (cloud)
-
-Use \`--cloud\` on commands (or rely on default when authenticated). No local \`.cognetivy/\` required.
-
-## workflow
-- \`cognetivy workflow list --cloud\`, \`workflow get --workflow <id> --cloud\`, \`workflow create --cloud\`, \`workflow set --file <path> --cloud\`.
-- \`workflow versions --workflow <id> --cloud\`, \`workflow select --workflow <id> --cloud\`.
-
-## run
-- \`cognetivy run start --workflow <id> --input <path> [--name <string>] --cloud\`
-- \`run status --run <id> --cloud\`, \`run step --run <id> [--node <id>] [--collection-kind <kind>] --cloud\`, \`run complete --run <id> --cloud\`.
-
-## collection
-- \`collection list --run <id> --cloud\`, \`collection get --run <id> --kind <kind> --cloud\`, \`collection set\` / \`append\` with \`--cloud\`.
-
-## studio
-- \`cognetivy studio\` - open Cloud Studio in browser (or use app.cognetivy.com).
+Use the **Cognetivy web app** for full Studio (workflows, runs, collections UI).
 `;
 }
 
@@ -697,19 +605,17 @@ const ALL_COGNETIVY_INSTALL_TARGETS: SkillInstallTarget[] = [
 /**
  * Install the built-in cognetivy skill (workflow, runs, events, collections) into the target.
  * Writes SKILL.md, REFERENCE.md, and .cognetivy-version. Idempotent; overwrites.
- * @param mode - "local" (default): .cognetivy/ workspace; "cloud": cloud-only, no local workspace.
  */
 export async function installCognetivySkill(
   target: SkillInstallTarget,
   cwd: string,
-  config?: SkillsConfig,
-  mode: SkillMode = "local"
+  config?: SkillsConfig
 ): Promise<string> {
   const { getCurrentVersionSync, COGNETIVY_VERSION_FILENAME } = await import("./skills-version.js");
   const targetPath = await getInstallPath(target, COGNETIVY_SKILL_NAME, cwd, config);
   await fs.mkdir(targetPath, { recursive: true });
-  const skillContent = mode === "cloud" ? getCognetivySkillContentCloud() : getCognetivySkillContentLocal();
-  const refContent = mode === "cloud" ? getCognetivyReferenceContentCloud() : getCognetivyReferenceContentLocal();
+  const skillContent = getCognetivySkillContent();
+  const refContent = getCognetivyReferenceContent();
   await fs.writeFile(path.join(targetPath, SKILL_FILENAME), skillContent, "utf-8");
   await fs.writeFile(path.join(targetPath, REFERENCE_FILENAME), refContent, "utf-8");
   await fs.writeFile(

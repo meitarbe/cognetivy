@@ -81,11 +81,30 @@ async function cloudFetch<T>(path: string, options: RequestInit = {}): Promise<T
   return res.json() as Promise<T>;
 }
 
+/** Serialize POST .../complete per run so parallel agents cannot interleave completions on the server. */
+const completeNodeChains = new Map<string, Promise<unknown>>();
+
+function enqueueCloudCompleteNode<T>(runId: string, execute: () => Promise<T>): Promise<T> {
+  const prev = completeNodeChains.get(runId) ?? Promise.resolve();
+  const safePrev = prev.catch(() => undefined);
+  const next = safePrev.then(() => execute());
+  completeNodeChains.set(
+    runId,
+    next.then(
+      () => undefined,
+      () => undefined,
+    ),
+  );
+  return next;
+}
+
 export interface CloudCreateRunInput {
   workflowId: string;
   workflowVersionId?: string;
   name?: string;
   input: Record<string, unknown>;
+  /** Matches backend `NodeExecutionAgentKind` (e.g. local Claude Code vs Codex). */
+  executorAgent?: "CODEX" | "CLAUDE_CODE";
 }
 
 export interface CloudNextStep {
@@ -115,6 +134,21 @@ export async function cloudGetRun(runId: string): Promise<{ id: string; status: 
   return cloudFetch<{ id: string; status: string; workflowId: string }>(`/runs/${runId}`);
 }
 
+/** Full run payload from GET /runs/:id (includes workflow version nodes and node results). */
+export interface CloudRunDetail {
+  id: string;
+  status: string;
+  workflowId: string;
+  workflowVersionId: string;
+  workflowVersion?: { id: string; nodes: unknown[] };
+  input?: unknown;
+  nodeResults?: Array<{ id: string; nodeId: string; status: string }>;
+}
+
+export async function cloudGetRunDetail(runId: string): Promise<CloudRunDetail> {
+  return cloudFetch<CloudRunDetail>(`/runs/${encodeURIComponent(runId)}`);
+}
+
 export async function cloudGetNext(runId: string): Promise<{
   next_step: CloudNextStep;
   current_node_id?: string;
@@ -136,6 +170,7 @@ export interface CloudCompleteNodeBody {
   collectionKind?: string;
   collectionPayload?: unknown;
   writes?: Array<{ kind: string; item_ids: string[] }>;
+  executionAttempt?: unknown;
 }
 
 export async function cloudCompleteNode(
@@ -143,10 +178,12 @@ export async function cloudCompleteNode(
   nodeId: string,
   body: CloudCompleteNodeBody = {}
 ): Promise<{ next_step: CloudNextStep; current_node_id?: string; current_node_ids?: string[] }> {
-  return cloudFetch(`/runs/${runId}/nodes/${encodeURIComponent(nodeId)}/complete`, {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
+  return enqueueCloudCompleteNode(runId, () =>
+    cloudFetch(`/runs/${runId}/nodes/${encodeURIComponent(nodeId)}/complete`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  );
 }
 
 export interface CloudAppendEventsBody {
@@ -306,7 +343,7 @@ export async function cloudGetWorkflowVersion(
 }
 
 /** Map backend action names to CLI NextStepAction for display. */
-export function mapCloudActionToLocal(action: string): NextStepAction {
+export function mapCloudActionToCliAction(action: string): NextStepAction {
   const map: Record<string, NextStepAction> = {
     execute_node: "run_node",
     execute_nodes_parallel: "run_nodes_parallel",
@@ -332,4 +369,10 @@ export async function cloudGetCollectionItems(
   return cloudFetch<{ run_id: string; kind: string; items: Array<Record<string, unknown>> }>(
     `/runs/${encodeURIComponent(runId)}/collections/${encodeURIComponent(kind)}/items`
   );
+}
+
+export async function cloudGetCollectionSchema(
+  workflowId: string
+): Promise<{ workflow_id: string; kinds: Record<string, { name?: string; description: string; item_schema: unknown }> }> {
+  return cloudFetch(`/workflows/${encodeURIComponent(workflowId)}/collections/schema`);
 }

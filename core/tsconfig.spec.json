@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "declaration": false,
+    "types": ["node"]
+  },
+  "include": ["next-step-downstream.spec.ts"],
+  "exclude": ["node_modules", "dist"]
+}

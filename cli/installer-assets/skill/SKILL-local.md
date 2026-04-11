@@ -46,7 +46,7 @@ Workflows, runs, node results, and schema-backed collections. **Single surface: 
    - If the user requests changes, create a **new workflow version** and set it current (use `cognetivy workflow set --file <path> --local --workflow <workflow_id>`; get `<workflow_id>` from `run status --run <run_id>`). Then start a new run using the updated workflow.
    - Then finish: `echo '{"type":"run_completed","data":{}}' | cognetivy event append --local --run <run_id>`, then `cognetivy run complete --local --run <run_id>`.
 
-**Pitfalls to avoid:** Do not run sqlite3 or edit the DB. Do not create a workflow with `workflow create --name` then `workflow set` for a brand-new workflow—use `workflow create --file` once. When updating an existing workflow (including one with no versions yet), do not call `workflow create` again—use `workflow set --file <path> --local --workflow <workflow_id>`. Always pass `--local` when using the local workspace. Always pass `--workflow <id>` to `run start`.
+**Pitfalls to avoid:** Do not run sqlite3 or edit the DB. Do not create a workflow with `workflow create --name` then `workflow set` for a brand-new workflow-use `workflow create --file` once. When updating an existing workflow (including one with no versions yet), do not call `workflow create` again-use `workflow set --file <path> --local --workflow <workflow_id>`. Always pass `--local` when using the local workspace. Always pass `--workflow <id>` to `run start`.
 
 ---
 

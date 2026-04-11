@@ -1,0 +1,655 @@
+/**
+ * HTTP static server + WebSocket for local studio and workflow executor.
+ */
+import http from "node:http";
+import fs from "node:fs";
+import path from "node:path";
+import express from "express";
+import { randomBytes } from "node:crypto";
+import { WebSocketServer, type WebSocket } from "ws";
+import { executeWorkflowRun } from "../executor/workflow-executor.js";
+import {
+  formatWorkflowValidationError,
+  runWorkflowGenerateFromBrief,
+} from "../executor/workflow-generate-runner.js";
+import { runAgentForNodeRaw } from "../executor/agent-node-runner.js";
+import { ExecutionStore } from "../local-db/execution-store.js";
+import { HitlCoordinator } from "./hitl-coordinator.js";
+import { getCloudApiUrl, isCloudAuthenticated, resolveCloudOrganizationId } from "../cloud-client.js";
+import { resolveLocalStudioStaticRoot } from "./static-root.js";
+import { writeExecutorTerminalLog, writeExecutorTerminalNote, writeWorkflowGenerateDebug } from "./executor-terminal-log.js";
+import {
+  serverMessage,
+  WS_PROTOCOL_VERSION,
+  type WsClientMessage,
+  type WsServerMessage,
+} from "./ws-protocol.js";
+import { resolvePathUnderWorkspaceRoot, toDisplayRelativePath } from "./workspace-fs-safe.js";
+
+const FS_READ_MAX_BYTES = 512 * 1024;
+import { listWorkflowTemplates } from "../workflow-templates.js";
+import { applyWorkflowTemplateToCloud } from "../workflow-template-apply.js";
+
+const DEFAULT_PORT = 3848;
+const AGENT_CHECK_TIMEOUT_MS = 20_000;
+const AGENT_CHECK_TAIL_MAX_CHARS = 3_000;
+
+/** Large single `data` events from the agent process become one huge WS payload; split so the UI can paint between chunks. */
+const WORKFLOW_GENERATE_AGENT_LOG_BROADCAST_MAX = 2_048;
+
+function broadcastWorkflowGenerateAgentLog(
+  text: string,
+  stream: "stdout" | "stderr",
+  broadcast: (msg: WsServerMessage) => void
+): void {
+  if (!text) {
+    return;
+  }
+  if (text.length <= WORKFLOW_GENERATE_AGENT_LOG_BROADCAST_MAX) {
+    broadcast({ v: 1, type: "workflow.generate", phase: "agent_log", chunk: text, stream });
+    return;
+  }
+  let offset = 0;
+  function sendNext(): void {
+    if (offset >= text.length) {
+      return;
+    }
+    const end = Math.min(offset + WORKFLOW_GENERATE_AGENT_LOG_BROADCAST_MAX, text.length);
+    broadcast({ v: 1, type: "workflow.generate", phase: "agent_log", chunk: text.slice(offset, end), stream });
+    offset = end;
+    if (offset < text.length) {
+      setImmediate(sendNext);
+    }
+  }
+  sendNext();
+}
+
+function splitStdoutStderrTail(text: string): { stdoutTail?: string; stderrTail?: string } {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return {};
+  }
+  const stderrIdx = trimmed.lastIndexOf("\n--- stderr ---\n");
+  if (stderrIdx < 0) {
+    return {
+      stdoutTail: trimmed.length > AGENT_CHECK_TAIL_MAX_CHARS ? trimmed.slice(-AGENT_CHECK_TAIL_MAX_CHARS) : trimmed,
+    };
+  }
+  const stdoutPart = trimmed.slice(0, stderrIdx).trim();
+  const stderrPart = trimmed.slice(stderrIdx + "\n--- stderr ---\n".length).trim();
+  return {
+    stdoutTail:
+      stdoutPart.length > AGENT_CHECK_TAIL_MAX_CHARS ? stdoutPart.slice(-AGENT_CHECK_TAIL_MAX_CHARS) : stdoutPart,
+    stderrTail:
+      stderrPart.length > AGENT_CHECK_TAIL_MAX_CHARS ? stderrPart.slice(-AGENT_CHECK_TAIL_MAX_CHARS) : stderrPart,
+  };
+}
+
+async function runAgentPromptCheck(options: {
+  agent: "claude" | "codex";
+  cwd: string;
+}): Promise<{ ok: boolean; message: string; stdoutTail?: string; stderrTail?: string }> {
+  const abortController = new AbortController();
+  const timeoutId = setTimeout(function agentCheckTimeout() {
+    abortController.abort();
+  }, AGENT_CHECK_TIMEOUT_MS);
+  try {
+    const prompt =
+      "Say exactly: COGNETIVY_AGENT_OK=1";
+    const result = await runAgentForNodeRaw({
+      agent: options.agent,
+      cwd: options.cwd,
+      prompt,
+      signal: abortController.signal,
+      onChunk: function noop() {
+        // no-op: check is summarized in result tails only
+      },
+      codexJsonlStdout: true,
+      claudeStreamJsonStdout: true,
+    });
+    const tails = splitStdoutStderrTail(result.combinedLog);
+    const ok = result.exitCode === 0 || result.exitCode === null;
+    return {
+      ok,
+      message: ok ? "Agent launched successfully." : `Agent exited with code ${String(result.exitCode)}.`,
+      ...tails,
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { ok: false, message };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+export interface LocalStudioServerOptions {
+  /** Workspace cwd for agent subprocesses (default process.cwd()) */
+  workspaceCwd?: string;
+  port?: number;
+}
+
+export interface LocalStudioServerHandle {
+  readonly baseUrl: string;
+  readonly port: number;
+  readonly sessionToken: string;
+  readonly openUrl: string;
+  close(): Promise<void>;
+}
+
+interface RunJob {
+  abortController: AbortController;
+}
+
+export function createLocalStudioServer(options: LocalStudioServerOptions = {}): Promise<LocalStudioServerHandle> {
+  return new Promise((resolveListen, rejectListen) => {
+    const sessionToken = randomBytes(24).toString("hex");
+    const workspaceCwd = options.workspaceCwd ?? process.cwd();
+    const port = options.port ?? (Number(process.env.COGNETIVY_LOCAL_PORT) || DEFAULT_PORT);
+
+    const store = new ExecutionStore();
+    const hitl = new HitlCoordinator();
+    const clients = new Set<WebSocket>();
+    const runJobs = new Map<string, RunJob>();
+    let workflowGenerateInFlight = false;
+
+    function broadcast(msg: WsServerMessage): void {
+      writeExecutorTerminalLog(msg);
+      const raw = serverMessage(msg);
+      for (const ws of clients) {
+        if (ws.readyState === ws.OPEN) {
+          ws.send(raw);
+        }
+      }
+    }
+
+    const app = express();
+    const staticRoot = resolveLocalStudioStaticRoot();
+
+    app.use(express.json({ limit: "1mb" }));
+
+    app.get("/api/local/session", (_req, res) => {
+      res.json({ ok: true, token: sessionToken, wsPath: "/ws", protocolVersion: WS_PROTOCOL_VERSION });
+    });
+
+    app.get("/api/local/templates", (_req, res) => {
+      // Intentionally exclude "Default workflow" from UI onboarding.
+      res.json({ ok: true, templates: listWorkflowTemplates() });
+    });
+
+    app.post("/api/local/templates/apply", async (req, res) => {
+      try {
+        const authed = await isCloudAuthenticated();
+        if (!authed) {
+          res.status(401).json({ ok: false, error: "Not authenticated. Run `cognetivy auth login` and refresh." });
+          return;
+        }
+        const templateId = typeof req.body?.templateId === "string" ? req.body.templateId.trim() : "";
+        const workflowName = typeof req.body?.name === "string" ? req.body.name.trim() : undefined;
+        const workflowDescription =
+          typeof req.body?.description === "string" ? req.body.description.trim() : undefined;
+        if (!templateId) {
+          res.status(400).json({ ok: false, error: "templateId is required" });
+          return;
+        }
+        const organizationId = await resolveCloudOrganizationId();
+        const result = await applyWorkflowTemplateToCloud({
+          organizationId,
+          templateId,
+          cwd: workspaceCwd,
+          workflowName,
+          workflowDescription,
+        });
+        res.json({
+          ok: true,
+          workflowId: result.workflowId,
+          versionId: result.versionId,
+          template: result.template,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        res.status(500).json({ ok: false, error: message });
+      }
+    });
+
+    app.use(
+      express.static(staticRoot, {
+        index: false,
+      })
+    );
+
+    app.get(/.*/, (req, res) => {
+      if (req.path.startsWith("/api/")) {
+        res.status(404).end();
+        return;
+      }
+      const indexPath = path.join(staticRoot, "index.html");
+      if (fs.existsSync(indexPath)) {
+        let html = fs.readFileSync(indexPath, "utf-8");
+        html = html.replace(/__COGNETIVY_LOCAL_SESSION__/g, sessionToken);
+        const apiBase = getCloudApiUrl();
+        html = html.replace(/"__COGNETIVY_RUNTIME_API_BASE__"/g, JSON.stringify(apiBase));
+        res.type("html").send(html);
+      } else {
+        res.status(404).send("Local studio bundle missing. Run npm run build in cognetivy/cli.");
+      }
+    });
+
+    const server = http.createServer(app);
+    const wss = new WebSocketServer({ server, path: "/ws" });
+
+    wss.on("connection", (ws: WebSocket) => {
+      let authed = false;
+
+      ws.on("message", (data) => {
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(String(data));
+        } catch {
+          ws.send(serverMessage({ v: 1, type: "error", code: "BAD_JSON", message: "Invalid JSON" }));
+          return;
+        }
+        const body = parsed as Partial<WsClientMessage> & { v?: number; type?: string };
+        if (body.v !== WS_PROTOCOL_VERSION) {
+          ws.send(
+            serverMessage({
+              v: 1,
+              type: "error",
+              code: "BAD_VERSION",
+              message: `Expected protocol v${WS_PROTOCOL_VERSION}`,
+            })
+          );
+          return;
+        }
+
+        if (body.type === "hello") {
+          const token = typeof body.token === "string" ? body.token : "";
+          if (token !== sessionToken) {
+            ws.send(serverMessage({ v: 1, type: "welcome", sessionOk: false }));
+            ws.close();
+            return;
+          }
+          authed = true;
+          clients.add(ws);
+          ws.send(serverMessage({ v: 1, type: "welcome", sessionOk: true, cwd: workspaceCwd }));
+          return;
+        }
+
+        if (!authed) {
+          ws.send(serverMessage({ v: 1, type: "error", code: "UNAUTHORIZED", message: "Send hello first" }));
+          return;
+        }
+
+        if (body.type === "hitl.response") {
+          const runId = body.runId as string;
+          const nodeId = body.nodeId as string;
+          const payload = body.payload as Record<string, unknown>;
+          if (!runId || !nodeId || !payload) {
+            ws.send(serverMessage({ v: 1, type: "error", code: "BAD_PAYLOAD", message: "hitl.response requires runId, nodeId, payload" }));
+            return;
+          }
+          writeExecutorTerminalNote(`HITL response submitted run=${runId} node=${nodeId}`);
+          hitl.respond(runId, nodeId, payload);
+          return;
+        }
+
+        if (body.type === "workflow.generate") {
+          const brief = typeof body.brief === "string" ? body.brief.trim() : "";
+          if (!brief) {
+            ws.send(
+              serverMessage({
+                v: 1,
+                type: "error",
+                code: "BAD_PAYLOAD",
+                message: "workflow.generate requires a non-empty brief",
+              })
+            );
+            return;
+          }
+          if (workflowGenerateInFlight) {
+            ws.send(
+              serverMessage({
+                v: 1,
+                type: "error",
+                code: "BUSY",
+                message: "Workflow generation is already in progress.",
+              })
+            );
+            return;
+          }
+          const agent = body.agent === "codex" ? "codex" : "claude";
+          const nameHint = typeof body.name === "string" && body.name.trim() ? body.name.trim() : undefined;
+          const descriptionHint =
+            typeof body.description === "string" && body.description.trim()
+              ? body.description.trim()
+              : undefined;
+          workflowGenerateInFlight = true;
+          writeExecutorTerminalNote(`Workflow generate: agent=${agent} brief_len=${brief.length}`);
+          broadcast({ v: 1, type: "workflow.generate", phase: "started" });
+          broadcast({ v: 1, type: "workflow.generate", phase: "agent_running" });
+          void (async function runWorkflowGenerateJob() {
+            try {
+              const result = await runWorkflowGenerateFromBrief({
+                brief,
+                nameHint,
+                descriptionHint,
+                agent,
+                cwd: workspaceCwd,
+                onChunk: (text, stream) => {
+                  broadcastWorkflowGenerateAgentLog(text, stream, broadcast);
+                },
+                onPhase: (phase) => {
+                  writeWorkflowGenerateDebug(`phase broadcast: ${phase}`);
+                  broadcast({ v: 1, type: "workflow.generate", phase });
+                },
+              });
+              writeWorkflowGenerateDebug(`job complete workflowId=${result.workflowId}`);
+              broadcast({
+                v: 1,
+                type: "workflow.generate",
+                phase: "complete",
+                workflowId: result.workflowId,
+              });
+            } catch (err) {
+              const msg = formatWorkflowValidationError(err);
+              writeWorkflowGenerateDebug(`job failed: ${msg}`);
+              broadcast({
+                v: 1,
+                type: "workflow.generate",
+                phase: "failed",
+                message: msg,
+              });
+            } finally {
+              workflowGenerateInFlight = false;
+            }
+          })();
+          return;
+        }
+
+        if (body.type === "agent.check") {
+          const agent = body.agent === "codex" ? "codex" : "claude";
+          const cwd = typeof body.cwd === "string" && body.cwd.trim() ? path.resolve(body.cwd) : workspaceCwd;
+          writeExecutorTerminalNote(`Agent check: agent=${agent} cwd=${cwd}`);
+          void (async function runAgentCheckJob() {
+            const result = await runAgentPromptCheck({ agent, cwd });
+            ws.send(
+              serverMessage({
+                v: 1,
+                type: "agent.check.result",
+                agent,
+                ok: result.ok,
+                message: result.message,
+                stdoutTail: result.stdoutTail,
+                stderrTail: result.stderrTail,
+              })
+            );
+          })();
+          return;
+        }
+
+        if (body.type === "fs.list") {
+          const rel = typeof body.path === "string" ? body.path : "";
+          const requestId = typeof body.requestId === "string" ? body.requestId : undefined;
+          const abs = resolvePathUnderWorkspaceRoot(workspaceCwd, rel);
+          if (!abs) {
+            ws.send(
+              serverMessage({
+                v: 1,
+                type: "fs.list.result",
+                requestId,
+                ok: false,
+                path: rel.trim() || ".",
+                error: "Invalid or disallowed path",
+              } satisfies WsServerMessage)
+            );
+            return;
+          }
+          const pathDisplay = toDisplayRelativePath(workspaceCwd, abs);
+          try {
+            const stat = fs.statSync(abs);
+            if (!stat.isDirectory()) {
+              ws.send(
+                serverMessage({
+                  v: 1,
+                  type: "fs.list.result",
+                  requestId,
+                  ok: false,
+                  path: pathDisplay,
+                  error: "Not a directory",
+                } satisfies WsServerMessage)
+              );
+              return;
+            }
+            const dirents = fs.readdirSync(abs, { withFileTypes: true });
+            const entries = dirents
+              .map((d) => ({
+                name: d.name,
+                kind: d.isDirectory() ? ("dir" as const) : ("file" as const),
+              }))
+              .sort((a, b) => {
+                if (a.kind !== b.kind) {
+                  return a.kind === "dir" ? -1 : 1;
+                }
+                return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+              });
+            ws.send(
+              serverMessage({
+                v: 1,
+                type: "fs.list.result",
+                requestId,
+                ok: true,
+                path: pathDisplay,
+                entries,
+              } satisfies WsServerMessage)
+            );
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            ws.send(
+              serverMessage({
+                v: 1,
+                type: "fs.list.result",
+                requestId,
+                ok: false,
+                path: pathDisplay,
+                error: message,
+              } satisfies WsServerMessage)
+            );
+          }
+          return;
+        }
+
+        if (body.type === "fs.read") {
+          const rel = typeof body.path === "string" ? body.path.trim() : "";
+          const requestId = typeof body.requestId === "string" ? body.requestId : undefined;
+          if (!rel) {
+            ws.send(
+              serverMessage({
+                v: 1,
+                type: "fs.read.result",
+                requestId,
+                ok: false,
+                path: "",
+                error: "path is required",
+              } satisfies WsServerMessage)
+            );
+            return;
+          }
+          const abs = resolvePathUnderWorkspaceRoot(workspaceCwd, rel);
+          if (!abs) {
+            ws.send(
+              serverMessage({
+                v: 1,
+                type: "fs.read.result",
+                requestId,
+                ok: false,
+                path: rel,
+                error: "Invalid or disallowed path",
+              } satisfies WsServerMessage)
+            );
+            return;
+          }
+          const pathDisplay = toDisplayRelativePath(workspaceCwd, abs);
+          try {
+            const stat = fs.statSync(abs);
+            if (!stat.isFile()) {
+              ws.send(
+                serverMessage({
+                  v: 1,
+                  type: "fs.read.result",
+                  requestId,
+                  ok: false,
+                  path: pathDisplay,
+                  error: "Not a file",
+                } satisfies WsServerMessage)
+              );
+              return;
+            }
+            if (stat.size > FS_READ_MAX_BYTES) {
+              ws.send(
+                serverMessage({
+                  v: 1,
+                  type: "fs.read.result",
+                  requestId,
+                  ok: false,
+                  path: pathDisplay,
+                  error: `File too large (max ${FS_READ_MAX_BYTES} bytes)`,
+                } satisfies WsServerMessage)
+              );
+              return;
+            }
+            const buf = fs.readFileSync(abs);
+            if (buf.includes(0)) {
+              ws.send(
+                serverMessage({
+                  v: 1,
+                  type: "fs.read.result",
+                  requestId,
+                  ok: false,
+                  path: pathDisplay,
+                  error: "Binary file not supported",
+                } satisfies WsServerMessage)
+              );
+              return;
+            }
+            const content = buf.toString("utf8");
+            ws.send(
+              serverMessage({
+                v: 1,
+                type: "fs.read.result",
+                requestId,
+                ok: true,
+                path: pathDisplay,
+                content,
+              } satisfies WsServerMessage)
+            );
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            ws.send(
+              serverMessage({
+                v: 1,
+                type: "fs.read.result",
+                requestId,
+                ok: false,
+                path: pathDisplay,
+                error: message,
+              } satisfies WsServerMessage)
+            );
+          }
+          return;
+        }
+
+        if (body.type === "run.cancel") {
+          const runId = body.runId as string;
+          writeExecutorTerminalNote(`Cancel requested run=${runId}`);
+          const job = runJobs.get(runId);
+          if (job) {
+            job.abortController.abort();
+          }
+          hitl.cancelRun(runId);
+          broadcast({ v: 1, type: "run.event", phase: "cancel_requested", runId, payload: {} });
+          return;
+        }
+
+        if (body.type === "run.start") {
+          const workflowId = body.workflowId as string;
+          const name = body.name as string;
+          const input = (body.input as Record<string, unknown>) ?? {};
+          const cwd = typeof body.cwd === "string" && body.cwd.trim() ? path.resolve(body.cwd) : workspaceCwd;
+          const agent = body.agent === "codex" ? "codex" : "claude";
+          if (!workflowId?.trim() || !name?.trim()) {
+            ws.send(
+              serverMessage({ v: 1, type: "error", code: "BAD_PAYLOAD", message: "run.start requires workflowId and name" })
+            );
+            return;
+          }
+
+          writeExecutorTerminalNote(
+            `Starting run: workflow=${workflowId.trim()} name=${name.trim()} agent=${agent} cwd=${cwd}`
+          );
+
+          const abortController = new AbortController();
+          void executeWorkflowRun({
+            store,
+            hitl,
+            emit: broadcast,
+            log: (runId, nodeId, stream, chunk) => {
+              store.appendLogChunk(runId, nodeId, stream, chunk);
+              broadcast({ v: 1, type: "log.append", runId, nodeId, chunk, stream });
+            },
+            agent,
+            cwd,
+            workflowId: workflowId.trim(),
+            workflowVersionId: typeof body.workflowVersionId === "string" ? body.workflowVersionId : undefined,
+            name: name.trim(),
+            input,
+            abortSignal: abortController.signal,
+            onRunCreated: (rid) => {
+              runJobs.set(rid, { abortController });
+            },
+            onRunFinished: (rid) => {
+              runJobs.delete(rid);
+            },
+          }).catch(() => {
+            /* errors emitted via broadcast */
+          });
+
+          ws.send(serverMessage({ v: 1, type: "run.event", phase: "accepted", runId: "", payload: { workflowId } }));
+          return;
+        }
+
+        ws.send(serverMessage({ v: 1, type: "error", code: "UNKNOWN_TYPE", message: String(body.type) }));
+      });
+
+      ws.on("close", () => {
+        clients.delete(ws);
+      });
+    });
+
+    /** Bind loopback only; use `localhost` in URLs so Firebase Auth accepts the origin (authorized domain). */
+    server.listen(port, "127.0.0.1", () => {
+      const baseUrl = `http://localhost:${port}`;
+      const openUrl = `${baseUrl}/?session=${encodeURIComponent(sessionToken)}`;
+      resolveListen({
+        baseUrl,
+        port,
+        sessionToken,
+        openUrl,
+        close: () =>
+          new Promise((resolveClose) => {
+            wss.close(() => {
+              server.close(() => {
+                store.close();
+                resolveClose();
+              });
+            });
+            for (const ws of clients) {
+              ws.close();
+            }
+          }),
+      });
+    });
+
+    server.on("error", (err) => {
+      rejectListen(err);
+    });
+  });
+}

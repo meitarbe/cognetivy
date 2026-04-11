@@ -107,6 +107,19 @@ export function validateWorkflowVersion(version: WorkflowVersionRecord): void {
     if (!Array.isArray(n.output_collections)) {
       throw new WorkflowValidationError(`Node "${n.id}" must have output_collections (array).`);
     }
+    if (n.executor !== undefined) {
+      if (typeof n.executor !== "object" || n.executor === null || Array.isArray(n.executor)) {
+        throw new WorkflowValidationError(`Node "${n.id}" executor must be an object.`);
+      }
+      const exec = n.executor as Record<string, unknown>;
+      for (const key of ["profile_id", "provider", "model_id"] as const) {
+        if (exec[key] !== undefined && typeof exec[key] !== "string") {
+          throw new WorkflowValidationError(
+            `Node "${n.id}" executor.${key} must be a string.`,
+          );
+        }
+      }
+    }
   }
 
   // Measure change A5: disallow workflows that reference zero collection kinds.

@@ -37,7 +37,7 @@ End-of-run (reflection + versioning): when `next_step.action === "complete_run"`
 
 ## Workflow (cloud)
 
-`workflow list --cloud`, `workflow get --workflow <id> --cloud`, `workflow create --cloud`, `workflow set --file <path> --cloud` (updates by creating a new version for the selected workflow; do not use workflow create for updates—if the workflow has no versions yet, workflow set creates the first version). Always pass `--workflow <id>` on run commands.
+`workflow list --cloud`, `workflow get --workflow <id> --cloud`, `workflow create --cloud`, `workflow set --file <path> --cloud` (updates by creating a new version for the selected workflow; do not use workflow create for updates-if the workflow has no versions yet, workflow set creates the first version). Always pass `--workflow <id>` on run commands.
 
 When creating a workflow from a file, the JSON must include a top-level `kinds` object with an entry for **every** collection referenced in nodes (including `run_input` and all node input/output collections). Each kind needs `name`, `description`, and `item_schema`. Omitting any referenced collection causes "Missing kinds for: ..."; add those kinds and retry.
 

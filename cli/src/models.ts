@@ -16,7 +16,6 @@ export {
 export interface WorkflowIndexRecord {
   current_workflow_id: string;
   cloud_current_workflow_id?: string;
-  preferred_mode?: "cloud" | "local";
   workflows: WorkflowRecordSummary[];
 }
 

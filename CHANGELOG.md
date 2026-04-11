@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased](https://github.com/meitarbe/cognetivy/compare/v1.0.3...HEAD)
+## [Unreleased](https://github.com/meitarbe/cognetivy/compare/v2.0.10...HEAD)
 
 ### Added
 
@@ -22,6 +22,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - (none)
+
+## [2.0.10](https://github.com/meitarbe/cognetivy/compare/v1.0.3...v2.0.10) - 2026-04-11
+
+Cognetivy 2.0: local workflow execution, bundled local studio, removal of the standalone Studio package.
+
+### Added
+
+- **Core: per-node executor metadata.** `WorkflowNodeExecutor` (`profile_id`, `provider`, `model_id`) and optional `WorkflowNode.executor`; `workflow-validate` checks executor shape when present.
+- **Core: collection validation and next-step.** New `collection-validate` helper; `next-step-engine` updates plus downstream-focused specs (`next-step-downstream.spec.ts`).
+- **CLI: workflow executor stack.** Modules for running nodes locally: `workflow-executor`, `workflow-node-execution`, `agent-node-runner`, prompt building, workspace isolation, collection output helpers, token estimation, abort signals, and stream/JSON parsing utilities (Claude stdio/JSON lines, Codex JSONL).
+- **CLI: workflow generation from prompts.** `workflow-generate-prompt` / `workflow-generate-runner` to drive workflow creation via the agent stack.
+- **CLI: local studio server.** `local-studio-server` with HTTP + WebSocket protocol (`ws-protocol`), static root resolution, safe workspace FS access, executor terminal logging, HITL coordination hook, and SQLite-backed `execution-store`; `local-studio-entry` and `local-studio-placeholder` for serving the bundled UI.
+- **CLI: build and docs.** `copy-local-studio-assets.mjs`; README reframed for Cognetivy 2.0 (local studio + executor as default path, cloud when signed in).
+- **Tests.** New coverage for stream parsing, JSON blob validation, next-step node inputs, workspace-thin behavior, and CLI smoke paths; Claude stream stdio smoke test.
+
+### Changed
+
+- **CLI command surface.** Large refactor of `cli.ts`, `mcp.ts`, `workspace.ts`, `skills.ts`, `workflow-templates.ts`, `workflow-template-apply.ts`, and `install-tui.ts` to align with local execution and the local studio server instead of the previous studio-server + patch flow.
+- **Run engine.** `run-engine.ts` updated to work with the new execution and next-step behavior.
+- **Cloud client.** `cloud-client.ts` adjusted for the new local/cloud split.
+- **Dependencies.** `cli/package.json` and lockfile updated (including native `better-sqlite3` for local execution storage).
+
+### Removed
+
+- **Standalone Studio app.** The entire `studio/` Vite + React workspace (pages, components, hooks, assets) is removed; the product UI is delivered through the CLI-bundled local studio instead.
+- **Legacy CLI studio integration.** `studio-server.ts` and `patch-studio-server.mjs` removed; build copies local studio assets via `copy-local-studio-assets.mjs` (installer assets still via `copy-installer-assets.mjs`).
+- **Prior local-store package in CLI.** `local-store` (`schema`, `store`, index) removed in favor of execution-focused persistence (`execution-store` and related paths).
+- **Tests removed or superseded.** Dropped older suites such as `collections.test.mjs`, `e2e-onboarding-mode.test.mjs`, `init.test.mjs`, `run-events.test.mjs`, and `workflow-template-apply.test.mjs` where behavior moved or is covered elsewhere.
+
+### Fixed
+
+- (none)
+
+### Notes
+
+- Released to npm as `cognetivy@2.0.10`.
+- This release replaces the in-repo `studio/` app with the bundled local studio and adds a large executor stack; the overall diff from 1.0.3 is substantial.
 
 ## [1.0.3](https://github.com/meitarbe/cognetivy/compare/v0.1.34...v1.0.3) - 2026-03-27
 
@@ -91,7 +128,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Studio: first-time onboarding modal.** On first visit, a modal explains that the Studio is read-only and that users should talk to their coding agent (in Cursor, Claude Code, etc.) to create workflows and start runs. Includes a "Don't show this again" checkbox (persisted in localStorage).
 - **Studio: onboarding chat simulation.** The modal shows an animated simulation of a conversation: user asks for a competitor-analysis workflow (research from external sources, extract key points, comparison report), starts a run, then asks for a new workflow version; the "Coding Agent" responds in plain language (no CLI commands). Typing animation and a single "Thinking…" state in a fixed bottom bar; simulation is clearly labeled so users do not type in the modal.
-- **Studio: onboarding copy and disclaimer.** Prominent note that "This app does not run the AI; it only displays what your AI does via Cognetivy"; simulation callout and header stress "Do not type here—use your editor's chat."
+- **Studio: onboarding copy and disclaimer.** Prominent note that "This app does not run the AI; it only displays what your AI does via Cognetivy"; simulation callout and header stress "Do not type here-use your editor's chat."
 - **Studio: Checkbox component.** Radix-based checkbox in `components/ui/checkbox.tsx` for the onboarding "never show again" option.
 - **Studio: `useOnboardingVisibility` hook.** Hook and localStorage key `cognetivy-onboarding-dismissed` to control one-time vs. permanent dismiss of the onboarding modal.
 

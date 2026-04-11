@@ -13,3 +13,6 @@ src/core/
 .cognetivy/events/
 .cognetivy/collections/
 .cognetivy/node-results/
+
+# Cognetivy
+.cognetivy/skills/.cache

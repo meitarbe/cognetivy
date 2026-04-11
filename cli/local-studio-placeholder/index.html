@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cognetivy Local Studio</title>
+    <style>
+      :root {
+        font-family: system-ui, sans-serif;
+        background: #0f1419;
+        color: #e7e9ea;
+      }
+      body {
+        max-width: 40rem;
+        margin: 2rem auto;
+        padding: 1rem;
+      }
+      code {
+        background: #1a2332;
+        padding: 0.2rem 0.4rem;
+        border-radius: 4px;
+      }
+    </style>
+    <script>
+      window.__COGNETIVY_SESSION_TOKEN__ = "__COGNETIVY_LOCAL_SESSION__";
+    </script>
+  </head>
+  <body>
+    <h1>Local studio bundle missing</h1>
+    <p>
+      Build the full app with <code>npm run build:local-studio</code> from <code>cognetivy/cli</code> (copies cloud-studio
+      <code>dist-local</code> into this package).
+    </p>
+    <p>The CLI backend WebSocket is available at <code id="ws"></code>.</p>
+    <pre id="log" style="background: #000; padding: 1rem; min-height: 6rem; overflow: auto"></pre>
+    <script>
+      const token = window.__COGNETIVY_SESSION_TOKEN__ || "";
+      const proto = location.protocol === "https:" ? "wss:" : "ws:";
+      const wsUrl = proto + "//" + location.host + "/ws";
+      document.getElementById("ws").textContent = wsUrl;
+      const logEl = document.getElementById("log");
+      function line(s) {
+        logEl.textContent += s + "\n";
+      }
+      const ws = new WebSocket(wsUrl);
+      ws.onopen = function () {
+        line("ws open");
+        ws.send(JSON.stringify({ v: 1, type: "hello", token }));
+      };
+      ws.onmessage = function (ev) {
+        line("← " + ev.data);
+      };
+      ws.onerror = function () {
+        line("ws error");
+      };
+    </script>
+  </body>
+</html>
