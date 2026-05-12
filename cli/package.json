@@ -45,7 +45,7 @@
     "ajv": "^8.18.0",
     "ajv-formats": "^3.0.1",
     "better-sqlite3": "^12.8.0",
-    "chokidar": "^4.0.1",
+    "chokidar": "^5.0.0",
     "commander": "^12.1.0",
     "env-paths": "^3.0.0",
     "express": "^5.2.1",
