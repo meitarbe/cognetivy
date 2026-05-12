@@ -64,7 +64,7 @@
     "@types/node": "^22.10.0",
     "@types/pngjs": "^6.0.5",
     "@types/ws": "^8.18.1",
-    "typescript": "^5.7.0"
+    "typescript": "^6.0.2"
   },
   "files": [
     "dist",
